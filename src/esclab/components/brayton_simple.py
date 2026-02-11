@@ -4,20 +4,19 @@ import numpy as np
 
 # -------------------------------------------
 class Turbine(Component):
+
+    eta_s =    Component.Parameter(0.9)
+    mdot_in =  Component.Input()
+    T_in    =  Component.Input()
+    P_in    =  Component.Input()
+    h_out =    Component.Output()
+    T_out =    Component.Output()
+    P_out =    Component.Output()
+    mdot_out = Component.Output()
+    W =        Component.Output()
+    fluid = 'Air'
+
     def __init__(self):
-        self.eta_s = Component.Parameter(0.9)
-
-        self.mdot_in = Component.Input()
-        self.T_in    = Component.Input()
-        self.P_in    = Component.Input()
-
-        self.h_out = Component.Output()
-        self.T_out = Component.Output()
-        self.P_out = Component.Output()
-        self.mdot_out = Component.Output()
-        self.W = Component.Output()
-        
-        self.fluid = 'Air'
         return 
     
     def setup(self):

@@ -89,7 +89,7 @@ class Component:
             super().__init__()
 
     class Parameter:
-        def __init__(self, value, units='', std_dev = None):
+        def __init__(self, value=float('nan'), units='', std_dev = None):
             self.value = value 
             self.units = units
             self.std_dev = std_dev
