@@ -16,15 +16,7 @@ class Turbine(Component):
     W =        Component.Output()
     fluid = 'Air'
 
-    def __init__(self):
-        return 
-    
-    def setup(self):
-        pass
-    
     def calculate(self):
-        super().calculate()
-
         self.mdot_out.value = self.mdot_in.value
         h_in = fluid_properties.enthalpy(self.fluid, T=self.T_in.value, P=self.P_in.value)
         s_in = fluid_properties.entropy(self.fluid, T=self.T_in.value, P=self.P_in.value)
@@ -37,29 +29,22 @@ class Turbine(Component):
     
 # -------------------------------------------
 class Compressor(Component):
-    def __init__(self):
-        self.eta_s = Component.Parameter(0.85)
-        self.PR = Component.Parameter(3.)
+    eta_s = Component.Parameter(0.85)
+    PR = Component.Parameter(3.)
 
-        self.mdot_in = Component.Input()
-        self.T_in    = Component.Input()
-        self.P_in    = Component.Input()
+    mdot_in = Component.Input()
+    T_in    = Component.Input()
+    P_in    = Component.Input()
 
-        self.h_out = Component.Output()
-        self.T_out = Component.Output()
-        self.P_out = Component.Output()
-        self.mdot_out = Component.Output()
-        self.W = Component.Output()
+    h_out = Component.Output()
+    T_out = Component.Output()
+    P_out = Component.Output()
+    mdot_out = Component.Output()
+    W = Component.Output()
 
-        self.fluid = 'Air'
+    fluid = 'Air'
         
-        return 
-    
-    def setup(self, **kwargs):
-        return super().setup(**kwargs)
-
     def calculate(self):
-        super().calculate()
         self.mdot_out.value = self.mdot_in.value
         h_in = fluid_properties.enthalpy(self.fluid, T=self.T_in.value, P=self.P_in.value)
         s_in = fluid_properties.entropy(self.fluid, T=self.T_in.value, P=self.P_in.value)
@@ -72,17 +57,17 @@ class Compressor(Component):
     
 # -------------------------------------------
 class Combustor(Component):
-    def __init__(self):
-        self.mdot_in = Component.Input()
-        self.T_in    = Component.Input()
-        self.P_in    = Component.Input()
+    mdot_in = Component.Input()
+    T_in    = Component.Input()
+    P_in    = Component.Input()
 
-        self.h_out = Component.Output()
-        self.T_out = Component.Output()
-        self.P_out = Component.Output()
-        self.mdot_out = Component.Output()
-        self.qdot = Component.Output()
+    h_out = Component.Output()
+    T_out = Component.Output()
+    P_out = Component.Output()
+    mdot_out = Component.Output()
+    qdot = Component.Output()
         
+    def __init__(self):
         return 
     
     def setup(self, **kwargs):
@@ -100,26 +85,20 @@ class Combustor(Component):
     
 # -------------------------------------------
 class Cooler(Component):
-    def __init__(self):
-        self.dT_approach = Component.Parameter(20)
+    dT_approach = Component.Parameter(20)
 
-        self.mdot_in    = Component.Input()
-        self.T_in       = Component.Input()
-        self.P_in       = Component.Input()
-        self.T_amb      = Component.Input()
+    mdot_in    = Component.Input()
+    T_in       = Component.Input()
+    P_in       = Component.Input()
+    T_amb      = Component.Input()
 
-        self.h_out = Component.Output()
-        self.T_out = Component.Output()
-        self.P_out = Component.Output()
-        self.mdot_out = Component.Output()
-        self.qdot = Component.Output()
-        super().__init__()
-
-    def setup(self):
-        return 
-
+    h_out = Component.Output()
+    T_out = Component.Output()
+    P_out = Component.Output()
+    mdot_out = Component.Output()
+    qdot = Component.Output()
+    
     def calculate(self):
-        super().calculate()
         self.mdot_out.value = self.mdot_in.value 
         self.P_out.value = self.P_in.value
         h_in = fluid_properties.enthalpy(self.model.design.fluid, T=self.T_in.value, P=self.P_in.value)
@@ -129,18 +108,12 @@ class Cooler(Component):
         return 
 
 class Summary(Component):
-    def __init__(self):
-        self.W_turbine = Component.Input()
-        self.W_compressor = Component.Input()
-        self.Q_combustor = Component.Input()
-        self.eta_cycle = Component.Output()
-        return 
+    W_turbine = Component.Input()
+    W_compressor = Component.Input()
+    Q_combustor = Component.Input()
+    eta_cycle = Component.Output()
     
-    def setup(self, **kwargs):
-        return super().setup(**kwargs)
-
     def calculate(self):
-        super().calculate()
         self.eta_cycle.value = (self.W_turbine.value + self.W_compressor.value)/self.Q_combustor.value
 
     def converge(self):

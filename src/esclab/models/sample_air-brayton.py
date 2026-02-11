@@ -86,7 +86,7 @@ model.connect(model.combustor.qdot,       model.summary.Q_combustor  , )
 
 start = time.time()
 
-model.settings.stop_time = 8760*3600
+model.settings.stop_time = 8760*3600*1/12
 model.settings.start_time = 0
 model.time = model.settings.start_time
 model.settings.timestep = 3600

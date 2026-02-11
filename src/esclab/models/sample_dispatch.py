@@ -17,21 +17,19 @@ class Design:
 
 
 class Storage(Component):
-    def __init__(self):
-        super().__init__()
-        self.capacity           = Component.Parameter(1)
-        self.capacity_init      = Component.Parameter(1)
-        self.c_rate             = Component.Parameter(1)  #Max charge/discharge rate, as a fraction of present charge
-        self.loss_rate          = Component.Parameter(1)  #Loss as a fraction of capacity per s
+    capacity           = Component.Parameter(1)
+    capacity_init      = Component.Parameter(1)
+    c_rate             = Component.Parameter(1)  #Max charge/discharge rate, as a fraction of present charge
+    loss_rate          = Component.Parameter(1)  #Loss as a fraction of capacity per s
 
-        self.flow_in            = Component.Input()  #J/s
-        self.flow_out           = Component.Input()  #J/s
+    flow_in            = Component.Input()  #J/s
+    flow_out           = Component.Input()  #J/s
 
-        self.flow_in_actual     = Component.Output()  #J/s
-        self.flow_out_actual    = Component.Output()  #J/s
-        self.charge             = Component.Output()  #J
-        self.losses             = Component.Output()  #J/s
-        self.last_charge = 0.  #state of charge
+    flow_in_actual     = Component.Output()  #J/s
+    flow_out_actual    = Component.Output()  #J/s
+    charge             = Component.Output()  #J
+    losses             = Component.Output()  #J/s
+    last_charge = 0.  #state of charge
 
     def setup(self, **kwargs):
         self.last_charge = self.capacity_init.value
@@ -65,13 +63,11 @@ class Storage(Component):
         self.last_charge = self.charge.value
 
 class Producer(Component):
-    def __init__(self):
-        super().__init__()
-        self.rated_power    = Component.Parameter(1.)
-        self.horizon        = Component.Parameter(24)
+    rated_power    = Component.Parameter(1.)
+    horizon        = Component.Parameter(24)
 
-        self.power          = Component.Output()
-        self.power_forecast = Component.Output()
+    power          = Component.Output()
+    power_forecast = Component.Output()
 
     def setup(self, **kwargs):
         # initialize the power forecast array
@@ -102,16 +98,15 @@ class Producer(Component):
         return y
         
 class Consumer(Component):
-    def __init__(self):
-        super().__init__()
-        self.horizon    = Component.Parameter(1)
-        self.efficiency = Component.Parameter(1)
-        
-        self.flow_in    = Component.Input()
+    
+    horizon    = Component.Parameter(1)
+    efficiency = Component.Parameter(1)
+    
+    flow_in    = Component.Input()
 
-        self.price      = Component.Output()
-        self.revenue    = Component.Output()
-        self.price_forecast = Component.Output()
+    price      = Component.Output()
+    revenue    = Component.Output()
+    price_forecast = Component.Output()
 
 
     def setup(self, **kwargs):
@@ -137,26 +132,23 @@ class Consumer(Component):
         return y
     
 class Scheduler(Component):
-    def __init__(self):
-        super().__init__()
+    optimization_horizon    = Component.Parameter(1.)
+    control_horizon         = Component.Parameter(1.)
+    storage_initial_charge  = Component.Parameter(1.)
+    storage_capacity        = Component.Parameter(1.)
+    c_rate                  = Component.Parameter(1.)
+    consumer_efficiency     = Component.Parameter(1.)
 
-        self.optimization_horizon    = Component.Parameter(1.)
-        self.control_horizon         = Component.Parameter(1.)
-        self.storage_initial_charge  = Component.Parameter(1.)
-        self.storage_capacity        = Component.Parameter(1.)
-        self.c_rate                  = Component.Parameter(1.)
-        self.consumer_efficiency     = Component.Parameter(1.)
+    # initialize schedules with dummy arrays of the right length
+    charge_schedule    = Component.Input(np.array([]))
+    price_schedule     = Component.Input(np.array([]))
+    storage_charge     = Component.Input()
 
-        # initialize schedules with dummy arrays of the right length
-        self.charge_schedule    = Component.Input(np.array([]))
-        self.price_schedule     = Component.Input(np.array([]))
-        self.storage_charge     = Component.Input()
-
-        self.flow_to_consumer   = Component.Output()
-        self.flow_from_producer = Component.Output()
-        self.price_now          = Component.Output()
-        self.charge_avail_now   = Component.Output()
-        self.num_iter           = Component.Output()
+    flow_to_consumer   = Component.Output()
+    flow_from_producer = Component.Output()
+    price_now          = Component.Output()
+    charge_avail_now   = Component.Output()
+    num_iter           = Component.Output()
 
     def setup(self, **kwargs):
         # initialize schedules with dummy arrays of the right length
