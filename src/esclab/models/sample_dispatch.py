@@ -285,13 +285,12 @@ if __name__ == "__main__":
     model.connect(model.consumer.price_forecast         , model.scheduler.price_schedule  )
     model.connect(model.storage.charge                  , model.scheduler.storage_charge  )
 
-    # model.add_plotter([model.storage.flow_in, model.storage.flow_out], [model.storage.charge, model.scheduler.charge_avail_now], update_every=24, nmax_points=24*7)
+    model.add_plotter([model.storage.flow_in, model.storage.flow_out], [model.storage.charge, model.scheduler.charge_avail_now], update_every=24, nmax_points=24*7)
     model.add_plotter([model.consumer.revenue], [model.consumer.price], update_every=12, nmax_points=24*7)
-    # model.add_plotter([model.scheduler.num_iter], update_every=24)
+    model.add_plotter([model.scheduler.num_iter], update_every=24, tab_title="sim info")
 
     start = time.time()
     while model.time < model.settings.stop_time:
         model.step()
     print(f'time: {time.time()-start}')
-
-    # plt.show(block=True)
+    model.wait_for_plots()

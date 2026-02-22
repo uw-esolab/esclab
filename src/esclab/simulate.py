@@ -1,5 +1,5 @@
 import pyqtgraph as qtg
-from pyqtgraph.Qt import QtCore, QtWidgets
+from pyqtgraph.Qt import QtCore, QtWidgets, QtGui
 import numpy as np
 import sys
 
@@ -261,15 +261,26 @@ class Model:
     
     # ------------------------------------------------------------------------
     class OnlinePlotter:
+        app = None
+        main_window = None
+        tab_widget = None
+        instances = []
+        n_plotters = 0
+        font_size_pt = 10
+        min_font_size_pt = 6
+        max_font_size_pt = 30
+
         """
         y1 | [a, b, c, ...] component input or output values to be plotted on axis 1
         y2 | [d, e, f, ...] component input or output values to be plotted on axis 2
         """
-        def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(.8,.8)):
+        def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(.9,.9), tab_title=None):
             assert isinstance(y1, type([]))
             assert isinstance(y2, type([])) or y2 == None
 
             self.current_step = -1
+            self.y1label = y1label
+            self.y2label = y2label
 
             self.nmax_points = nmax_points
             self.update_every = update_every
@@ -289,26 +300,76 @@ class Model:
                 "#5d0ab6",
                 ]
             
-            # Create pyqtgraph application and window
-            self.app = qtg.mkQApp()
-            self.win = qtg.GraphicsLayoutWidget(show=True, title="Simulation Plot")
-            # Handle plotter size. If fractions are given, resize based on screen size. If absolute values are 
-            # given, use those. If None, use default size.
-            screen = QtWidgets.QApplication.primaryScreen()
-            screen_rect = screen.availableGeometry()
-            if plotter_size != None:
-                if plotter_size[0] <= 1. and plotter_size[1] <= 1.:
-                    self.win.resize(int(screen_rect.width() * plotter_size[0]), int(screen_rect.height() * plotter_size[1]))
-                else:
-                    self.win.resize(plotter_size[0], plotter_size[1])
-            # Locate plot window in center of screen
-            self.win.move((self.win.frameGeometry().center() - screen_rect.center())/2)
+            # Create shared pyqtgraph application and tabbed window
+            self.app = Model.OnlinePlotter.app
+            if self.app is None:
+                self.app = qtg.mkQApp()
+                Model.OnlinePlotter.app = self.app
+
+            if Model.OnlinePlotter.main_window is None:
+                main_window = QtWidgets.QMainWindow()
+                main_window.setWindowTitle("Simulation Plot")
+                tab_widget = QtWidgets.QTabWidget()
+
+                controls_widget = QtWidgets.QWidget()
+                controls_layout = QtWidgets.QHBoxLayout(controls_widget)
+                controls_layout.setContentsMargins(6, 6, 6, 0)
+                controls_layout.setSpacing(6)
+
+                font_up_button = QtWidgets.QPushButton("🗚")
+                font_down_button = QtWidgets.QPushButton("🗛")
+                font_up_button.setFixedSize(30, 30)
+                font_down_button.setFixedSize(30, 30)
+                controls_layout.addWidget(font_up_button)
+                controls_layout.addWidget(font_down_button)
+                controls_layout.addStretch()
+
+                container = QtWidgets.QWidget()
+                container_layout = QtWidgets.QVBoxLayout(container)
+                container_layout.setContentsMargins(0, 0, 0, 0)
+                container_layout.setSpacing(0)
+                container_layout.addWidget(controls_widget)
+                container_layout.addWidget(tab_widget)
+                main_window.setCentralWidget(container)
+
+                font_down_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(-1))
+                font_up_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(1))
+
+                # Handle plotter size. If fractions are given, resize based on screen size. If absolute values are
+                # given, use those. If None, use default size.
+                screen = QtWidgets.QApplication.primaryScreen()
+                if screen is not None:
+                    screen_rect = screen.availableGeometry()
+                    if plotter_size is not None:
+                        if plotter_size[0] <= 1. and plotter_size[1] <= 1.:
+                            main_window.resize(int(screen_rect.width() * plotter_size[0]), int(screen_rect.height() * plotter_size[1]))
+                        else:
+                            main_window.resize(plotter_size[0], plotter_size[1])
+                    frame = main_window.frameGeometry()
+                    frame.moveCenter(screen_rect.center())
+                    main_window.move(frame.topLeft())
+                elif plotter_size is not None:
+                    if plotter_size[0] <= 1. and plotter_size[1] <= 1.:
+                        main_window.resize(1000, 600)
+                    else:
+                        main_window.resize(plotter_size[0], plotter_size[1])
+
+                main_window.show()
+                Model.OnlinePlotter.main_window = main_window
+                Model.OnlinePlotter.tab_widget = tab_widget
+
+            self.win = qtg.GraphicsLayoutWidget()
+            Model.OnlinePlotter.n_plotters += 1
+            tab_label = tab_title if tab_title not in [None, ''] else y1label if y1label not in [None, ''] else f"Plot {Model.OnlinePlotter.n_plotters}"
+            Model.OnlinePlotter.tab_widget.addTab(self.win, tab_label)
 
             # Create primary plot
             self.ax1 = self.win.addPlot()
             self.ax1.setLabel('bottom', 'Time')
             self.ax1.setLabel('left', y1label)
-            self.ax1.addLegend(offset=(10, 10))
+            self.legend_y1 = self.ax1.addLegend(offset=(10, 10))
+            self.legend_y1.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
+            self.legend_y2 = None
             self.ax1.showGrid(x=True, y=True, alpha=0.3)
             
             if y1lim != None:
@@ -332,6 +393,9 @@ class Model:
                 self.ax1.getAxis('right').linkToView(self.ax2)
                 self.ax2.setXLink(self.ax1)
                 self.ax1.getAxis('right').setLabel(y2label, color='#c0c0c0')
+                self.legend_y2 = qtg.LegendItem(offset=(-10, 10))
+                self.legend_y2.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
+                self.legend_y2.setParentItem(self.ax1.vb)
                 
                 if y2lim != None:
                     self.ax2.setYRange(*y2lim)
@@ -349,6 +413,7 @@ class Model:
                     pen = qtg.mkPen(color=colors[c%len(colors)], width=2, style=QtCore.Qt.DashLine)
                     line = qtg.PlotDataItem([], [], pen=pen, name=y2[i].name)
                     self.ax2.addItem(line)
+                    self.legend_y2.addItem(line, y2[i].name)
                     self.y2_lines.append(line)
                     c += 1
 
@@ -360,7 +425,50 @@ class Model:
             else:
                 y2len = 1
             self.y2_data = np.zeros((y2len, self.nmax_points))
+
+            Model.OnlinePlotter.instances.append(self)
+            self.apply_font_size()
             return 
+
+        @classmethod
+        def adjust_font_size(cls, delta):
+            new_font_size = max(cls.min_font_size_pt, min(cls.max_font_size_pt, cls.font_size_pt + delta))
+            if new_font_size == cls.font_size_pt:
+                return
+
+            cls.font_size_pt = new_font_size
+            for plotter in cls.instances:
+                plotter.apply_font_size()
+
+        def apply_font_size(self):
+            tick_font = QtGui.QFont()
+            tick_font.setPointSize(Model.OnlinePlotter.font_size_pt)
+            label_style = {'font-size': f"{Model.OnlinePlotter.font_size_pt + 2}pt"}
+
+            left_axis = self.ax1.getAxis('left')
+            bottom_axis = self.ax1.getAxis('bottom')
+            left_axis.setStyle(tickFont=tick_font)
+            bottom_axis.setStyle(tickFont=tick_font)
+
+            self.ax1.setLabel('left', self.y1label, **label_style)
+            self.ax1.setLabel('bottom', 'Time', **label_style)
+
+            if self.legend_y1 is not None:
+                label_font = self.legend_y1.font()
+                label_font.setPointSize(Model.OnlinePlotter.font_size_pt)
+                self.legend_y1.setFont(label_font)
+
+                for _, label_item in self.legend_y1.items:
+                    label_item.setText(label_item.text, size=f'{Model.OnlinePlotter.font_size_pt}pt')
+
+            if self.y2_items is not None:
+                right_axis = self.ax1.getAxis('right')
+                right_axis.setStyle(tickFont=tick_font)
+                right_axis.setLabel(self.y2label, color='#c0c0c0', **label_style)
+
+                if self.legend_y2 is not None:
+                    for _, label_item in self.legend_y2.items:
+                        label_item.setText(label_item.text, size=f'{Model.OnlinePlotter.font_size_pt}pt')
         
         def log_step(self, time):
             
@@ -417,7 +525,7 @@ class Model:
         self.plotters = []
         return
     
-    def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1):
+    def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None):
         if not isinstance(y1, type([])):
             y1t = [y1]
         else:
@@ -427,7 +535,23 @@ class Model:
             if not isinstance(y2, type([])):
                 y2t = [y2]
 
-        self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every))
+        self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title))
+
+    def wait_for_plots(self):
+        app = Model.OnlinePlotter.app
+        main_window = Model.OnlinePlotter.main_window
+        # Check whether plotting was ever initialized
+        if app is None or main_window is None:
+            return
+        # bring the plot window to the front if it is minimized or behind other windows
+        if main_window.isMinimized():
+            main_window.showNormal()
+        # raise and activate the window to bring it to the front
+        main_window.raise_()
+        main_window.activateWindow()
+
+        # start the Qt event loop to display the plot window and allow interaction
+        app.exec()
 
     def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = 1.):
         
