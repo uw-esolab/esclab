@@ -1,7 +1,6 @@
-# import numpy as __np
-import matplotlib.pyplot as plt
+import pyqtgraph as qtg
+from pyqtgraph.Qt import QtCore, QtWidgets
 import numpy as np
-# import pandas as pd
 import sys
 
 # ------------------------------------------------------------------------
@@ -266,7 +265,7 @@ class Model:
         y1 | [a, b, c, ...] component input or output values to be plotted on axis 1
         y2 | [d, e, f, ...] component input or output values to be plotted on axis 2
         """
-        def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every):
+        def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(.8,.8)):
             assert isinstance(y1, type([]))
             assert isinstance(y2, type([])) or y2 == None
 
@@ -289,40 +288,69 @@ class Model:
                 "#00ffe5",
                 "#5d0ab6",
                 ]
-            # Enable interactive mode
-            plt.ion()
+            
+            # Create pyqtgraph application and window
+            self.app = qtg.mkQApp()
+            self.win = qtg.GraphicsLayoutWidget(show=True, title="Simulation Plot")
+            # Handle plotter size. If fractions are given, resize based on screen size. If absolute values are 
+            # given, use those. If None, use default size.
+            screen = QtWidgets.QApplication.primaryScreen()
+            screen_rect = screen.availableGeometry()
+            if plotter_size != None:
+                if plotter_size[0] <= 1. and plotter_size[1] <= 1.:
+                    self.win.resize(int(screen_rect.width() * plotter_size[0]), int(screen_rect.height() * plotter_size[1]))
+                else:
+                    self.win.resize(plotter_size[0], plotter_size[1])
+            # Locate plot window in center of screen
+            self.win.move((self.win.frameGeometry().center() - screen_rect.center())/2)
 
-            # Create the figure and axis
-            self.fig, self.ax1 = plt.subplots()
-            self.ax2 = plt.twinx() if y2 != None else None
+            # Create primary plot
+            self.ax1 = self.win.addPlot()
+            self.ax1.setLabel('bottom', 'Time')
+            self.ax1.setLabel('left', y1label)
+            self.ax1.addLegend(offset=(10, 10))
+            self.ax1.showGrid(x=True, y=True, alpha=0.3)
+            
+            if y1lim != None:
+                self.ax1.setYRange(*y1lim)
 
+            # Create lines for y1 axis
             self.y1_lines = []
-            self.y2_lines = []
-
             c = 0
             for i in range(len(y1)):
-                self.y1_lines.append( self.ax1.plot([], [], label=y1[i].name, color=colors[c%len(colors)])[0])  # Initialize an empty line
-                c+=1
-            if y2 != None:
-                for i in range(len(y2)):
-                    self.y2_lines.append( self.ax2.plot([], [], label=y2[i].name, color=colors[c%len(colors)])[0])  # Initialize an empty line
-                    c+=1
+                pen = qtg.mkPen(color=colors[c%len(colors)], width=2)
+                line = self.ax1.plot([], [], pen=pen, name=y1[i].name)
+                self.y1_lines.append(line)
+                c += 1
             
-            
-            lines = self.y1_lines + self.y2_lines
-            labels = [line.get_label() for line in lines]
-            self.ax1.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=min(len(lines),3))
-
-            self.ax1.set_xlabel('Time')
-
-            # Set initial plot limits
-            if y1lim != None:
-                self.ax1.set_ylim(*y1lim)
-            self.ax1.set_ylabel(y1label)
+            # Create secondary y-axis if needed
+            self.y2_lines = []
             if y2 != None:
+                self.ax2 = qtg.ViewBox()
+                self.ax1.showAxis('right')
+                self.ax1.scene().addItem(self.ax2)
+                self.ax1.getAxis('right').linkToView(self.ax2)
+                self.ax2.setXLink(self.ax1)
+                self.ax1.getAxis('right').setLabel(y2label, color='#c0c0c0')
+                
                 if y2lim != None:
-                    self.ax2.set_ylim(*y2lim)
-                self.ax2.set_ylabel(y2label)
+                    self.ax2.setYRange(*y2lim)
+                
+                # Update views when resized
+                def updateViews():
+                    self.ax2.setGeometry(self.ax1.vb.sceneBoundingRect())
+                    self.ax2.linkedViewChanged(self.ax1.vb, self.ax2.XAxis)
+                
+                updateViews()
+                self.ax1.vb.sigResized.connect(updateViews)
+                
+                # Create lines for y2 axis
+                for i in range(len(y2)):
+                    pen = qtg.mkPen(color=colors[c%len(colors)], width=2, style=QtCore.Qt.DashLine)
+                    line = qtg.PlotDataItem([], [], pen=pen, name=y2[i].name)
+                    self.ax2.addItem(line)
+                    self.y2_lines.append(line)
+                    c += 1
 
             # Initialize data containers
             self.x_data =  np.zeros((self.nmax_points))
@@ -332,7 +360,6 @@ class Model:
             else:
                 y2len = 1
             self.y2_data = np.zeros((y2len, self.nmax_points))
-            self.fig.tight_layout()
             return 
         
         def log_step(self, time):
@@ -362,31 +389,18 @@ class Model:
 
         def __refresh_plot(self):
             """
-            x,y are numpy arrays
+            Fast update using pyqtgraph setData
             """
-            # update y1
-            # Update the line data
+            # Update y1 lines
             for i in range(len(self.y1_lines)):
-                self.y1_lines[i].set_xdata(self.x_data)
-                self.y1_lines[i].set_ydata(self.y1_data[i,:])
+                self.y1_lines[i].setData(self.x_data, self.y1_data[i,:])
+            
+            # Update y2 lines
             for i in range(len(self.y2_lines)):
-                self.y2_lines[i].set_xdata(self.x_data)
-                self.y2_lines[i].set_ydata(self.y2_data[i,:])
+                self.y2_lines[i].setData(self.x_data, self.y2_data[i,:])
 
-            # Adjust the view
-            self.ax1.relim()
-            self.ax1.autoscale_view()
-            if self.y2_items != None:
-                self.ax2.relim()
-                self.ax2.autoscale_view()
-
-            # Redraw the plot
-            self.fig.canvas.draw()
-            self.fig.canvas.flush_events()
-        
-            # # Turn off interactive mode and show the final plot
-            # plt.ioff()
-            # plt.show()
+            # Process GUI events (much faster than matplotlib canvas.draw)
+            self.app.processEvents()
     # ------- end OnlinePlotter --------------------------------------------------
 
     # ----------------------------------------------------------------------------
