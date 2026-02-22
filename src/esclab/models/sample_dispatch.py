@@ -31,7 +31,7 @@ class Storage(Component):
     losses             = Component.Output()  #J/s
     last_charge = 0.  #state of charge
 
-    def setup(self, **kwargs):
+    def presim_setup(self, **kwargs):
         self.last_charge = self.capacity_init.v
         pass 
 
@@ -39,6 +39,11 @@ class Storage(Component):
         # Reality checks
         assert self.flow_in.v >= 0
         assert self.flow_out.v >= 0
+
+        # Post-convergence
+        if self.model.is_converged:
+            self.last_charge = self.charge.v
+            return
 
         # Losses from last time step
         losses = max(self.last_charge * self.loss_rate.v * self.model.settings.timestep , 0)
@@ -59,9 +64,6 @@ class Storage(Component):
             pass
         return
 
-    def converge(self):
-        self.last_charge = self.charge.v
-
 class Producer(Component):
     rated_power    = Component.Parameter(1.)
     horizon        = Component.Parameter(24)
@@ -69,13 +71,20 @@ class Producer(Component):
     power          = Component.Output()
     power_forecast = Component.Output()
 
-    def setup(self, **kwargs):
+    def presim_setup(self, **kwargs):
         # initialize the power forecast array
         fctimes = np.arange(self.model.settings.start_time, self.model.settings.start_time + self.horizon.v, self.model.settings.timestep)
         self.power_forecast.v = self.__generate_forecast(fctimes)
 
     def calculate(self):
 
+        # Post-convergence 
+        if self.model.is_converged:
+            self.power_forecast.v = np.roll(self.power_forecast.v, -1)
+            self.power_forecast.v[-1] = self.new_fc_value[0]
+            return
+
+        # Iteration calculations
         self.power.v = self.power_forecast.v[0] 
         # Only update the new forecast value on the first iteration
         if self.model.iteration == 0:
@@ -83,10 +92,6 @@ class Producer(Component):
 
         return
     
-    def converge(self):
-        self.power_forecast.v = np.roll(self.power_forecast.v, -1)
-        self.power_forecast.v[-1] = self.new_fc_value[0]
-
     def __generate_forecast(self, time_values):
         tm_adj = (time_values/self.model.settings.timestep % 24.)*(np.pi)/(24.)
         y = np.sin(tm_adj)*self.rated_power.v #* 3/2 - self.rated_power.v*1/2
@@ -109,22 +114,25 @@ class Consumer(Component):
     price_forecast = Component.Output()
 
 
-    def setup(self, **kwargs):
+    def presim_setup(self, **kwargs):
         
         fctimes = np.arange(self.model.settings.start_time, self.model.settings.start_time+self.horizon.v, self.model.settings.timestep)
         self.price_forecast.v = self.__generate_forecast(fctimes)
 
     def calculate(self):
+
+        # Post-convergence
+        if self.model.is_converged:
+            self.price_forecast.v = np.roll(self.price_forecast.v, -1)
+            self.price_forecast.v[-1] = self.new_fc_value[0]
+            return
+
         self.price.v = self.price_forecast.v[0]
         # Only update the new forecast value on the first iteration
         if self.model.iteration == 0:
             self.new_fc_value = self.__generate_forecast(np.array([self.model.time + self.horizon.v]))
 
         self.revenue.v = self.flow_in.v * self.model.settings.timestep * self.efficiency.v * self.price.v
-
-    def converge(self):
-        self.price_forecast.v = np.roll(self.price_forecast.v, -1)
-        self.price_forecast.v[-1] = self.new_fc_value[0]
 
     def __generate_forecast(self, time_values):
         tm_adj = (time_values % 24.)*(2*np.pi)/(24.)
@@ -150,7 +158,7 @@ class Scheduler(Component):
     charge_avail_now   = Component.Output()
     num_iter           = Component.Output()
 
-    def setup(self, **kwargs):
+    def presim_setup(self, **kwargs):
         # initialize schedules with dummy arrays of the right length
         da = np.ones(int(self.optimization_horizon.v/self.model.settings.timestep))
         self.charge_schedule.v = da
@@ -160,6 +168,14 @@ class Scheduler(Component):
         self.last_charge_state = self.storage_initial_charge.v
 
     def calculate(self):
+        
+        # post convergence 
+        if self.model.is_converged:
+            # Only update the initial charge state for the next step after the current step has converged
+            self.last_charge_state = self.storage_charge.v
+            self.num_iter.v = self.model.iteration
+            return
+
         t_rel = int((self.model.time % self.control_horizon.v)*convert('s','hr'))
         if t_rel == 0:
             # Check for missing input data
@@ -173,11 +189,6 @@ class Scheduler(Component):
         self.charge_avail_now.v = self.active_schedule[t_rel]['charge']
         self.flow_to_consumer.v = self.active_schedule[t_rel]['flow_to_consumer']
         self.flow_from_producer.v = self.active_schedule[t_rel]['flow_from_producer']
-
-    def converge(self):
-        # Only update the initial charge state for the next step after the current step has converged
-        self.last_charge_state = self.storage_charge.v
-        self.num_iter.v = self.model.iteration
 
     def __run_opt_model(self):
         # md = self.model.design

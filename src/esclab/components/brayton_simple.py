@@ -70,8 +70,8 @@ class Combustor(Component):
     def __init__(self):
         return 
     
-    def setup(self, **kwargs):
-        return super().setup(**kwargs)
+    def presim_setup(self, **kwargs):
+        return super().presim_setup(**kwargs)
 
     def calculate(self):
         super().calculate()
@@ -116,12 +116,8 @@ class Summary(Component):
     def calculate(self):
         self.eta_cycle.v = (self.W_turbine.v + self.W_compressor.v)/self.Q_combustor.v
 
-    def converge(self):
-        # print(f'Time: {self.model.time}, Eta={self.eta_cycle.v:.4f}, Power={(self.W_turbine.v+self.W_compressor.v)*convert("W","MW"):.2f} MW')
-        pass
-
 class Weather(Component):
-    def setup(self):
+    def presim_setup(self):
         self.T_amb = Component.Output()
         return 
 

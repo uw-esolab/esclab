@@ -5,7 +5,7 @@ class FF(Component):
     def __init__(self):
         self.signal = Component.Output()
 
-    def setup(self):
+    def presim_setup(self):
         pass
 
     def calculate(self):
@@ -22,12 +22,14 @@ class Object(Component):
         self.T0 = 0  #iniital temp
 
     def calculate(self):
+        # post-convergence calculations
+        if self.model.is_converged:
+            self.T0 = self.T.v
+            return 
+        
+        # iteration calculations
         dTdt = -(self.T0 -(self.Tamb.v + self.signal.v*self.gain.v))/self.tau.v
         self.T.v = self.T0 + dTdt*self.model.settings.timestep
-        return 
-    
-    def converge(self):
-        self.T0 = self.T.v
         return 
     
 # ---------------------------------------------------

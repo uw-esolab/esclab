@@ -59,13 +59,28 @@ class Connection:
 # =========================================================================================   
 
 class Component:
+    # ------------------------------------------------------------------------
     class __io_base:
+        """
+        Base for Input, Parameter, and Output classes.
+
+        Contains the value (v), units, name, and connection status.
+        """
         def __init__(self):
             self.name = ''
             self.units = ''
             self.v = float('nan')
             self.is_connected = False
-            pass
+            return
+        def set(self, value=None, units=None, name=None):
+            if value is not None: 
+                self.v = value
+            if units is not None:
+                self.units = units
+            if name is not None:
+                self.name = name
+    # ------------ end class __io_base ----------------------------------------
+    # -------------------------------------------------------------------------
     class Input(__io_base):
         def __init__(self, initial_value=1.):
             super().__init__()
@@ -83,32 +98,41 @@ class Component:
                     return converged
                 else:
                     return False
-
+    # ------------ end class Input -------------------------------------------
+    # ------------------------------------------------------------------------
     class Output(__io_base):
         def __init__(self):
             super().__init__()
-
+    # ----------- end class Output ------------------------------------------
+    # ------------------------------------------------------------------------
     class Parameter:
         def __init__(self, value=float('nan'), units='', std_dev = None):
             self.v = value 
             self.units = units
             self.std_dev = std_dev
-    # --------------------------------------------------------
+    # ----------- end class Parameter -----------------------------------------
     
+    # ------------------------------------------------------------------------
+    #  Component class methods
+    # ------------------------------------------------------------------------
     def __init__(self):
         """
         Define inputs, outputs, and parameters. 
-
-        my_param_1 = Component.Parameter(value_1)
-
-        my_input_1 = Component.Input(initial_value_1)
-        my_input_2 = Component.Input(initial_value_2)
-        
-        my_output_1 = Component.Output()
         """
-        pass 
+        return 
     
     def __get_io_items(self, item_type, connected_only=False):
+        """
+        Collect all inputs or outputs from this component, depending on the item_type argument.
+
+        Parameters
+        ----------
+        item_type : type
+            Component.Input or Component.Output
+        connected_only : bool
+            If True, only return inputs/outputs that are connected to another component. 
+            If False, return all inputs/outputs regardless of connection status.
+        """
         io_list = []
         for item_name in dir(self):
             item = getattr(self,item_name)
@@ -121,13 +145,35 @@ class Component:
         return io_list
 
     def get_inputs(self, connected_only=False):
+        """
+        Helper function to collect all inputs from this component.
+
+        Parameters
+        ----------
+        connected_only : bool
+            If True, only return inputs that are connected to another component. 
+            If False, return all inputs regardless of connection status.
+        """
         return self.__get_io_items(Component.Input, connected_only)
 
     def get_outputs(self, connected_only=False):
+        """
+        Helper function to collect all outputs from this component.
+        
+        Parameters
+        ----------
+        connected_only : bool
+            If True, only return outputs that are connected to another component. 
+            If False, return all outputs regardless of connection status.
+        """
         return self.__get_io_items(Component.Output, connected_only)
     
     def auto_assign_names(self):
-        # Make sure all inputs/outputs have a name assigned
+        """
+        Automatically assign names to all inputs and outputs of this component based on the 
+        component's name and the attribute name of the input/output.
+        Make sure all inputs/outputs have a name assigned
+        """
         allnames = []
         for member in dir(self):
             try:
@@ -144,7 +190,7 @@ class Component:
                     pass
         return allnames
 
-    def setup(self, **kwargs):
+    def presim_setup(self, **kwargs):
         """
         Do initial calculations.
         Pre-simulation calculations here
@@ -152,23 +198,69 @@ class Component:
         pass
     
     def calculate(self):
+        """
+        Do calculations for this component. This is where the main logic of the component goes, 
+        and where outputs are calculated from inputs and parameters.
+        
+        Within the calculate step, the following flags are available to control the flow of calculations:
+        ---------------------------------------------------------------------------------------------------------
+        is_first_step       | True only on the first step() call of the simulation. Use for any calculations that 
+                            | should only be done once at the beginning of the simulation.
+        ---------------------------------------------------------------------------------------------------------
+        is_first_iteration  | True only on the first iteration of each step() call. Use for any calculations that 
+                            | should only be done once per time step, such as calculations that should be done 
+                            | in order of components.
+        ---------------------------------------------------------------------------------------------------------
+        is_converged        | True only on the final iteration of each step() call, after convergence is reached. 
+                            | Use for any calculations that should only be done once per time step, and that 
+                            | require convergence to be reached first.
+        ---------------------------------------------------------------------------------------------------------
+        """
         pass 
     
-    def converge(self):
-        pass 
+    def postsim_calcs(self):
+        pass
 
 
 # =========================================================================================        
 class Model:
+    """
+    Model class to hold components and run the simulation.
+
+    The model workflow is as follows:
+    * Use a script to create an instance of the Model class, and add components as attributes of the model.
+    * Use the connect() method to connect component outputs to other component inputs.
+    * Create any plotters using the add_plotter() method, which takes lists of component inputs and outputs 
+      to be plotted on the y1 and y2 axes, respectively.
+    * Optionally, call initialize() to initialize the model before running the simulation. This will automatically call the presim_setup() method of each component, and assign names to all inputs and outputs.
+    * In a loop for all time steps, call the step() method to run the simulation. This will run through all components and update inputs from connections, calculate outputs, check for convergence, and log data for plotting and historian.
+
+    Substeps in the time series workflow are as follows:
+
+    Function        | Flags active       | Description
+    ----------------|--------------------|------------------------------------------------------
+    presim_setup()  |                    | Calculations before simulation begins. Data from other components is not available.
+    step()          | is_first_step      | Calculations done only on the first timestep call 
+    step()          | is_first_iteration | Calculations done only on the first iteration of each timestep. Components called in order. 
+    step()          |                    | Subsequent iteration calculations requiring convergence.
+    step()          | is_converged       | Final pass of calculations done after convergence is reached.
+    postsim_calcs() |                    | Calculations done after the final time step is reached. Data from all time steps is available.
+    """
+
+    # ------------------------------------------------------------------------
     class Settings:
+        timestep = 1  #sec
+        start_time = 0  #sec
+        stop_time = 24*3600 #sec
+        tol_rel_global = 1.e-6
+        tol_abs_global = 1.e-6
+        max_iterations = 50 
+        
         def __init__(self):
-            self.timestep = 1  #sec
-            self.start_time = 0  #sec
-            self.stop_time = 24*3600 #sec
-            self.tol_rel_global = 1.e-6
-            self.tol_abs_global = 1.e-6
-            self.max_iterations = 50 
+            pass
+    # End class Settings -----------------------------------------------------
     
+    # ------------------------------------------------------------------------
     class OnlinePlotter:
         """
         y1 | [a, b, c, ...] component input or output values to be plotted on axis 1
@@ -295,11 +387,18 @@ class Model:
             # # Turn off interactive mode and show the final plot
             # plt.ioff()
             # plt.show()
-    # ------- end OnlinePlotter ----------------------------------------
+    # ------- end OnlinePlotter --------------------------------------------------
+
+    # ----------------------------------------------------------------------------
+    # Model class methods --------------------------------------------------------
+    # ----------------------------------------------------------------------------
     def __init__(self):
         self.__components = []
         self.settings = Model.Settings()
         self.is_initialized = False
+        self.is_first_step = True
+        self.is_first_iteration = True
+        self.is_converged = False
         self.time = 0
         self.plotters = []
         return
@@ -329,35 +428,61 @@ class Model:
         return
 
     def initialize(self):
+        """
+        Initialize the model before running the simulation. This will automatically call the
+        presim_setup() method of each component, and assign names to all inputs and outputs.
+
+        The components are given access to the model under the attributed <component>.model, 
+        which can be used to access settings and model flags.
+        """
+        # Set the initial simulation time and iteration count
         self.time = self.settings.start_time
         self.iteration = -1
+        self.is_first_step = True
+        
 
+        # Initialize the list of outputs. This is extended based on the component settings
         output_names = ['time','iterations']
+
+        # ------------------------------------------------------------
+        # Loop through all attributes of the model to find components, assign names, and call presim_setup
         for item in dir(self):
+
             itemobj = getattr(self, item)
+
+            # If the object is a component...            
             if isinstance(itemobj, Component):
-                # Handle component setup here
+                # Give all of the component instances access to the model
                 itemobj.model = self
                 itemobj.name = ''
-                itemobj.setup()
-                cnames = itemobj.auto_assign_names()
-                self.__components.append(itemobj)
 
-                # Record all output data 
+                # Handle component presim_setup here
+                itemobj.presim_setup()
+                # Automatically assign names to all inputs and outputs of this component 
+                cnames = itemobj.auto_assign_names()
+                # Add this component to the model's list of components
+                self.__components.append(itemobj)
+                # Record all output data names for the historian
                 output_names += cnames
+
         # Construct the historian database
         nstep = int((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)
         self.historian = dict([[n,np.ones(nstep)*float('nan')] for n in output_names])
         
+        # Mark the model as initialized
         self.is_initialized = True
         return 
-    
+
+    # ----------------------------------------------------------------------- 
     def step(self, n_steps = 1):
         # Check overall initialization for the model
         if not self.is_initialized:
             self.initialize()
         
         self.iteration = -1  # reset the current iteration
+        self.is_first_iteration = True
+        self.is_converged = False
+
         err_rel_history = []
         err_abs_history = []
         # main loop 
@@ -378,7 +503,7 @@ class Model:
                 # Calculate
                 component.calculate()
             
-            if all_converged:
+            if all_converged and not self.is_first_iteration:
                 # print(f'Iterations: {i}')
                 break
             if i == self.settings.max_iterations-1:
@@ -392,11 +517,13 @@ class Model:
 
             err_rel_history.append(max_rel_err)
             err_abs_history.append(max_abs_err)
+            self.is_first_iteration = False
 
-        # Convergence
+        # Convergence complete for this step, now do post-convergence calculations and logging
+        self.is_converged = True
         current_step = int( (self.time - self.settings.start_time)/self.settings.timestep )
         for component in self.__components:
-            component.converge()
+            component.calculate()
             for input in component.get_inputs(connected_only=True):
                 input.connection.reset_for_step()
 

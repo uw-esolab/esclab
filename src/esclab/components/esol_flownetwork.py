@@ -126,8 +126,8 @@ class SimplePipe(Component):
     DELTA_P = Component.Output()
     ff = Component.Output()
 
-    def setup(self, **kwargs):
-        super().setup(**kwargs)
+    def presim_setup(self, **kwargs):
+        super().presim_setup(**kwargs)
 
         #Set the Initial Values of the Outputs (#,Value)
         self.m_dot_out.v = self.m_dot_in.v     # mass flow leaving pipe [kg/s]
@@ -216,7 +216,7 @@ class VarSpeedPump(Component):
     g = 9.81 #  gravity
 
     # -----------------------------------------------------------------------------------------------------------------------
-    def setup(self, **kwargs):
+    def presim_setup(self, **kwargs):
         # Set the Initial Values of the Outputs (#,Value)
         self.m_dot_out.v = self.Mass_Flow.v
         self.P_out.v = self.Pressure.v
@@ -226,22 +226,23 @@ class VarSpeedPump(Component):
     # -----------------------------------------------------------------------------------------------------------------------
 
     # -----------------------------------------------------------------------------------------------------------------------
-    def converge(self):
-        # Once model has converged, check if pump is likely cavitating
-        rho = Inc.density(self.Fluid_ID.v, self.Temperature.v, 0.0)
-        Q_dot = self.Mass_Flow.v/rho/self.N_pumps_parallel.v
-        NPSHr = self.speed.v**2 * (self.NPSH_a0.v + self.NPSH_a1.v*(Q_dot/self.speed.v) + self.NPSH_a2.v*(Q_dot/self.speed.v)**2) 
-        NPSH_meas = self.Pressure.v/rho/self.g - 1034000.0/rho/self.g #  NPSH in the simulation is relative to the pressure in the expansion tank (reason for subtracting 150 psi)
-        if(NPSHr>NPSH_meas):
-            self.cavitation.v = 1.0
-        else:
-            self.cavitation.v = 0.0
-    # -----------------------------------------------------------------------------------------------------------------------
-
-      
     def calculate(self):
         # -----------------------------------------------------------------------------------------------------------------------
-        
+        # Post-convergence
+        if self.model.is_converged:
+            # Once model has converged, check if pump is likely cavitating
+            rho = Inc.density(self.Fluid_ID.v, self.Temperature.v, 0.0)
+            Q_dot = self.Mass_Flow.v/rho/self.N_pumps_parallel.v
+            NPSHr = self.speed.v**2 * (self.NPSH_a0.v + self.NPSH_a1.v*(Q_dot/self.speed.v) + self.NPSH_a2.v*(Q_dot/self.speed.v)**2) 
+            NPSH_meas = self.Pressure.v/rho/self.g - 1034000.0/rho/self.g #  NPSH in the simulation is relative to the pressure in the expansion tank (reason for subtracting 150 psi)
+            if(NPSHr>NPSH_meas):
+                self.cavitation.v = 1.0
+            else:
+                self.cavitation.v = 0.0
+            return
+
+
+        # -----------------------------------------------------------------------------------------------------------------------
         if (self.model.iteration == 0) or (self.model.iteration == 0 and self.model.time == self.model.settings.timestep):
             #  Set output values to the computed values from the previous timestep (don't want any manipulation without feedback)
             #  Determine pressure increase in pump
@@ -331,5 +332,5 @@ if __name__ == "__main__":
     P.P_in.v = convert('bar','Pa')
     P.T_in.v = 400
 
-    P.setup()
+    P.presim_setup()
     P.calculate()

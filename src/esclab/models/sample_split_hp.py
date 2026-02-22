@@ -15,7 +15,7 @@ model = SplitHP()
 from esclab.components.brayton_simple import Compressor
 # cascade HX
 class CascadeHX(Component):
-    def setup(self, **kwargs):
+    def presim_setup(self, **kwargs):
         self.approach     = Component.Parameter(5)
 
         self.m_dot_hi_in  = Component.Input()
@@ -23,7 +23,7 @@ class CascadeHX(Component):
         self.m_dot_low_in = Component.Input()
         self.h_low_in     = Component.Input()
 
-        return super().setup(**kwargs)
+        return super().presim_setup(**kwargs)
 # Valve
 
 # Evaporator
