@@ -49,3 +49,5 @@ model.add_plotter([model.object.T],[model.ff.signal], nmax_points=1000, update_e
 
 while model.time < model.settings.stop_time:
     model.step()
+
+model.wait_for_plots()

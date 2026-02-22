@@ -538,6 +538,9 @@ class Model:
         self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title))
 
     def wait_for_plots(self):
+        """
+        Call to keep the plotter window open after simulation is complete.
+        """
         app = Model.OnlinePlotter.app
         main_window = Model.OnlinePlotter.main_window
         # Check whether plotting was ever initialized
@@ -555,6 +558,12 @@ class Model:
 
     def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = 1.):
         
+        # In order for connections to be established correctly, the model 
+        # must be initialized first to assign names to all inputs and outputs. 
+        # If the model is not initialized, initialize it now.
+        if not self.is_initialized:
+            self.initialize()
+
         if not isinstance(source, Component.Output):
             raise RuntimeError(f"Source connection object must be of type 'Component.Output'")
         if not isinstance(destination, Component.Input):
@@ -573,6 +582,10 @@ class Model:
         The components are given access to the model under the attributed <component>.model, 
         which can be used to access settings and model flags.
         """
+        if self.is_initialized:
+            print('Model is already initialized. No further action taken. Calling function is:' + self.__class__.__name__   )
+            return
+
         # Set the initial simulation time and iteration count
         self.time = self.settings.start_time
         self.iteration = -1

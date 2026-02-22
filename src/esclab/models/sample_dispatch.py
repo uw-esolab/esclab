@@ -274,9 +274,6 @@ if __name__ == "__main__":
     model.scheduler.c_rate.v                  = design.c_rate
     model.scheduler.consumer_efficiency.v     = design.consumer_efficiency
 
-
-    model.initialize()
-    
     # ------------- from ----------------------------- to ----------------------
     model.connect(model.scheduler.flow_from_producer    , model.storage.flow_in           ) 
     model.connect(model.scheduler.flow_to_consumer      , model.storage.flow_out          )
