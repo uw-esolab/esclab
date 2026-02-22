@@ -8,7 +8,9 @@ from esclab.components.esol_properties import Incompressible as Inc
 # 57
 # 65
 # 162
+# 603
 # 4001
+
 # 4006
 # 4007
 # 4008
@@ -23,7 +25,36 @@ from esclab.components.esol_properties import Incompressible as Inc
 # 6022
 # 6027
 # 6028
-# 603
+
+class TeeOut(Component):
+    #    PARAMETERS
+    Fluid_ID = Component.Parameter()           # Fluid ID: 40 for dowtherm A
+    Solving_Method = Component.Parameter()     # Adjust solver
+
+    #    INPUTS
+    m_dot = Component.Parameter()              # Mass flow into tee [kg/s]
+    Pressure = Component.Parameter()           # Pressure at inlet of the tee [Pa]
+    Temperature = Component.Parameter()        # Temperature of fluid into tee [C]
+    f = Component.Parameter()                  # Fraction of flow of tee [0-1]
+    P_1_out = Component.Parameter()            # Pressure at the end of loop 1 [Pa]
+    P_2_out = Component.Parameter()            # Pressure at the end of loop 2 [Pa]
+    m_dot_prev = Component.Parameter()         # Previous mass flow rate into the tee [kg/s]
+    P_prev = Component.Parameter()             # Previous pressure at the inlet of the tee [Pa]
+    error = Component.Parameter()              # Error in pressure due do a component with specified pressure
+    Mass_Counter = Component.Parameter()       # Total amount of mass in the system up to this point
+
+    #    OUTPUTS
+    m_dot_1 = Component.Output()
+    P_1 = Component.Output()
+    Temp_1 = Component.Output()
+    m_dot_2 = Component.Output()
+    P_2 = Component.Output()
+    Temp_2 = Component.Output()
+    f_out = Component.Output()
+    m_dot_out = Component.Output()
+    Pressure_out = Component.Output()
+    Mass_Counter_out = Component.Output()
+    
 
 # ***************************************************************************************************
 #  Friction factor (taken from Piping loss model)
