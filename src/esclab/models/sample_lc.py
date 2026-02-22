@@ -9,7 +9,7 @@ class FF(Component):
         pass
 
     def calculate(self):
-        self.signal.value = 1 if self.model.time % 24 < 8 else 0
+        self.signal.v = 1 if self.model.time % 24 < 8 else 0
         return 
     
 class Object(Component):
@@ -22,12 +22,12 @@ class Object(Component):
         self.T0 = 0  #iniital temp
 
     def calculate(self):
-        dTdt = -(self.T0 -(self.Tamb.value + self.signal.value*self.gain.value))/self.tau.value
-        self.T.value = self.T0 + dTdt*self.model.settings.timestep
+        dTdt = -(self.T0 -(self.Tamb.v + self.signal.v*self.gain.v))/self.tau.v
+        self.T.v = self.T0 + dTdt*self.model.settings.timestep
         return 
     
     def converge(self):
-        self.T0 = self.T.value
+        self.T0 = self.T.v
         return 
     
 # ---------------------------------------------------

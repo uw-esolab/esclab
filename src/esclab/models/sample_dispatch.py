@@ -32,35 +32,35 @@ class Storage(Component):
     last_charge = 0.  #state of charge
 
     def setup(self, **kwargs):
-        self.last_charge = self.capacity_init.value
+        self.last_charge = self.capacity_init.v
         pass 
 
     def calculate(self):
         # Reality checks
-        assert self.flow_in.value >= 0
-        assert self.flow_out.value >= 0
+        assert self.flow_in.v >= 0
+        assert self.flow_out.v >= 0
 
         # Losses from last time step
-        losses = max(self.last_charge * self.loss_rate.value * self.model.settings.timestep , 0)
-        self.losses.value = losses
+        losses = max(self.last_charge * self.loss_rate.v * self.model.settings.timestep , 0)
+        self.losses.v = losses
         # Energy balance
-        self.charge.value = self.last_charge - losses + (self.flow_in.value - self.flow_out.value)*self.model.settings.timestep 
+        self.charge.v = self.last_charge - losses + (self.flow_in.v - self.flow_out.v)*self.model.settings.timestep 
         
-        self.flow_out_actual.value = self.flow_out.value
-        self.flow_in_actual.value = self.flow_in.value 
+        self.flow_out_actual.v = self.flow_out.v
+        self.flow_in_actual.v = self.flow_in.v 
         # Correct flows if resulting charge exceeds min/max capacity
-        if self.charge.value < 0.:
-            self.flow_out_actual.value += self.charge.value/self.model.settings.timestep 
-            self.charge.value = 0.
-        if self.charge.value >= self.capacity.value:
-            self.flow_in_actual.value -= (self.charge.value - self.capacity.value)/self.model.settings.timestep
-            self.charge.value = self.capacity.value
-        if self.flow_out.value > self.flow_out_actual.value:
+        if self.charge.v < 0.:
+            self.flow_out_actual.v += self.charge.v/self.model.settings.timestep 
+            self.charge.v = 0.
+        if self.charge.v >= self.capacity.v:
+            self.flow_in_actual.v -= (self.charge.v - self.capacity.v)/self.model.settings.timestep
+            self.charge.v = self.capacity.v
+        if self.flow_out.v > self.flow_out_actual.v:
             pass
         return
 
     def converge(self):
-        self.last_charge = self.charge.value
+        self.last_charge = self.charge.v
 
 class Producer(Component):
     rated_power    = Component.Parameter(1.)
@@ -71,25 +71,25 @@ class Producer(Component):
 
     def setup(self, **kwargs):
         # initialize the power forecast array
-        fctimes = np.arange(self.model.settings.start_time, self.model.settings.start_time + self.horizon.value, self.model.settings.timestep)
-        self.power_forecast.value = self.__generate_forecast(fctimes)
+        fctimes = np.arange(self.model.settings.start_time, self.model.settings.start_time + self.horizon.v, self.model.settings.timestep)
+        self.power_forecast.v = self.__generate_forecast(fctimes)
 
     def calculate(self):
 
-        self.power.value = self.power_forecast.value[0] 
+        self.power.v = self.power_forecast.v[0] 
         # Only update the new forecast value on the first iteration
         if self.model.iteration == 0:
-            self.new_fc_value = self.__generate_forecast(np.array([self.model.time + self.horizon.value]))
+            self.new_fc_value = self.__generate_forecast(np.array([self.model.time + self.horizon.v]))
 
         return
     
     def converge(self):
-        self.power_forecast.value = np.roll(self.power_forecast.value, -1)
-        self.power_forecast.value[-1] = self.new_fc_value[0]
+        self.power_forecast.v = np.roll(self.power_forecast.v, -1)
+        self.power_forecast.v[-1] = self.new_fc_value[0]
 
     def __generate_forecast(self, time_values):
         tm_adj = (time_values/self.model.settings.timestep % 24.)*(np.pi)/(24.)
-        y = np.sin(tm_adj)*self.rated_power.value #* 3/2 - self.rated_power.value*1/2
+        y = np.sin(tm_adj)*self.rated_power.v #* 3/2 - self.rated_power.v*1/2
         y[y<0] = 0.
         lmask = np.abs(np.random.uniform(0,2,len(time_values))) - 0.5
         lmask[lmask<0] = 0.
@@ -111,20 +111,20 @@ class Consumer(Component):
 
     def setup(self, **kwargs):
         
-        fctimes = np.arange(self.model.settings.start_time, self.model.settings.start_time+self.horizon.value, self.model.settings.timestep)
-        self.price_forecast.value = self.__generate_forecast(fctimes)
+        fctimes = np.arange(self.model.settings.start_time, self.model.settings.start_time+self.horizon.v, self.model.settings.timestep)
+        self.price_forecast.v = self.__generate_forecast(fctimes)
 
     def calculate(self):
-        self.price.value = self.price_forecast.value[0]
+        self.price.v = self.price_forecast.v[0]
         # Only update the new forecast value on the first iteration
         if self.model.iteration == 0:
-            self.new_fc_value = self.__generate_forecast(np.array([self.model.time + self.horizon.value]))
+            self.new_fc_value = self.__generate_forecast(np.array([self.model.time + self.horizon.v]))
 
-        self.revenue.value = self.flow_in.value * self.model.settings.timestep * self.efficiency.value * self.price.value
+        self.revenue.v = self.flow_in.v * self.model.settings.timestep * self.efficiency.v * self.price.v
 
     def converge(self):
-        self.price_forecast.value = np.roll(self.price_forecast.value, -1)
-        self.price_forecast.value[-1] = self.new_fc_value[0]
+        self.price_forecast.v = np.roll(self.price_forecast.v, -1)
+        self.price_forecast.v[-1] = self.new_fc_value[0]
 
     def __generate_forecast(self, time_values):
         tm_adj = (time_values % 24.)*(2*np.pi)/(24.)
@@ -152,40 +152,40 @@ class Scheduler(Component):
 
     def setup(self, **kwargs):
         # initialize schedules with dummy arrays of the right length
-        da = np.ones(int(self.optimization_horizon.value/self.model.settings.timestep))
-        self.charge_schedule.value = da
-        self.price_schedule.value = da
+        da = np.ones(int(self.optimization_horizon.v/self.model.settings.timestep))
+        self.charge_schedule.v = da
+        self.price_schedule.v = da
 
         # Initialize storage charge state
-        self.last_charge_state = self.storage_initial_charge.value
+        self.last_charge_state = self.storage_initial_charge.v
 
     def calculate(self):
-        t_rel = int((self.model.time % self.control_horizon.value)*convert('s','hr'))
+        t_rel = int((self.model.time % self.control_horizon.v)*convert('s','hr'))
         if t_rel == 0:
             # Check for missing input data
-            if np.isnan(self.storage_charge.value):
+            if np.isnan(self.storage_charge.v):
                 # provide temporary data
                 self.active_schedule = [{'flow_from_producer':0, 'flow_to_consumer':0}]
             else:
                 if self.model.iteration < 2:
                     self.active_schedule = self.__run_opt_model()
-        self.price_now.value = self.price_schedule.value[t_rel]
-        self.charge_avail_now.value = self.active_schedule[t_rel]['charge']
-        self.flow_to_consumer.value = self.active_schedule[t_rel]['flow_to_consumer']
-        self.flow_from_producer.value = self.active_schedule[t_rel]['flow_from_producer']
+        self.price_now.v = self.price_schedule.v[t_rel]
+        self.charge_avail_now.v = self.active_schedule[t_rel]['charge']
+        self.flow_to_consumer.v = self.active_schedule[t_rel]['flow_to_consumer']
+        self.flow_from_producer.v = self.active_schedule[t_rel]['flow_from_producer']
 
     def converge(self):
         # Only update the initial charge state for the next step after the current step has converged
-        self.last_charge_state = self.storage_charge.value
-        self.num_iter.value = self.model.iteration
+        self.last_charge_state = self.storage_charge.v
+        self.num_iter.v = self.model.iteration
 
     def __run_opt_model(self):
         # md = self.model.design
 
-        nt = len(self.price_schedule.value)
+        nt = len(self.price_schedule.v)
         T = range(nt)
-        qmax = self.storage_capacity.value * self.c_rate.value / convert('hr','s')  # W
-        smax = self.storage_capacity.value
+        qmax = self.storage_capacity.v * self.c_rate.v / convert('hr','s')  # W
+        smax = self.storage_capacity.v
         S0 = self.last_charge_state
         
         # Optimization Model
@@ -198,12 +198,12 @@ class Scheduler(Component):
         s = om.addVars(T, lb=0., ub=smax, name='s')  # storage inventory
 
         # Objective function
-        eta = self.consumer_efficiency.value
-        om.setObjective(gp.quicksum(q_out[t]*eta*self.price_schedule.value[t]*model.settings.timestep for t in T), GRB.MAXIMIZE)
+        eta = self.consumer_efficiency.v
+        om.setObjective(gp.quicksum(q_out[t]*eta*self.price_schedule.v[t]*model.settings.timestep for t in T), GRB.MAXIMIZE)
         
         # ------------ Constraints
         # flow in is no greater than available flow in 
-        om.addConstrs((q_in[t] <= self.charge_schedule.value[t] for t in T), 'flow_utilized')
+        om.addConstrs((q_in[t] <= self.charge_schedule.v[t] for t in T), 'flow_utilized')
 
         # energy balance on storage based on power consumed
         om.addConstrs((s[t] == (s[t-1] if t>0 else S0) - (q_out[t] - q_in[t])*model.settings.timestep for t in T), 'store_balance')
@@ -239,29 +239,29 @@ if __name__ == "__main__":
     design = Design()
 
     # storage
-    model.storage.capacity.value       = design.storage_capacity
-    model.storage.c_rate.value         = design.c_rate  #Max charge/discharge rate, as a fraction of present charge
-    model.storage.capacity_init.value  = design.storage_initial_charge
-    model.storage.loss_rate.value      = 0.001 / convert('h','s')  #Loss as a fraction of capacity per s
-    model.storage.flow_in.value        = 0  #J/s
-    model.storage.flow_out.value       = 0  #J/s
+    model.storage.capacity.v       = design.storage_capacity
+    model.storage.c_rate.v         = design.c_rate  #Max charge/discharge rate, as a fraction of present charge
+    model.storage.capacity_init.v  = design.storage_initial_charge
+    model.storage.loss_rate.v      = 0.001 / convert('h','s')  #Loss as a fraction of capacity per s
+    model.storage.flow_in.v        = 0  #J/s
+    model.storage.flow_out.v       = 0  #J/s
 
     # Producer
-    model.producer.rated_power.value    = design.producer_rating
-    model.producer.horizon.value        = design.optimization_horizon
+    model.producer.rated_power.v    = design.producer_rating
+    model.producer.horizon.v        = design.optimization_horizon
 
     # Consumer
-    model.consumer.horizon.value    = design.optimization_horizon
-    model.consumer.efficiency.value = design.consumer_efficiency
-    model.consumer.flow_in.value    = 0.
+    model.consumer.horizon.v    = design.optimization_horizon
+    model.consumer.efficiency.v = design.consumer_efficiency
+    model.consumer.flow_in.v    = 0.
 
     # Scheduler
-    model.scheduler.optimization_horizon.value    = design.optimization_horizon
-    model.scheduler.control_horizon.value         = design.control_horizon
-    model.scheduler.storage_initial_charge.value  = design.storage_initial_charge
-    model.scheduler.storage_capacity.value        = design.storage_capacity
-    model.scheduler.c_rate.value                  = design.c_rate
-    model.scheduler.consumer_efficiency.value     = design.consumer_efficiency
+    model.scheduler.optimization_horizon.v    = design.optimization_horizon
+    model.scheduler.control_horizon.v         = design.control_horizon
+    model.scheduler.storage_initial_charge.v  = design.storage_initial_charge
+    model.scheduler.storage_capacity.v        = design.storage_capacity
+    model.scheduler.c_rate.v                  = design.c_rate
+    model.scheduler.consumer_efficiency.v     = design.consumer_efficiency
 
 
     model.initialize()

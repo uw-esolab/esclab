@@ -130,42 +130,42 @@ class SimplePipe(Component):
         super().setup(**kwargs)
 
         #Set the Initial Values of the Outputs (#,Value)
-        self.m_dot_out.value = self.m_dot_in.value     # mass flow leaving pipe [kg/s]
-        self.T_out.value = self.T_in.value             # temperature leaving the pipe
-        self.P_out.value = self.P_in.value             # pressure leaving the pipe
-        self.DELTA_P.value = self.DELTA_P.value        # pressure drop through pipe
-        self.ff.value = self.guess.value               # Friction factor guess
+        self.m_dot_out.v = self.m_dot_in.v     # mass flow leaving pipe [kg/s]
+        self.T_out.v = self.T_in.v             # temperature leaving the pipe
+        self.P_out.v = self.P_in.v             # pressure leaving the pipe
+        self.DELTA_P.v = self.DELTA_P.v        # pressure drop through pipe
+        self.ff.v = self.guess.v               # Friction factor guess
         return 
 
     def calculate(self):
         super().calculate()
 
-        if(self.m_dot_in.value > 0.00): # okay to continue
+        if(self.m_dot_in.v > 0.00): # okay to continue
             
-            self.m_dot_out.value = self.m_dot_in.value
-            self.guess.value =  max([self.ff.value,0.1]) # Friction Factor Guess from last iteration
+            self.m_dot_out.v = self.m_dot_in.v
+            self.guess.v =  max([self.ff.v,0.1]) # Friction Factor Guess from last iteration
             
             # Calculating Pressure Drop
-            rho =  fp.density(self.fluid.value, T = self.T_in.value, P = self.P_in.value)
-            visc = fp.viscosity(self.fluid.value, T = self.T_in.value, P = self.P_in.value)
-            vel = self.m_dot_in.value/rho/(3.14/4. *self.Pipe_ID.value**2.)
-            Re = rho* vel * self.Pipe_ID.value/visc 
+            rho =  fp.density(self.fluid.v, T = self.T_in.v, P = self.P_in.v)
+            visc = fp.viscosity(self.fluid.v, T = self.T_in.v, P = self.P_in.v)
+            vel = self.m_dot_in.v/rho/(3.14/4. *self.Pipe_ID.v**2.)
+            Re = rho* vel * self.Pipe_ID.v/visc 
             import eeslib
             
-            self.ff.value = FricFactor_IC(self.Roughness.value/self.Pipe_ID.value,Re,self.guess.value)
-            K_T = (8.*self.ff.value*self.Length_Pipe.value)/((3.14**2.)*(self.Pipe_ID.value**5.)*rho)
-            self.DELTA_P.value = K_T * self.m_dot_in.value**2.
-            self.P_out.value = self.P_in.value - self.DELTA_P.value
+            self.ff.v = FricFactor_IC(self.Roughness.v/self.Pipe_ID.v,Re,self.guess.v)
+            K_T = (8.*self.ff.v*self.Length_Pipe.v)/((3.14**2.)*(self.Pipe_ID.v**5.)*rho)
+            self.DELTA_P.v = K_T * self.m_dot_in.v**2.
+            self.P_out.v = self.P_in.v - self.DELTA_P.v
             
             # Finding change in htf temperature
-            self.T_out.value = self.T_in.value     # incompressible fluid
+            self.T_out.v = self.T_in.v     # incompressible fluid
             
         else: # flow is not possible, calculations will fail
 
-            # self.T_out.value = getOutputValue(2)
+            # self.T_out.v = getOutputValue(2)
             # P_out = getOutputValue(3)
 
-            self.DELTA_P.value = 0.
+            self.DELTA_P.v = 0.
             # -----------------------------------------------------------------------------------------------------------------------
         
 
@@ -218,24 +218,24 @@ class VarSpeedPump(Component):
     # -----------------------------------------------------------------------------------------------------------------------
     def setup(self, **kwargs):
         # Set the Initial Values of the Outputs (#,Value)
-        self.m_dot_out.value = self.Mass_Flow.value
-        self.P_out.value = self.Pressure.value
-        self.Temperature_out.value = self.Temperature.value
-        self.mass_count_out.value = self.mass_count.value
-        self.cavitation.value = 0    #  Not cavitating initially
+        self.m_dot_out.v = self.Mass_Flow.v
+        self.P_out.v = self.Pressure.v
+        self.Temperature_out.v = self.Temperature.v
+        self.mass_count_out.v = self.mass_count.v
+        self.cavitation.v = 0    #  Not cavitating initially
     # -----------------------------------------------------------------------------------------------------------------------
 
     # -----------------------------------------------------------------------------------------------------------------------
     def converge(self):
         # Once model has converged, check if pump is likely cavitating
-        rho = Inc.density(self.Fluid_ID.value, self.Temperature.value, 0.0)
-        Q_dot = self.Mass_Flow.value/rho/self.N_pumps_parallel.value
-        NPSHr = self.speed.value**2 * (self.NPSH_a0.value + self.NPSH_a1.value*(Q_dot/self.speed.value) + self.NPSH_a2.value*(Q_dot/self.speed.value)**2) 
-        NPSH_meas = self.Pressure.value/rho/self.g - 1034000.0/rho/self.g #  NPSH in the simulation is relative to the pressure in the expansion tank (reason for subtracting 150 psi)
+        rho = Inc.density(self.Fluid_ID.v, self.Temperature.v, 0.0)
+        Q_dot = self.Mass_Flow.v/rho/self.N_pumps_parallel.v
+        NPSHr = self.speed.v**2 * (self.NPSH_a0.v + self.NPSH_a1.v*(Q_dot/self.speed.v) + self.NPSH_a2.v*(Q_dot/self.speed.v)**2) 
+        NPSH_meas = self.Pressure.v/rho/self.g - 1034000.0/rho/self.g #  NPSH in the simulation is relative to the pressure in the expansion tank (reason for subtracting 150 psi)
         if(NPSHr>NPSH_meas):
-            self.cavitation.value = 1.0
+            self.cavitation.v = 1.0
         else:
-            self.cavitation.value = 0.0
+            self.cavitation.v = 0.0
     # -----------------------------------------------------------------------------------------------------------------------
 
       
@@ -245,34 +245,34 @@ class VarSpeedPump(Component):
         if (self.model.iteration == 0) or (self.model.iteration == 0 and self.model.time == self.model.settings.timestep):
             #  Set output values to the computed values from the previous timestep (don't want any manipulation without feedback)
             #  Determine pressure increase in pump
-            rho = Inc.density(self.Fluid_ID.value, self.Temperature.value, 0.0)
-            delta_P = self.g*self.speed.value**2*(
-                rho*self.Pump_a0.value + 
-                self.Pump_a1.value/self.speed.value*(self.Mass_Flow.value/self.N_pumps_parallel.value) + 
-                self.Pump_a2.value/rho/self.speed.value**2*(self.Mass_Flow.value/self.N_pumps_parallel.value)**2
+            rho = Inc.density(self.Fluid_ID.v, self.Temperature.v, 0.0)
+            delta_P = self.g*self.speed.v**2*(
+                rho*self.Pump_a0.v + 
+                self.Pump_a1.v/self.speed.v*(self.Mass_Flow.v/self.N_pumps_parallel.v) + 
+                self.Pump_a2.v/rho/self.speed.v**2*(self.Mass_Flow.v/self.N_pumps_parallel.v)**2
                 )
 
             # Set the Initial Values of the Outputs (#,Value)
-            self.m_dot_out.value = self.Mass_Flow.value
-            self.P_out.value = self.Pressure.value+delta_P
-            self.Temperature_out.value = self.Temperature.value
-            self.mass_count_out.value = self.mass_count.value 
-            # self.cavitation.value #don't change
+            self.m_dot_out.v = self.Mass_Flow.v
+            self.P_out.v = self.Pressure.v+delta_P
+            self.Temperature_out.v = self.Temperature.v
+            self.mass_count_out.v = self.mass_count.v 
+            # self.cavitation.v #don't change
 
         else:
-            if(self.Pump_Solver.value == 0.0):
+            if(self.Pump_Solver.v == 0.0):
                 #  Compute Density of fluid
-                rho = Inc.density(self.Fluid_ID.value, self.Temperature.value, 0.0)
+                rho = Inc.density(self.Fluid_ID.v, self.Temperature.v, 0.0)
 
                 #  Compute head loss in system
-                delta_P = self.P_out.value-(self.Pressure.value+self.error.value)
+                delta_P = self.P_out.v-(self.Pressure.v+self.error.v)
                 H_L = delta_P/rho/9.81 * 3.28084 #  [ft]
 
                 #  Compute new flow rate corresponding to head loss in system
                 #  (solving a quadratic equation for the pump curve fit)
-                A = self.Pump_a2.value
-                B = self.Pump_a1.value*self.speed.value
-                D = self.Pump_a0.value*(self.speed.value**2) - H_L
+                A = self.Pump_a2.v
+                B = self.Pump_a1.v*self.speed.v
+                D = self.Pump_a0.v*(self.speed.v**2) - H_L
 
                 discriminant = (B)**2 - 4*A*D
                 if (discriminant>=0):
@@ -287,30 +287,30 @@ class VarSpeedPump(Component):
                 m_dot_new = Q_dot_new*rho
 
                 #  Update mass flow rate according to learning rate
-                m_dot_adj = self.LR.value*m_dot_new + (1-self.LR.value)*self.m_dot_out.value/self.N_pumps_parallel.value
+                m_dot_adj = self.LR.v*m_dot_new + (1-self.LR.v)*self.m_dot_out.v/self.N_pumps_parallel.v
 
-                P_out = (self.Pressure.value+delta_P)
+                P_out = (self.Pressure.v+delta_P)
                 
                 # Set the Outputs from this Model (#,Value)
-                self.m_dot_out.value = m_dot_adj*self.N_pumps_parallel.value
-                self.P_out.value = P_out
-                self.Temperature_out.value = self.Temperature.value
-                self.mass_count_out.value = self.mass_count.value
-                # self.cavitation.value # don't change
+                self.m_dot_out.v = m_dot_adj*self.N_pumps_parallel.v
+                self.P_out.v = P_out
+                self.Temperature_out.v = self.Temperature.v
+                self.mass_count_out.v = self.mass_count.v
+                # self.cavitation.v # don't change
 
             else:
                 #  Determine pressure increase in pump
-                rho = Inc.density(  self.Fluid_ID.value, self.Temperature.value, 0.0)
-                delta_P = self.g*self.speed.value**2*(rho*self.Pump_a0.value + 
-                    self.Pump_a1.value/self.speed.value*(self.Mass_Flow.value/self.N_pumps_parallel.value) + 
-                    self.Pump_a2.value/rho/self.speed.value**2*(self.Mass_Flow.value/self.N_pumps_parallel.value)**2)
+                rho = Inc.density(  self.Fluid_ID.v, self.Temperature.v, 0.0)
+                delta_P = self.g*self.speed.v**2*(rho*self.Pump_a0.v + 
+                    self.Pump_a1.v/self.speed.v*(self.Mass_Flow.v/self.N_pumps_parallel.v) + 
+                    self.Pump_a2.v/rho/self.speed.v**2*(self.Mass_Flow.v/self.N_pumps_parallel.v)**2)
 
                 # Set the Outputs from this Model (#,Value)
-                self.m_dot_out.value = self.Mass_Flow.value
-                self.P_out.value = self.Pressure.value + delta_P
-                self.Temperature_out.value = self.Temperature.value
-                self.mass_count_out.value = self.mass_count.value
-                # self.cavitation.value # don't change
+                self.m_dot_out.v = self.Mass_Flow.v
+                self.P_out.v = self.Pressure.v + delta_P
+                self.Temperature_out.v = self.Temperature.v
+                self.mass_count_out.v = self.mass_count.v
+                # self.cavitation.v # don't change
     # -----------------------------------------------------------------------------------------------------------------------
 # -----------------------------------------------------------------------------------------------
 
@@ -322,14 +322,14 @@ class VarSpeedPump(Component):
 if __name__ == "__main__":
     
     P = SimplePipe()
-    P.Pipe_ID.value = .2
-    P.Length_Pipe.value = 100
-    P.fluid.value = 'Air'
-    P.Roughness.value = 1.e-5
+    P.Pipe_ID.v = .2
+    P.Length_Pipe.v = 100
+    P.fluid.v = 'Air'
+    P.Roughness.v = 1.e-5
 
-    P.m_dot_in.value = 10
-    P.P_in.value = convert('bar','Pa')
-    P.T_in.value = 400
+    P.m_dot_in.v = 10
+    P.P_in.v = convert('bar','Pa')
+    P.T_in.v = 400
 
     P.setup()
     P.calculate()

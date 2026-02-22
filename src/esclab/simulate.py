@@ -32,13 +32,13 @@ class Connection:
 
     def compute_new_value(self):
         if not np.any(np.isnan(self.source_last_value)):
-            return self.source_last_value + (self.source.value - self.source_last_value)*self.learn_rate
+            return self.source_last_value + (self.source.v - self.source_last_value)*self.learn_rate
         else: 
             # nan case
-            return self.source.value
+            return self.source.v
 
     def check_convergence(self, new_value):
-        # new_value = self.source.value 
+        # new_value = self.source.v 
         old_value = self.source_last_value
             
         self.err_abs = np.abs(new_value-old_value)
@@ -46,7 +46,7 @@ class Connection:
         self.is_converged = np.all(self.err_abs < self.tol_abs) and np.all(self.err_rel < self.tol_rel)
 
         if self.log_n_iter > 0:
-            la = np.array([self.source.value, self.err_abs, self.err_rel])
+            la = np.array([self.source.v, self.err_abs, self.err_rel])
             if self.n_iter < self.log_n_iter: 
                 self.iter_log[self.n_iter,:] = la
             else:
@@ -63,23 +63,23 @@ class Component:
         def __init__(self):
             self.name = ''
             self.units = ''
-            self.value = float('nan')
+            self.v = float('nan')
             self.is_connected = False
             pass
     class Input(__io_base):
         def __init__(self, initial_value=1.):
             super().__init__()
             self.connection = None  #instance of class Connection()
-            self.value = initial_value
+            self.v = initial_value
 
         def update_from_connection(self):
             if not self.connection == None:
                 #check for nan
-                if not np.any(np.isnan(self.connection.source.value)):
+                if not np.any(np.isnan(self.connection.source.v)):
                     new_value = self.connection.compute_new_value()
                     converged = self.connection.check_convergence(new_value)
-                    self.connection.source_last_value = self.connection.source.value
-                    self.value = new_value
+                    self.connection.source_last_value = self.connection.source.v
+                    self.v = new_value
                     return converged
                 else:
                     return False
@@ -90,7 +90,7 @@ class Component:
 
     class Parameter:
         def __init__(self, value=float('nan'), units='', std_dev = None):
-            self.value = value 
+            self.v = value 
             self.units = units
             self.std_dev = std_dev
     # --------------------------------------------------------
@@ -255,13 +255,13 @@ class Model:
                 y2vals = np.zeros(len(self.y2_items))
             # Append new data
             for j,yval in enumerate(self.y1_items):
-                y1vals[j] = yval.value
+                y1vals[j] = yval.v
             self.y1_data = np.roll(self.y1_data, -1, axis=1)
             self.y1_data[:,-1] = y1vals[:]
             
             if self.y2_items != None:
                 for j,yval in enumerate(self.y2_items):
-                    y2vals[j] = yval.value
+                    y2vals[j] = yval.v
                 self.y2_data = np.roll(self.y2_data, -1, axis=1)
                 self.y2_data[:,-1] = y2vals[:]
 
@@ -404,8 +404,8 @@ class Model:
             self.historian['iterations'][current_step] = self.iteration
             for output in component.get_outputs():
                 try:
-                    if not isinstance(output.value, np.ndarray):
-                        self.historian[output.name][current_step] = output.value
+                    if not isinstance(output.v, np.ndarray):
+                        self.historian[output.name][current_step] = output.v
                 except ValueError:
                     pass
         

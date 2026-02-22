@@ -35,28 +35,28 @@ model.initialize()
 
 # Set parameters and initial values 
 # turbine
-model.turbine.eta_s.value   = 0.9
-model.turbine.mdot_in.value = model.design.mdot
-model.turbine.T_in.value    = model.design.T_turb_in
-model.turbine.P_in.value    = model.design.P_low*model.design.PR
+model.turbine.eta_s.v   = 0.9
+model.turbine.mdot_in.v = model.design.mdot
+model.turbine.T_in.v    = model.design.T_turb_in
+model.turbine.P_in.v    = model.design.P_low*model.design.PR
 model.turbine.fluid = 'Air'
 # Compressor
-model.compressor.eta_s.value   = 0.85
-model.compressor.PR.value      = 4.
-model.compressor.mdot_in.value = model.design.mdot
-model.compressor.T_in.value    = model.design.T_amb+20
-model.compressor.P_in.value    = model.design.P_low
+model.compressor.eta_s.v   = 0.85
+model.compressor.PR.v      = 4.
+model.compressor.mdot_in.v = model.design.mdot
+model.compressor.T_in.v    = model.design.T_amb+20
+model.compressor.P_in.v    = model.design.P_low
 model.compressor.fluid = model.turbine.fluid
 # Cooler 
-model.cooler.mdot_in.value    = model.design.mdot
-model.cooler.T_in.value       = model.design.T_amb+100
-model.cooler.P_in.value       = model.design.P_low
-model.cooler.T_amb.value      = model.design.T_amb
+model.cooler.mdot_in.v    = model.design.mdot
+model.cooler.T_in.v       = model.design.T_amb+100
+model.cooler.P_in.v       = model.design.P_low
+model.cooler.T_amb.v      = model.design.T_amb
 # Combustor
 # initial value
-model.combustor.P_in.value = model.design.P_low*model.design.PR
-model.combustor.T_in.value = model.design.T_turb_in - 300
-model.combustor.mdot_in.value  = model.design.mdot
+model.combustor.P_in.v = model.design.P_low*model.design.PR
+model.combustor.T_in.v = model.design.T_turb_in - 300
+model.combustor.mdot_in.v  = model.design.mdot
 
 # ---------------------------------------------
 # Connections
