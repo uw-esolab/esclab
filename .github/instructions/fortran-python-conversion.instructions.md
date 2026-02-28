@@ -116,6 +116,8 @@ New files should be created in the 'components' folder with descriptive names th
 5. Code inside the 'getIsFirstCallofTimestep()' block should be moved inside an if statement checking for the model.is_first_iteration flag.
 6. Code checking against the time step iteration number using 'getTimestepIteration()' should be moved inside an if statement checking for the model.timestep_iteration member.
 7. Code checking against the simulation time using 'getCurrentTime()' should be moved inside an if statement checking for the model.current_time member.
+8. Fluid properties are most often called using the 'FIT' library in TRNSYS. This doesn't exist in Python but should instead be mapped to eeslib.fluid_properties. 
+  For example, FIT_PH requires P=pressure and H=enthalpy as inputs, and returns the property passed as the last argument, like FIT_PH('water', P=<value>, H=<value>, dens=rho) assigning the density value to rho. This maps to fp.density('water', P=<value>, H=<value>). 
 
 
 
