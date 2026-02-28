@@ -53,15 +53,17 @@ esclab ("engineering simulation and controls lab") is a Python-based teaching to
 
 # Mapping
 
-Source files are identified by the Type number. Generally, the file name contains the number, but sometimes this can instead by found on the first line of the file with the Subroutine definition. The following types are part of a single model and should be converted first:
-4001 (done)
-4004 (done)
-4006 (done)
-4007 (done)
+Source files are identified by the Type number. Generally, the file name contains the number, but sometimes this can instead by found on the first line of the file with the Subroutine definition. 
+
+We are focusing on converting the following types first:
+4001
+4004
+4006
+4007
 4008
 4012
 4015
-4016 (done)
+4016
 4034
 4035
 4050
@@ -85,6 +87,13 @@ Source files are identified by the Type number. Generally, the file name contain
 6032
 6034
 
+Conversions can be complex and could be completed in multiple stages. 
+1. Focus on mapping of the parameters, inputs, outputs, and the if/then blocks for iteration and time step conditions. 
+2. Identify libraries or function reference that require conversion and ask for help in locating those to appropriate libraries if needed.
+3. Make a second pass through on the physics code found in the main iteration section of the calculate() method. This is where there is the most opportunity to use modern data structures and speed-enhancing libraries. 
+4. Make a pass through to verify that all comments from the original Fortran code are preserved and that docstrings are clear and informative.
+5. Make a final pass that checks for conversion completeness, leaving TODO's where any tasks remain. 
+
 New files should be created in the 'components' folder with descriptive names that reflect the functionality of the component. For example, Type 4001 is a simple pipe flow component, so it could be named 'PipeFlow.py'. The component class should be named using PascalCase and should also reflect the functionality of the component, such as 'PipeFlow'.
 
 ## Odds and ends
@@ -92,7 +101,7 @@ New files should be created in the 'components' folder with descriptive names th
 * Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.
 * Include a docstring at the beginning of the component class that states the Type number of the TRNSYS source, and describes the component, its parameters, inputs, and outputs. 
 * Docstrings should be configured for sphinx documentation generation. This means using the reStructuredText format and including sections for parameters, inputs, outputs, and any other relevant information.
-* Preserve comments from the original fortran code unless changes render the comments inaccurate or irrelevant.
+* Preserve comments from the original fortran code unless changes render the comments inaccurate or irrelevant. Do not add comments like "Same structure as fortran", but add comments provided in the original fortran source that explain the purpose of the code blocks.
 
 ## Places where direct mapping is appropriate:
 1. Parameters or Inputs declared as DOUBLE PRECISION or INTEGER <varname> should map to Component members <varname> = Component.Parameter() or Component.Input() depending on the context.
