@@ -58,6 +58,7 @@ esclab ("engineering simulation and controls lab") is a Python-based teaching to
 * Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.
 * Include a docstring at the beginning of the component class that states the Type number of the TRNSYS source, and describes the component, its parameters, inputs, and outputs. 
 * Docstrings should be configured for sphinx documentation generation. This means using the reStructuredText format and including sections for parameters, inputs, outputs, and any other relevant information.
+* Preserve comments from the original fortran code unless changes render the comments inaccurate or irrelevant.
 
 ## Places where direct mapping is appropriate:
 1. Parameters or Inputs declared as DOUBLE PRECISION or INTEGER <varname> should map to Component members <varname> = Component.Parameter() or Component.Input() depending on the context.
