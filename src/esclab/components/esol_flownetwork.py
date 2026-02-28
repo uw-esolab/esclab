@@ -245,6 +245,7 @@ class Valve(Component):
     Diameter = Component.Parameter()
     Fluid_ID = Component.Parameter()
     Valve_Type = Component.Parameter()
+    Valve_speed = Component.Parameter()
 
     #    INPUTS
     m_dot = Component.Input()
@@ -294,6 +295,59 @@ class Valve(Component):
             # Call SetDynamicArrayValueThisIteration(1, fraction_open) # Store valve position
 
             return
+        
+        # Iteration calculations
+        # -------------------------------------------------------------------------------------------------------
+        # VP_output = getOutputValue(6)
+
+        # -----------------------------------------------------------------------------------------------------------------------
+        if self.model.iteration == 0: # do not update flow rate
+            if (not self.model.is_first_step): # not the first timestep
+                fraction_open_d = self.fraction_open * 90.0         # Valve Position Requested, converting from percent open to degrees
+                VP_output_d = self.VP_output.v * 90.0                 # Last Timesteps Valve Position, converting from percent open to degrees    
+                Timestep_s = self.model.timestep * 3600.0                 # convert timestep to seconds instead of hours
+                if (self.VP_output.v == self.fraction_open):            # valve position is at the requested input
+                    self.VP_output.v = self.fraction_open
+                elif (VP_output_d > fraction_open_d): # current valve position is greater than requested input, close valve based on valve speed
+                    VP_output_d = max(VP_output_d - self.Valve_speed.v * Timestep_s, fraction_open_d)
+                    VP_output = VP_output_d/90.0
+                else # current valve position is less than requested input, open valve based on valve speed
+                    VP_output_d = min(VP_output_d + self.Valve_speed.v * Timestep_s, fraction_open_d)
+                    VP_output = VP_output_d/90.0
+            else: # First Timestep of the simulation, set equal to the input value rather than intial value (needed if using forcing function types)
+                VP_output = self.fraction_open
+            
+        #  Compute Volumetric Flow Rate
+        rho_fluid = Inc.density(self.Fluid_ID.v, self.Temperature.v, 0.0)
+        Q = self.m_dot.v/rho_fluid
+        #  Convert flowrate to gpm
+        Q = Q*15850.323140625002 
+        #  Compute specific gravity of fluid 
+        SG = rho_fluid/1000.0
+        #  Compute Cv of valve (Check if valve position has changed from last timestep)
+        if self.model.timestep_iteration == 0:
+            if self.Pos_last.v != VP_output:
+                Cv = CV_data(self.Valve_Type.v, self.Diameter.v, VP_output)
+        else:
+            Cv = self.Cv_out.v
+        #  Compute pressure drop [Pa]
+        dP = SG*Q**2/(Cv**2) * 6894.76
+
+        # -----------------------------------------------------------------------------------------------------------------------
+        # Set the Outputs from this Model (#,Value)
+        self.m_dot_out.v = self.m_dot.v     #1
+        self.Pressure_out.v = self.Pressure.v - dP      #2
+        self.Temperature_out.v = self.Temperature.v     #3
+        self.mass_counter_out.v = self.mass_counter.v       #4
+        self.Cv_out.v = Cv      #5
+        self.VP_output.v = VP_output        #6
+        # --------------------------------------------------------------------------------------------------------
+
+    def converged(self):
+        # Store valve position for next iteration
+        self.fraction_open = self.VP_output.v
+        return
+
 
 
 def FricFactor_IC(Rough, Reynold, guess):
