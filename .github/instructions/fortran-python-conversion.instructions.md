@@ -105,6 +105,11 @@ New files should be created in the 'components' folder with descriptive names th
 
 ## Places where direct mapping is appropriate:
 1. Parameters or Inputs declared as DOUBLE PRECISION or INTEGER <varname> should map to Component members <varname> = Component.Parameter() or Component.Input() depending on the context.
+  Avoid using parameter_<num> or input_<num> quite a bit, which I do not want. Instead, use the corresponding variable name directly as the parameter name. For example, instead of:
+  total_mass = self.parameter_15.v
+  use
+  self.total_mass.v 
+  and reference as appropriate.
 2. the getParameterValue(<number>) function should map to the Component.Parameter() member that corresponds to the parameter number in the Fortran code. The same applies for getInputValue(<number>) and getOutputValue(<number>). 
 3. Code inside the 'getIsStartTime()' block should be moved inside an if statement checking for the model.is_first_step flag.
 4. Code inside the 'getIsEndOfTimestep()' block should be moved inside an if statement checking for the model.is_converged flag.
