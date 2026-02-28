@@ -11,6 +11,9 @@ class STHX(Component):
     """
     TRNSYS Type 6017: ESOL6017-STHX.
 
+    Object: ESOL6017-STHX
+    Simulation Studio Model: ESOL6017-STHX
+
     Parameters
     ----------
     heat_transfer_rated, m_dot_fw_rated, m_dot_htf_rated, rated_exp,
@@ -293,6 +296,7 @@ class STHX(Component):
         self.trip_high_hr_fw_out.v = 0.0
 
     def _run_end_of_timestep_checks(self, m_dot_htf, p_htf, t_htf, p_fw, h_fw):
+        # Perform Any "After Convergence" manipulations that may be required at end of timestep.
         ts_sec = max(self.model.settings.timestep, 1.0e-9)
         n_int = max(int(math.ceil(60.0 / ts_sec)), 1)
 
@@ -301,10 +305,15 @@ class STHX(Component):
         t_fw = self._water_temp_from_ph(p_fw, h_fw)
 
         if len(self._htf_in_hist) != n_int:
+            # At beginning of simulation set initial temperature arrays for Heating Rates.
+            # Heating Rate for HTF Inlet is stored over the last minute.
             self._htf_in_hist = [t_htf] * n_int
         if len(self._fw_out_hist) != n_int:
+            # Heating Rate for FW Outlet is stored over the last minute.
             self._fw_out_hist = [t_fw_out] * n_int
 
+        # !!!!!High or Low Tempreature Alarms!!!!
+        # High HTF Temp In Check
         alarm, trip = self._alarm_trip(
             t_htf,
             self._safe(self.high_htf_temp_in_alarm.v),
@@ -314,6 +323,7 @@ class STHX(Component):
         self.alarm_high_htf_temp_in.v = alarm
         self.trip_high_htf_temp_in.v = trip
 
+        # Low HTF Temp In Check
         alarm, trip = self._alarm_trip(
             t_htf,
             self._safe(self.low_htf_temp_in_alarm.v),
@@ -323,6 +333,7 @@ class STHX(Component):
         self.alarm_low_htf_temp_in.v = alarm
         self.trip_low_htf_temp_in.v = trip
 
+        # Low HTF Temp Out Check
         alarm, trip = self._alarm_trip(
             t_htf_out,
             self._safe(self.low_htf_temp_out_alarm.v),
@@ -332,6 +343,7 @@ class STHX(Component):
         self.alarm_low_htf_temp_out.v = alarm
         self.trip_low_htf_temp_out.v = trip
 
+        # High HTF Flow entering HX Check
         alarm, trip = self._alarm_trip(
             m_dot_htf,
             self._safe(self.high_htf_flow_in_alarm.v),
@@ -341,6 +353,7 @@ class STHX(Component):
         self.alarm_high_htf_flow_in.v = alarm
         self.trip_high_htf_flow_in.v = trip
 
+        # High HTF Pressure entering HX Check
         alarm, trip = self._alarm_trip(
             p_htf,
             self._safe(self.high_htf_pressure_in_alarm.v),
@@ -350,6 +363,7 @@ class STHX(Component):
         self.alarm_high_htf_pressure_in.v = alarm
         self.trip_high_htf_pressure_in.v = trip
 
+        # Low FW Temperature entering HX Check
         alarm, trip = self._alarm_trip(
             t_fw,
             self._safe(self.low_fw_temp_in_alarm.v),
@@ -359,6 +373,8 @@ class STHX(Component):
         self.alarm_low_fw_temp_in.v = alarm
         self.trip_low_fw_temp_in.v = trip
 
+        # !!!!!!High Heating Rates Alarms and Trips!!!!!
+        # HTF Inlet Heating Rate over 1 minute time
         hr_htf = self._compute_heating_rate(self._htf_in_hist, t_htf, ts_sec)
         self.hr_htf_in.v = hr_htf
         alarm, trip = self._alarm_trip(
@@ -370,6 +386,7 @@ class STHX(Component):
         self.alarm_high_hr_htf_in.v = alarm
         self.trip_high_hr_htf_in.v = trip
 
+        # Outlet FW Heating Rate over 1 minute time
         hr_fw = self._compute_heating_rate(self._fw_out_hist, t_fw_out, ts_sec)
         self.hr_fw_out.v = hr_fw
         alarm, trip = self._alarm_trip(
@@ -385,6 +402,7 @@ class STHX(Component):
         self._advance_history(self._fw_out_hist, t_fw_out)
 
     def calculate(self):
+        # Read parameters and inputs (Fortran ordering).
         heat_transfer_rated = max(self._safe(self.heat_transfer_rated.v), 0.0)
         m_dot_htf_rated = max(self._safe(self.m_dot_htf_rated.v, 1.0), 1.0e-9)
         rated_exp = self._safe(self.rated_exp.v, 0.8)
@@ -403,32 +421,41 @@ class STHX(Component):
         p_htf = self._safe(self.p_htf.v)
         t_htf = self._safe(self.t_htf.v, 500.0)
         if t_htf == 0.0:
+            # default value until actual temperature enters
             t_htf = 500.0
 
         is_start_time = (
             abs(self._safe(getattr(self.model, "time", 0.0)) - self._safe(getattr(self.model.settings, "start_time", 0.0))) < 1.0e-12
         )
         if is_start_time and not self.model.is_converged:
+            # Do all of the first timestep manipulations here.
+            # Set the initial values of outputs 1..11.
             self._set_outputs_1_to_11(m_dot_fw, 0.0, p_fw, h_fw, 0.0, m_dot_htf, 0.0, p_htf, t_htf, 0.0, 0.0)
             self._set_alarm_outputs_zero()
             return
 
         if self.model.is_converged:
+            # Do any end-of-timestep manipulations here.
             self._run_end_of_timestep_checks(m_dot_htf, p_htf, t_htf, p_fw, h_fw)
             return
 
         if m_dot_htf > 0.01:
             if m_dot_fw > 0.01:
                 if p_fw > 0.0:
+                    # Hydraulic calculations are reasonable.
                     t_sat, h_sat_f, h_sat_g = self._sat_props_from_pressure(p_fw)
                     t_fw = self._water_temp_from_ph(p_fw, h_fw)
                     cp_htf = self._cp_htf(fluid_id, t_htf, p_htf)
 
+                    # solve for specific heat values of fw and htf
                     if abs(t_fw - t_sat) > 1.0:
                         cp_fw = self._cp_water(t_fw, p_fw)
                     else:
+                        # T_fw is too close to saturation temperature to give accurate cp value
                         cp_fw = self._cp_water(0.5 * (t_htf + t_fw), p_fw)
 
+                    # Find effectiveness of heat exchanger based on inlet conditions of HTF and FW.
+                    # Surface area of the feedwater side of the heat exchanger.
                     a_s = math.pi * max(tube_od - 2.0 * tube_th, 1.0e-9) * length_hx * no_tube_passes * no_tubes
                     ua_rated = heat_transfer_rated * a_s
                     ua_od = ua_rated * (m_dot_htf / m_dot_htf_rated) ** rated_exp
@@ -452,33 +479,43 @@ class STHX(Component):
 
                     h_fw_out_s = self._water_enthalpy_from_pt(p_fw, t_htf)
 
+                    # Check that HTF temp is higher than FW temp.
                     if t_fw < t_htf:
+                        # Heat Transfer is going the correct way.
                         q_dot_hx = min(
                             eta_od * m_dot_fw * max(h_fw_out_s - h_fw, 0.0),
                             eta_od * m_dot_htf * cp_htf * max(t_htf - t_fw, 0.0),
                         )
                         h_fw_out = max((m_dot_fw * h_fw + q_dot_hx) / max(m_dot_fw, 1.0e-9), h_fw)
+                        # Flow is entering subcooled: make sure it is not passing T_sat.
                         if h_fw < h_sat_f and h_fw_out > h_sat_f:
                             h_fw_out = h_sat_f
                             q_dot_hx = m_dot_fw * (h_fw_out - h_fw)
                         t_fw_out = self._water_temp_from_ph(p_fw, h_fw_out)
+                        # energy balance on HTF side of heat exchanger
                         t_htf_out = (m_dot_htf * cp_htf * t_htf - q_dot_hx) / max(m_dot_htf * cp_htf, 1.0e-9)
                     else:
+                        # htf temperature is lower than feedwater temperature,
+                        # heat transfer is going the wrong way
                         q_dot_hx = min(
                             eta_od * m_dot_fw * max(h_fw - h_fw_out_s, 0.0),
                             eta_od * m_dot_htf * cp_htf * max(t_fw - t_htf, 0.0),
                         )
                         if m_dot_fw < 1.0:
                             q_dot_hx = 0.0
+                            # enthalpy out = enthalpy in
                             h_fw_out = h_fw
                             t_fw_out = t_fw
                         else:
                             h_fw_out = (m_dot_fw * h_fw - q_dot_hx) / max(m_dot_fw, 1.0e-9)
+                            # if this type is the superheater, do not allow it to go below saturation
                             if h_fw >= h_sat_g:
                                 h_fw_out = max(h_fw_out, h_sat_g)
                             t_fw_out = self._water_temp_from_ph(p_fw, h_fw_out)
+                        # energy balance on HTF side of heat exchanger
                         t_htf_out = (m_dot_htf * cp_htf * t_htf + q_dot_hx) / max(m_dot_htf * cp_htf, 1.0e-9)
 
+                    # calculating the volumetric flow rates
                     rho_fw = self._water_density_from_ph(p_fw, h_fw_out)
                     vol_dot_fw = m_dot_fw / rho_fw if rho_fw > 0.0 else 0.0
 
@@ -499,6 +536,8 @@ class STHX(Component):
                         eta_od,
                     )
                 else:
+                    # Pressure is not possible, need to wait for next iteration to compute temperatures.
+                    # Keep values the same.
                     t_fw = self._water_temp_from_ph(max(p_fw, 1.0), h_fw)
                     self._set_outputs_1_to_11(
                         m_dot_fw,
@@ -514,6 +553,7 @@ class STHX(Component):
                         0.0,
                     )
             else:
+                # no FW Flow entering the system: set HTF outputs as-through
                 t_htf_out = t_htf
                 rho_htf = self._htf_density(fluid_id, t_htf, p_htf)
                 vol_dot_htf = m_dot_htf / max(rho_htf, 1.0e-9)
@@ -536,6 +576,7 @@ class STHX(Component):
                     0.0,
                 )
         else:
+            # no HTF Flow entering the system, set feedwater outlet the same as inlet
             t_htf_out = t_htf
             vol_dot_htf = 0.0
 
