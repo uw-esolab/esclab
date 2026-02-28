@@ -53,6 +53,40 @@ esclab ("engineering simulation and controls lab") is a Python-based teaching to
 
 # Mapping
 
+Source files are identified by the Type number. Generally, the file name contains the number, but sometimes this can instead by found on the first line of the file with the Subroutine definition. The following types are part of a single model and should be converted first:
+4001 (done)
+4004 (done)
+4006 (done)
+4007 (done)
+4008
+4012
+4015
+4016 (done)
+4034
+4035
+4050
+4097
+4100
+4101
+4102
+6001
+6003
+6007
+6011
+6014
+6016
+6017
+6019
+6022
+6027
+6028
+6030
+6031
+6032
+6034
+
+New files should be created in the 'components' folder with descriptive names that reflect the functionality of the component. For example, Type 4001 is a simple pipe flow component, so it could be named 'PipeFlow.py'. The component class should be named using PascalCase and should also reflect the functionality of the component, such as 'PipeFlow'.
+
 ## Odds and ends
 * Remember that Fortran is not case sensitive and there are typically a lot of cases of mixed case usage for the same variables in the TRNSYS code. In the conversion, variable names should be made consistent and follow Python naming conventions (e.g., snake_case for variables and functions, PascalCase for classes).
 * Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.
