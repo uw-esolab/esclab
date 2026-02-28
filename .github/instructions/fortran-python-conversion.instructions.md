@@ -1,5 +1,5 @@
 ---
-description: Load when converting TRNSYS Fortran types to Python esclab types. 
+description: Load when converting TRNSYS Fortran types to Python esclab types. Try running with GPT-5.3-Codex.
 ---
 
 # Your role
@@ -55,7 +55,9 @@ esclab ("engineering simulation and controls lab") is a Python-based teaching to
 
 ## Odds and ends
 * Remember that Fortran is not case sensitive and there are typically a lot of cases of mixed case usage for the same variables in the TRNSYS code. In the conversion, variable names should be made consistent and follow Python naming conventions (e.g., snake_case for variables and functions, PascalCase for classes).
-
+* Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.
+* Include a docstring at the beginning of the component class that states the Type number of the TRNSYS source, and describes the component, its parameters, inputs, and outputs. 
+* Docstrings should be configured for sphinx documentation generation. This means using the reStructuredText format and including sections for parameters, inputs, outputs, and any other relevant information.
 
 ## Places where direct mapping is appropriate:
 1. Parameters or Inputs declared as DOUBLE PRECISION or INTEGER <varname> should map to Component members <varname> = Component.Parameter() or Component.Input() depending on the context.
