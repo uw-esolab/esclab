@@ -8,6 +8,8 @@ from .VarSpeedPump import VarSpeedPump
 
 # Type 4008
 from .TeeReturnHTF import TeeReturnHTF
+# Type 4012
+from .ExpansionSystem import ExpansionSystem
 # Type 4015
 from .TeeOutSimple import TeeOutSimple
 # Type 4035
@@ -60,6 +62,7 @@ __all__ = [
     "VarSpeedPump",
     # New components
     "BoilerFeedwaterHeater",
+    "ExpansionSystem",
     "Condenser",
     "HeatExchanger",
     "HEXDisplay",

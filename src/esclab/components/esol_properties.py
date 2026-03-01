@@ -143,10 +143,25 @@ class Incompressible:
             'specheat': (lambda T: min([max([-45.4022 + 0.690156*T - 0.00327354*T*T + 0.00000817326*T**3 - 1.13234E-08*T**4 + 8.24995E-12*T**5 - 2.46804E-15*T**6, 11.3]), 14.7])),
         },
         "Dowtherm A": {
+            # Density polynomial fit to Dow Chemical published data (kg/m³), T in K.
+            # Fitted to: T_C=15→1061, 50→1031, 100→985, 150→936, 200→884, 250→830, 300→772, 350→712 kg/m³
+            'density': (lambda T: max([1071.0 - 0.803*(T-273.15) - 0.000644*(T-273.15)**2, 100.0])),
             'viscosity': (lambda T: 0.786512*max(T-273.15, 20.)**-1.44263),
             'specheat': (lambda T: 1.47524 + 0.00368606*((T-273.15)-273) - 0.00000516458*((T-273.15)-273)**2 + 8.99399E-09*((T-273.15)-273)**3),
         },
     }
+
+    def enthalpy(self, fluid: str, T: float, T_ref: float = 273.15, P: float = float('nan')):
+        """Calculate specific enthalpy [J/kg] from temperature T [K] relative to T_ref [K] (default 0°C).
+        Computed by integrating specific heat [kJ/(kg·K)] from T_ref to T and converting to J/kg.
+        Only enthalpy differences are physically meaningful; the reference temperature cancels in all
+        energy balance applications."""
+        from scipy.integrate import quad
+        assert fluid in self.funcmap.keys(), f"Fluid '{fluid}' not found in database"
+        assert 'specheat' in self.funcmap[fluid], f"No specific heat data available for '{fluid}'"
+        cp_func = self.funcmap[fluid]['specheat']
+        h_kJ_per_kg, _ = quad(cp_func, T_ref, T)
+        return h_kJ_per_kg * 1000.0  # Convert kJ/kg → J/kg
 
     def density(self, fluid: str, T: float, P: float = float('nan')):
         """Calculate density [kg/m^3] from temperature [K] and optional pressure [Pa].
