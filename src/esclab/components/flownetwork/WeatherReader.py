@@ -3,6 +3,7 @@
 import numpy as np
 
 from esclab.simulate import Component
+from esclab.components.flownetwork.solar_position import solar_tracking
 
 
 class WeatherReader(Component):
@@ -153,7 +154,6 @@ class WeatherReader(Component):
 
             # Compute solar angles
             # longitudeD uses Duffie sign convention (west is +, compared to Google Maps, where west is -)
-            # TODO-NEEDS LIBRARY: solar_tracking function from Solar_Position module
             angle_results = solar_tracking(
                 self.timezone.v,
                 self.longitudeD.v,

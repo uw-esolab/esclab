@@ -7,10 +7,11 @@ Simulation Studio Model: ESOL6017-STHX
 import math
 
 import numpy as np
-from eeslib import fluid_properties as fp  # TODO-NEEDS LIBRARY: eeslib.fluid_properties used for water/steam side (FIT_PH, FIT_TP, FIT_PQ equivalents)
+from eeslib import fluid_properties as fp
 
 from esclab.simulate import Component
 from esclab.components.esol_properties import Incompressible as Inc
+from esclab.components.flownetwork.esol6015_helpers import f_cp_water
 
 
 class SteamToHTFHX(Component):
@@ -304,12 +305,10 @@ class SteamToHTFHX(Component):
 
                     if abs(T_fw - T_sat) > 1.0:
                         # specific heat of feedwater entering heat exchanger
-                        # TODO-NEEDS LIBRARY: f_cp_water function for specific heat of liquid water at P, T
-                        cp_fw = fp.f_cp_water(P=self.P_fw.v, T=T_fw)
+                        cp_fw = f_cp_water(P=self.P_fw.v, T=T_fw)
                     else:
                         # T_fw is too close to saturation temperature to give accurate cp value
-                        # TODO-NEEDS LIBRARY: f_cp_water function for specific heat of liquid water at P, T
-                        cp_fw = fp.f_cp_water(P=self.P_fw.v, T=((T_htf_local + T_fw) / 2.0))
+                        cp_fw = f_cp_water(P=self.P_fw.v, T=((T_htf_local + T_fw) / 2.0))
 
                     # Find effectiveness of heat exchanger based on inlet conditions of HTF and FW
                     # Surface area of the feedwater side of the heat exchanger

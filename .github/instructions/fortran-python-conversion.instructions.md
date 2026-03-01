@@ -105,11 +105,17 @@ You must follow the instructions below when converting the Fortran code to Pytho
 4. Convert property library calls. HTF properties map to esol_properties.Incompressible. Water properties map to eeslib.fluid_properties. Function arguments must be specified with the parameter name (e.g., T=Teval, P=Peval, etc.). Do not use surrogates for properties.  The fluid_id in fortran is a number, but in the new implementation, assume fluid_id is a string that is directly passed on. Do not use "fallback" fluid names like "Nitrate salt". Assume the property functions check for validity and return float values, and do not attempt to convert the return type or clamp/clip/limit input arguments. Flag any suspected units mismatches (e.g., J->kJ) with a comment like "# TODO-NEEDS UNITS CHECK: " and a brief description of the issue.
 5. After direct conversion, note that there are some redundancies in setting and using parameters, inputs, and outputs. Find instances where a local scope variable is assigned the value of the Component.<class> member, and prefer instead to directly use the Component.<class> member in the code. For example, if there is a line like "param1 = self.myparameter.v", and then param1 is used in the code, it would be better to directly use "self.myparameter.v" instead of creating a new variable. Make these changes throughout the code, but do not change any of the underlying logic or structure of the code except to remove these redundancies. 
 
+Do not proceed to Run Type 2 or 3 unless I explicitly ask you to do so.
 
 ## RUN TYPE 2
 
+This step applies only to types that have already been converted and not to skipped (too complex) types.
 
+In this step, follow the same steps as in RUN TYPE 1, except do not pursue type conversion but instead focus on the missing helper functions called in solar_field_modules.f90 and in other fortran files. Note property calculations are implemented multiple times and should not be converted. Instead, revert to eeslib or esol_properties as appropriate. 
 
+Do not change anything in the existing converted TYPE files EXCEPT to add calls to the new helper functions where appropriate. Be sure to go back to the original Fortran context to understand how to properly call the helper functions in the context of the existing code.
+
+Do not proceed to Run Type 3 unless I explicitly ask you to do so. Do not run tests to check output values.
 
 
 ## RUN TYPE 3
@@ -122,3 +128,8 @@ Resolve the following todo's:
 * TODO-NEEDS UNITS CHECK — kPa↔Pa and kJ/kg↔J/kg at eeslib call sites
 * TODO-NEEDS LIBRARY — PB_CV_data, CV_data (ESOL6015), solar_tracking, PressureDrop not yet mapped to Python
 * TODO-NEEDS CONVERSION REVIEW — dynamic array storage patterns, variable input/output count (Types 4050, 6027)
+
+Review units noting that esclab will always use base SI (K, Pa, J, kg, s). Where clues exist that original fortran units may have been different, correct the units with an appropriate convert() call:
+* non-temperature: *convert('<non-SI>', '<SI>')
+* temperature: converttemp('<non-SI>', '<SI>', <temp_value>)
+Mark implemented units conversions with a comment like "# AUTO UNITS CONVERSION IMPLEMENTED: <description of conversion>" for clarity.

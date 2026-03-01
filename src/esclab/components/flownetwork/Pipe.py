@@ -4,6 +4,7 @@ import numpy as np
 
 from esclab.simulate import Component
 from esclab.components.esol_properties import Incompressible
+from esclab.components.flownetwork.sf_piping_helpers import PressureDrop, pipe_dTdt
 
 Inc = Incompressible()
 
@@ -147,10 +148,13 @@ class Pipe(Component):
                 mass_counter = mass_counter + Vol * Inc.density(self.Fluid_ID.v, T=T_cv, P=0.0)
 
             # Compute pressure drop
-            # TODO-NEEDS LIBRARY: PressureDrop from SF_piping_functions - not available in esclab
-            dP = 0.0  # placeholder for PressureDrop(Fluid_ID, Mass_Flow, init_temp, 1.0, Diameter, Roughness,
-            #           L_tot, n_expansions, n_contractions, n_standard_elbows, n_medium_elbows,
-            #           n_large_elbows, n_gate_valves, 0.0, 0.0, 0.0, 0.0, 0.0)
+            dP = PressureDrop(
+                self.Fluid_ID.v, self.Mass_Flow.v, self.init_temp.v, 1.0,
+                self.Diameter.v, self.Roughness.v, self.L_tot.v,
+                self.n_expansions.v, self.n_contractions.v, self.n_standard_elbows.v,
+                self.n_medium_elbows.v, self.n_large_elbows.v,
+                self.n_gate_valves.v, 0.0, 0.0, 0.0, 0.0, 0.0,
+            )
 
             # Set the Initial Values of the Outputs
             self.T_out.v = self.init_temp.v                 # Temperature
@@ -173,24 +177,23 @@ class Pipe(Component):
 
             # Step through time with RK-4
             # K1
-            # TODO-NEEDS LIBRARY: pipe_dTdt from SF_piping_functions - not available in esclab
-            k1 = np.zeros(n_nodes)  # placeholder: pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
-            #                                              self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
+            k1 = pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
+                           self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
             T_hat = T_prev + k1 * timestep / 2.0
 
             # K2
-            k2 = np.zeros(n_nodes)  # placeholder: pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
-            #                                              self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
+            k2 = pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
+                           self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
             T_hat = T_prev + k2 * timestep / 2.0
 
             # K3
-            k3 = np.zeros(n_nodes)  # placeholder: pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
-            #                                              self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
+            k3 = pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
+                           self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
             T_hat = T_prev + k3 * timestep
 
             # K4
-            k4 = np.zeros(n_nodes)  # placeholder: pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
-            #                                              self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
+            k4 = pipe_dTdt(n_nodes, T_hat, Vol, self.Mass_Flow.v,
+                           self.mc_mult.v, self.Fluid_ID.v, self.heat_loss.v, L_cv)
 
             # Step Through Time
             T_hat = T_prev + (k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0) * timestep
@@ -212,10 +215,13 @@ class Pipe(Component):
 
         # COMPUTE PRESSURE DROP
         T_ave = (self.T_nodes[0] + self.T_nodes[n_nodes - 1]) / 2.0
-        # TODO-NEEDS LIBRARY: PressureDrop from SF_piping_functions - not available in esclab
-        dP = 0.0  # placeholder for PressureDrop(Fluid_ID, Mass_Flow, T_ave, 1.0, Diameter, Roughness,
-        #           L_tot, n_expansions, n_contractions, n_standard_elbows, n_medium_elbows,
-        #           n_large_elbows, n_gate_valves, 0.0, 0.0, 0.0, 0.0, 0.0)
+        dP = PressureDrop(
+            self.Fluid_ID.v, self.Mass_Flow.v, T_ave, 1.0,
+            self.Diameter.v, self.Roughness.v, self.L_tot.v,
+            self.n_expansions.v, self.n_contractions.v, self.n_standard_elbows.v,
+            self.n_medium_elbows.v, self.n_large_elbows.v,
+            self.n_gate_valves.v, 0.0, 0.0, 0.0, 0.0, 0.0,
+        )
 
         # Set the Outputs from this Model
         self.T_out.v = self.T_nodes[n_nodes - 1]          # Temperature

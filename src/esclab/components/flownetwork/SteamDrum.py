@@ -6,9 +6,7 @@ import numpy as np
 from eeslib import fluid_properties as fp
 
 from esclab.simulate import Component
-
-# TODO-NEEDS LIBRARY: ESOL6015_myfunctions - numerical derivative helpers and tank-level geometry solver.
-# Functions needed: drhodhcp, drhodpch, dudhcp, dudpch, tank_level
+from esclab.components.flownetwork.esol6015_helpers import drhodhcp, drhodpch, dudhcp, dudpch, tank_level
 
 
 class SteamDrum(Component):
@@ -590,11 +588,10 @@ class SteamDrum(Component):
         )
 
         # aa calculations
-        # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch
-        drhodhcp_a = drhodhcp(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dh=dh)  # noqa: F821
-        drhodpch_a = drhodpch(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dP=dP)  # noqa: F821
-        dudhcp_a = dudhcp(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dh=dh)      # noqa: F821
-        dudpch_a = dudpch(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dP=dP)      # noqa: F821
+        drhodhcp_a = drhodhcp(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dh=dh)
+        drhodpch_a = drhodpch(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dP=dP)
+        dudhcp_a = dudhcp(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dh=dh)
+        dudpch_a = dudpch(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dP=dP)
         # TODO-NEEDS UNITS CHECK: P in Pa -> kPa (/1000); H in J/kg -> kJ/kg (/1000); inte result kJ/kg -> J/kg (*1000)
         rho_tank = fp.density("water", P=P_tank_prev_val / 1000.0, H=h_tank_prev_val / 1000.0)  # TODO-NEEDS LIBRARY: eeslib rho from P,H
         u_tank = fp.internalenergy("water", P=P_tank_prev_val / 1000.0, H=h_tank_prev_val / 1000.0)  # TODO-NEEDS LIBRARY: eeslib u from P,H
@@ -636,11 +633,10 @@ class SteamDrum(Component):
         h_aa = h_tank_prev_val + dhdt_aa * ts / 2.0
 
         # bb calculations
-        # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch
-        drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)  # noqa: F821
-        drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dP=dP)  # noqa: F821
-        dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)      # noqa: F821
-        dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)      # noqa: F821
+        drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
+        drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
+        dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
+        dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
         # TODO-NEEDS UNITS CHECK: P_aa in Pa -> kPa (/1000); h_aa in J/kg -> kJ/kg (/1000)
         rho_tank = fp.density("water", P=P_aa / 1000.0, H=h_aa / 1000.0)         # TODO-NEEDS LIBRARY: eeslib rho from P,H
         u_tank = fp.internalenergy("water", P=P_aa / 1000.0, H=h_aa / 1000.0)    # TODO-NEEDS LIBRARY: eeslib u from P,H
@@ -680,11 +676,10 @@ class SteamDrum(Component):
         tracker_10 = denominator
 
         # cc calculations
-        # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch
-        drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)  # noqa: F821
-        drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dP=dP)  # noqa: F821
-        dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)      # noqa: F821
-        dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)      # noqa: F821
+        drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
+        drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
+        dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
+        dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
         # TODO-NEEDS UNITS CHECK: P_bb in Pa -> kPa (/1000); h_bb in J/kg -> kJ/kg (/1000)
         rho_tank = fp.density("water", P=P_bb / 1000.0, H=h_bb / 1000.0)         # TODO-NEEDS LIBRARY: eeslib rho from P,H
         u_tank = fp.internalenergy("water", P=P_bb / 1000.0, H=h_bb / 1000.0)    # TODO-NEEDS LIBRARY: eeslib u from P,H
@@ -724,11 +719,10 @@ class SteamDrum(Component):
         h_cc = h_tank_prev_val + dhdt_cc * ts
 
         # dd calculations
-        # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch
-        drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)  # noqa: F821
-        drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dP=dP)  # noqa: F821
-        dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)      # noqa: F821
-        dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)      # noqa: F821
+        drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
+        drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
+        dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
+        dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
         # TODO-NEEDS UNITS CHECK: P_cc in Pa -> kPa (/1000); h_cc in J/kg -> kJ/kg (/1000)
         rho_tank = fp.density("water", P=P_cc / 1000.0, H=h_cc / 1000.0)         # TODO-NEEDS LIBRARY: eeslib rho from P,H
         u_tank = fp.internalenergy("water", P=P_cc / 1000.0, H=h_cc / 1000.0)    # TODO-NEEDS LIBRARY: eeslib u from P,H
@@ -783,8 +777,7 @@ class SteamDrum(Component):
         rho_f_new = fp.density("water", P=P_tank_new_val / 1000.0, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib rho_f from P,Q
         Vol_liquid = m_tank_f_new / rho_f_new
         level_tol = 0.000001  # [m]
-        # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - tank_level geometry solver
-        L_tank_new_val = tank_level(Vol_liquid, self.D_tank.v, self.Length_tank.v, L_tank_prev_val, level_tol)  # noqa: F821
+        L_tank_new_val = tank_level(Vol_liquid, self.D_tank.v, self.Length_tank.v, L_tank_prev_val, level_tol)
 
         # enthalpy of steam leaving the steam drum
         # TODO-NEEDS UNITS CHECK: P_tank_new in Pa -> kPa (/1000); enth result kJ/kg -> J/kg (*1000)

@@ -6,6 +6,8 @@ import numpy as np
 from eeslib import fluid_properties as fp
 
 from esclab.simulate import Component
+from esclab.components.flownetwork.simple_pipe import FricFactor_IC
+from esclab.components.flownetwork.esol6015_helpers import f_cp_water, drhodhcp, drhodpch, dudhcp, dudpch
 
 
 class Condenser(Component):
@@ -600,8 +602,7 @@ class Condenser(Component):
 
             # Find heat transfer coefficient on inside of tubes based on cooling water
             if Re_CW > 2300.0:  # turbulent flow -> Gnielinski Correlation
-                # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - FricFactor_IC function
-                ff = FricFactor_IC(0.0, Re_CW, ff)  # noqa: F821
+                ff = FricFactor_IC(0.0, Re_CW, ff)
                 Pr = mu_water * 4200.0 / k_water
                 Nu = ((ff / 8.0) * (Re_CW - 1000.0) * Pr) / (1.0 + 12.7 * (ff / 8.0) ** (0.5) * (Pr ** (2.0 / 3.0) - 1.0))
                 h_bar_cool = Nu * k_water / self.ID.v
@@ -628,8 +629,7 @@ class Condenser(Component):
             mu_L = mu_L / 1000000.0  # converting from microPa-s to Pa-s
             h_sat_g = h_sat_g * 1000.0
             h_sat_f = h_sat_f * 1000.0
-            # TODO-NEEDS LIBRARY: ESOL6015_myfunctions (or local helper) - f_cp_water function
-            cp_L = f_cp_water(P_tank_prev, T_sat - 2.0)  # noqa: F821
+            cp_L = f_cp_water(P_tank_prev, T_sat - 2.0)
             # Modified latent heat as recommended by Rosenhow (near EQ.27 of Incropera and DeWitt 2002)
             h_fg_mod = (h_sat_g - h_sat_f) + 0.68 * cp_L * (T_sat - T_cw)
             # Eq. 10.45
@@ -718,13 +718,11 @@ class Condenser(Component):
                 h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                 h_pump = h_pump * 1000.0  # Converting from KJ/kg to J/kg
 
-                # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                drhodhcp_a = drhodhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)  # noqa: F821
-                drhodpch_a = drhodpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dp=dP)  # noqa: F821
-                dudhcp_a = dudhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)  # noqa: F821
-                dudpch_a = dudpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dp=dP)  # noqa: F821
+                drhodhcp_a = drhodhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
+                drhodpch_a = drhodpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
+                dudhcp_a = dudhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
+                dudpch_a = dudpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
                 rho_tank = m_tank_prev / Vol_tank
-                # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
                 u_tank = fp.intenergy("water", P=P_tank_prev / 1000.0, h=h_tank_prev / 1000.0)
                 u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
 
@@ -747,12 +745,10 @@ class Condenser(Component):
                 h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                 h_pump = h_pump * 1000.0
 
-                # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)  # noqa: F821
-                drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dp=dP)  # noqa: F821
-                dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)  # noqa: F821
-                dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dp=dP)  # noqa: F821
-                # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
+                drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
+                drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
+                dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
+                dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
                 u_tank = fp.intenergy("water", P=P_aa / 1000.0, h=h_aa / 1000.0)
                 u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
 
@@ -775,13 +771,11 @@ class Condenser(Component):
                 h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                 h_pump = h_pump * 1000.0
 
-                # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)  # noqa: F821
-                drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dp=dP)  # noqa: F821
-                dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)  # noqa: F821
-                dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dp=dP)  # noqa: F821
+                drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
+                drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
+                dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
+                dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
                 rho_tank = m_tank_prev / Vol_tank
-                # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
                 u_tank = fp.intenergy("water", P=P_bb / 1000.0, h=h_bb / 1000.0)
                 u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
 
@@ -804,11 +798,10 @@ class Condenser(Component):
                 h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                 h_pump = h_pump * 1000.0
 
-                # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)  # noqa: F821
-                drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dp=dP)  # noqa: F821
-                dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)  # noqa: F821
-                dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dp=dP)  # noqa: F821
+                drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
+                drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
+                dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
+                dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
                 # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
                 u_tank = fp.intenergy("water", P=P_cc / 1000.0, h=h_cc / 1000.0)
                 u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
@@ -927,13 +920,11 @@ class Condenser(Component):
                     h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                     h_pump = h_pump * 1000.0  # Converting from KJ/kg to J/kg
 
-                    # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                    drhodhcp_a = drhodhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)  # noqa: F821
-                    drhodpch_a = drhodpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dp=dP)  # noqa: F821
-                    dudhcp_a = dudhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)  # noqa: F821
-                    dudpch_a = dudpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dp=dP)  # noqa: F821
+                    drhodhcp_a = drhodhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
+                    drhodpch_a = drhodpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
+                    dudhcp_a = dudhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
+                    dudpch_a = dudpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
                     rho_tank = m_tank_prev / Vol_tank
-                    # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
                     u_tank = fp.intenergy("water", P=P_tank_prev / 1000.0, h=h_tank_prev / 1000.0)
                     u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
 
@@ -956,12 +947,10 @@ class Condenser(Component):
                     h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                     h_pump = h_pump * 1000.0
 
-                    # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                    drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)  # noqa: F821
-                    drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dp=dP)  # noqa: F821
-                    dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)  # noqa: F821
-                    dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dp=dP)  # noqa: F821
-                    # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
+                    drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
+                    drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
+                    dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
+                    dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
                     u_tank = fp.intenergy("water", P=P_aa / 1000.0, h=h_aa / 1000.0)
                     u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
 
@@ -984,13 +973,11 @@ class Condenser(Component):
                     h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                     h_pump = h_pump * 1000.0
 
-                    # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                    drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)  # noqa: F821
-                    drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dp=dP)  # noqa: F821
-                    dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)  # noqa: F821
-                    dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dp=dP)  # noqa: F821
+                    drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
+                    drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
+                    dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
+                    dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
                     rho_tank = m_tank_prev / Vol_tank
-                    # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
                     u_tank = fp.intenergy("water", P=P_bb / 1000.0, h=h_bb / 1000.0)
                     u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
 
@@ -1014,12 +1001,10 @@ class Condenser(Component):
                     h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
                     h_pump = h_pump * 1000.0
 
-                    # TODO-NEEDS LIBRARY: ESOL6015_myfunctions - drhodhcp, drhodpch, dudhcp, dudpch functions
-                    drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)  # noqa: F821
-                    drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dp=dP)  # noqa: F821
-                    dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)  # noqa: F821
-                    dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dp=dP)  # noqa: F821
-                    # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
+                    drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
+                    drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
+                    dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
+                    dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
                     u_tank = fp.intenergy("water", P=P_cc / 1000.0, h=h_cc / 1000.0)
                     u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
 

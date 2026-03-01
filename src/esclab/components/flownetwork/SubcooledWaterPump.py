@@ -2,70 +2,11 @@
 
 import numpy as np
 
+from eeslib import fluid_properties as fp
+
 from esclab.simulate import Component
+from esclab.components.flownetwork.esol6015_helpers import PB_CV_data
 
-# TODO-NEEDS LIBRARY: eeslib.fluid_properties for water/steam property lookups
-#   (FIT_PH, FIT_TP, FIT_PS).  Import and replace the stubs below once the
-#   eeslib API is confirmed.
-# from eeslib import fluid_properties as fp
-
-# TODO-NEEDS LIBRARY: PB_CV_data from ESOL6015_myfunctions for valve CV lookup.
-#   This function returns the flow coefficient CV given valve type, diameter, and
-#   valve position.  It is separate from the CV_data helper in valve.py.
-# from ESOL6015_myfunctions import PB_CV_data
-
-
-# ---------------------------------------------------------------------------
-# Fluid-property stub wrappers – replace with real eeslib calls once available
-# ---------------------------------------------------------------------------
-
-def FIT_PH(fluid, P, h, **kwargs):  # noqa: N802  (mirrors Fortran name)
-    """
-    Return water property from (P [kPa], h [kJ/kg]).
-
-    Keyword argument selects the returned property:
-        entr  – specific entropy  [kJ/kg-K]
-        temp  – temperature       [K or °C, depending on eeslib convention]
-
-    TODO-NEEDS LIBRARY: replace body with eeslib.fluid_properties call.
-    """
-    raise NotImplementedError("FIT_PH stub – replace with eeslib.fluid_properties")
-
-
-def FIT_TP(fluid, T, P, **kwargs):  # noqa: N802
-    """
-    Return water property from (T [K or °C], P [kPa]).
-
-    Keyword argument selects the returned property:
-        enth  – specific enthalpy [kJ/kg]
-
-    TODO-NEEDS LIBRARY: replace body with eeslib.fluid_properties call.
-    """
-    raise NotImplementedError("FIT_TP stub – replace with eeslib.fluid_properties")
-
-
-def FIT_PS(fluid, P, s, **kwargs):  # noqa: N802
-    """
-    Return water property from (P [kPa], s [kJ/kg-K]).
-
-    Keyword argument selects the returned property:
-        enth  – specific enthalpy [kJ/kg]
-
-    TODO-NEEDS LIBRARY: replace body with eeslib.fluid_properties call.
-    """
-    raise NotImplementedError("FIT_PS stub – replace with eeslib.fluid_properties")
-
-
-def PB_CV_data(valve_type, valve_diameter, valve_position):  # noqa: N802
-    """
-    Return valve flow coefficient CV.
-
-    TODO-NEEDS LIBRARY: replace body with ESOL6015_myfunctions.PB_CV_data call.
-    """
-    raise NotImplementedError("PB_CV_data stub – replace with ESOL6015_myfunctions import")
-
-
-# ---------------------------------------------------------------------------
 
 class SubcooledWaterPump(Component):
     """
@@ -217,17 +158,12 @@ class SubcooledWaterPump(Component):
                 m_dot_pump = Flow * self.rho_water
                 P_pump_out = self.C.v * self.rho_water * self.g_acc
                 T_pump_out = 300.0
-                # TODO-NEEDS UNITS CHECK: FIT_TP expects P in kPa (dividing Pa by 1000)
-                #   and returns enth in kJ/kg (multiply by 1000 to get J/kg)
-                h_pump_out = FIT_TP("water", T=T_pump_out, P=P_pump_out / 1000.0, enth=None)
-                h_pump_out = h_pump_out * 1000.0
+                h_pump_out = fp.enthalpy("water", T=T_pump_out, P=P_pump_out / 1000.0) * 1000.0
             else:
                 m_dot_pump = 0.0
                 P_pump_out = self.P_in.v
                 T_pump_out = 300.0
-                # TODO-NEEDS UNITS CHECK: FIT_TP expects P in kPa, returns enth in kJ/kg
-                h_pump_out = FIT_TP("water", T=T_pump_out, P=P_pump_out / 1000.0, enth=None)
-                h_pump_out = h_pump_out * 1000.0
+                h_pump_out = fp.enthalpy("water", T=T_pump_out, P=P_pump_out / 1000.0) * 1000.0
 
             m_dot_total_init += m_dot_pump
             h_out_sum += m_dot_pump * h_pump_out
@@ -266,10 +202,7 @@ class SubcooledWaterPump(Component):
             (-self.B.v - np.sqrt(discriminant)) / (2.0 * self.A.v),
         )
 
-        # TODO-NEEDS UNITS CHECK: FIT_PH expects P in kPa (P_in/1000) and h in
-        #   kJ/kg (h_in/1000); returns entr in kJ/kg-K (multiply by 1000 for J/kg-K)
-        s_pump_in = FIT_PH("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0, entr=None)
-        s_pump_in = s_pump_in * 1000.0  # Converting from kJ/kg-K to J/kg-K
+        s_pump_in = fp.entropy("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0) * 1000.0
 
         # TODO-NEEDS CONVERSION REVIEW: read variable-length inputs into lists each
         # call.  Replace placeholder accesses below with actual input connections.
@@ -327,10 +260,7 @@ class SubcooledWaterPump(Component):
                 elif Point_1y < 0.0:   # decrease flow rate
                     Q_new = max(Point_1x - 0.01, Q_min)  # Move to minimum flow pump can provide
 
-                # TODO-NEEDS UNITS CHECK: FIT_PH expects P in kPa and h in kJ/kg,
-                #   returns entr in kJ/kg-K (multiply by 1000 for J/kg-K)
-                s_pump_in = FIT_PH("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0, entr=None)
-                s_pump_in = s_pump_in * 1000.0  # Converting from kJ/kg-K to J/kg-K
+                s_pump_in = fp.entropy("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0) * 1000.0
                 m_dot_pump = Q_new * self.rho_water
                 P_pump_out = (self.A.v * Q_new**2 + self.B.v * Q_new + self.C.v) * self.rho_water * 9.81 + self.P_in.v
 
@@ -343,10 +273,7 @@ class SubcooledWaterPump(Component):
                 )
 
                 s_pump_out_s = s_pump_in
-                # TODO-NEEDS UNITS CHECK: FIT_PS expects P in kPa and s in kJ/kg-K,
-                #   returns enth in kJ/kg (multiply by 1000 for J/kg)
-                h_pump_out_s = FIT_PS("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0, enth=None)
-                h_pump_out_s = h_pump_out_s * 1000.0
+                h_pump_out_s = fp.enthalpy("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0) * 1000.0
                 W_dot_pump_s = m_dot_pump * (h_pump_out_s - self.h_in.v)
                 W_dot_pump = W_dot_pump_s / Eta_Pump
                 h_pump_out = (m_dot_pump * self.h_in.v + W_dot_pump) / m_dot_pump
@@ -395,10 +322,7 @@ class SubcooledWaterPump(Component):
                     else:                  # Error is Negative and slope is equal to zero, pump head is too low so flow must decrease
                         Q_new = max(Point_2x - 0.1, Q_min)
 
-                # TODO-NEEDS UNITS CHECK: FIT_PH expects P in kPa and h in kJ/kg,
-                #   returns entr in kJ/kg-K (multiply by 1000 for J/kg-K)
-                s_pump_in = FIT_PH("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0, entr=None)
-                s_pump_in = s_pump_in * 1000.0  # Converting from kJ/kg-K to J/kg-K
+                s_pump_in = fp.entropy("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0) * 1000.0
                 m_dot_pump = Q_new * self.rho_water
                 P_pump_out = (self.A.v * Q_new**2 + self.B.v * Q_new + self.C.v) * self.rho_water * 9.81 + self.P_in.v
 
@@ -411,10 +335,7 @@ class SubcooledWaterPump(Component):
                 )
 
                 s_pump_out_s = s_pump_in
-                # TODO-NEEDS UNITS CHECK: FIT_PS expects P in kPa and s in kJ/kg-K,
-                #   returns enth in kJ/kg (multiply by 1000 for J/kg)
-                h_pump_out_s = FIT_PS("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0, enth=None)
-                h_pump_out_s = h_pump_out_s * 1000.0
+                h_pump_out_s = fp.enthalpy("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0) * 1000.0
                 W_dot_pump_s = m_dot_pump * (h_pump_out_s - self.h_in.v)
                 W_dot_pump = W_dot_pump_s / Eta_Pump
                 h_pump_out = (m_dot_pump * self.h_in.v + W_dot_pump) / m_dot_pump
@@ -434,7 +355,6 @@ class SubcooledWaterPump(Component):
 
             # Solve for the lead valve pressure drop and outlet pressure
             VP = self._VP[N_lead]
-            # TODO-NEEDS LIBRARY: PB_CV_data from ESOL6015_myfunctions
             CV = PB_CV_data(int(self.Valve_Type.v), self.Valve_Diameter.v, VP)
             Vol_dot_gpm = self._m_dot_pump[N_lead] / self.rho_water * 15850.323140625002
             DELTA_P_Valve = Vol_dot_gpm**2 / CV**2 * 6894.76
@@ -448,7 +368,6 @@ class SubcooledWaterPump(Component):
                         P_pump_out = self._P_pump_out[i]
                         Q_pump_guess = self._m_dot_pump[i] / self.rho_water
                         VP = self._VP[i]
-                        # TODO-NEEDS LIBRARY: PB_CV_data from ESOL6015_myfunctions
                         CV = PB_CV_data(int(self.Valve_Type.v), self.Valve_Diameter.v, VP)
                         error = tol + 1.0
                         whileiterations = 0
@@ -523,15 +442,7 @@ class SubcooledWaterPump(Component):
                             0.01,
                         )
                         s_pump_out_s = s_pump_in
-                        # TODO-NEEDS UNITS CHECK: FIT_PS expects P in kPa and s in kJ/kg-K,
-                        #   returns enth in kJ/kg (multiply by 1000 for J/kg)
-                        h_pump_out_s = FIT_PS(
-                            "water",
-                            P=P_pump_out / 1000.0,
-                            s=s_pump_out_s / 1000.0,
-                            enth=None,
-                        )
-                        h_pump_out_s = h_pump_out_s * 1000.0
+                        h_pump_out_s = fp.enthalpy("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0) * 1000.0
                         W_dot_pump_s = m_dot_pump * (h_pump_out_s - self.h_in.v)
                         W_dot_pump = W_dot_pump_s / Eta_pump_i
                         h_pump_out = (m_dot_pump * self.h_in.v + W_dot_pump) / m_dot_pump
@@ -561,8 +472,7 @@ class SubcooledWaterPump(Component):
                 h_out_sum += self._h_pump_out[i] * m_dot_pump_i
 
             h_out_mixed = h_out_sum / m_dot_total_sum
-            # TODO-NEEDS UNITS CHECK: FIT_PH expects P in kPa and h in kJ/kg, returns temp [K or °C]
-            T_out_val = FIT_PH("water", P=P_out / 1000.0, h=h_out_mixed / 1000.0, temp=None)
+            T_out_val = fp.temperature("water", P=P_out / 1000.0, h=h_out_mixed / 1000.0)
             Vol_dot_out_val = m_dot_total_sum / self.rho_water
 
             self.m_dot_total.v = m_dot_total_sum
@@ -574,8 +484,7 @@ class SubcooledWaterPump(Component):
 
         else:  # All pumps are off
 
-            # TODO-NEEDS UNITS CHECK: FIT_PH expects P in kPa and h in kJ/kg, returns temp [K or °C]
-            T_in = FIT_PH("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0, temp=None)
+            T_in = fp.temperature("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0)
             self.m_dot_total.v = 0.00001
             self.Vol_dot_out.v = 0.0
             self.P_out.v = self.P_in.v

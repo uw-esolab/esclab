@@ -3,7 +3,7 @@
 import eeslib.fluid_properties as fp
 
 from esclab.simulate import Component
-from esclab.components.flownetwork.valve import CV_data  # TODO-NEEDS LIBRARY: PB_CV_data from ESOL6015_myfunctions - using CV_data as placeholder
+from esclab.components.flownetwork.esol6015_helpers import PB_CV_data
 
 
 class LPBFWHTankPump(Component):
@@ -207,8 +207,7 @@ class LPBFWHTankPump(Component):
             W_dot_pump = 0.0
         else:  # Pump is ON
             # Find the amount of flow leaving the pump based on the valve position
-            # TODO-NEEDS LIBRARY: PB_CV_data from ESOL6015_myfunctions; using CV_data as placeholder
-            CV = CV_data(self.Valve_type.v, self.D_valve.v, self.VP_output.v)  # retrieve CV value based on current valve position
+            CV = PB_CV_data(int(self.Valve_type.v), self.D_valve.v, self.VP_output.v)  # retrieve CV value based on current valve position
             m_dot_pump = self.m_dot_pump.v
             if m_dot_pump == 0.0:
                 m_dot_pump = m_dot_pump_min

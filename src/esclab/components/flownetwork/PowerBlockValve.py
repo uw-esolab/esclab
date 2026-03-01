@@ -1,9 +1,7 @@
 """Power Block Valve component model (Type 6001)."""
 
-# TODO-NEEDS LIBRARY: PB_CV_data - valve flow coefficient lookup (from ESOL6015_myfunctions)
-# PB_CV_data(Valve_type, D_in, Valve_position) -> flow coefficient CV
-
 from eeslib import fluid_properties as fp
+from esclab.components.flownetwork.esol6015_helpers import PB_CV_data
 
 from esclab.simulate import Component
 
@@ -46,7 +44,7 @@ class PowerBlockValve(Component):
 
             # Find pressure drop across valve
             # Flow Coefficient based on valve type, valve diameter and valve position
-            CV = PB_CV_data(Valve_type=int(self.Valve_type.v), D_in=self.Valve_diameter.v, Valve_position=VP_input)  # TODO-NEEDS LIBRARY: PB_CV_data - valve flow coefficient lookup
+            CV = PB_CV_data(Valve_type=int(self.Valve_type.v), D_in=self.Valve_diameter.v, Valve_position=VP_input)
 
             # USED FOR VALIDATION OF FEEDWATER PUMPS
             # if (Valve_type /= 5) Then !Call Valve Function
@@ -115,7 +113,7 @@ class PowerBlockValve(Component):
 
             # Calculate pressure drop across valve
             # Flow Coefficient based on valve type, valve diameter and valve position
-            CV = PB_CV_data(Valve_type=int(self.Valve_type.v), D_in=self.Valve_diameter.v, Valve_position=VP_output)  # TODO-NEEDS LIBRARY: PB_CV_data - valve flow coefficient lookup
+            CV = PB_CV_data(Valve_type=int(self.Valve_type.v), D_in=self.Valve_diameter.v, Valve_position=VP_output)
 
             # USED FOR VALIDATION OF FEEDWATER PUMPS
             # if (Valve_type /= 3) Then !Call Valve Function
@@ -177,7 +175,7 @@ class PowerBlockValve(Component):
 
             # Calculate pressure drop across valve
             # Flow Coefficient based on valve type, valve diameter and valve position
-            CV = PB_CV_data(Valve_type=int(self.Valve_type.v), D_in=self.Valve_diameter.v, Valve_position=VP_output)  # TODO-NEEDS LIBRARY: PB_CV_data - valve flow coefficient lookup
+            CV = PB_CV_data(Valve_type=int(self.Valve_type.v), D_in=self.Valve_diameter.v, Valve_position=VP_output)
 
             if self.P_in.v > 1000.0:  # Pressure is possible, compute specific gravity
                 v_ref = 0.0009600113091621002  # density of water at reference state (atm pressure and 15.5 deg C)
