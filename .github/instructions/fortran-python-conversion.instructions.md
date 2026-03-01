@@ -90,7 +90,7 @@ We are focusing on converting the following types first:
 Conversions can be complex and could be completed in multiple stages. 
 1. Focus on mapping of the parameters, inputs, outputs, and the if/then blocks for iteration and time step conditions. 
 2. Identify libraries or function reference that require conversion and ask for help in locating those to appropriate libraries if needed.
-3. Make a second pass through on the physics code found in the main iteration section of the calculate() method. This is where there is the most opportunity to use modern data structures and speed-enhancing libraries. 
+3. Make a second pass through on the physics code found in the main iteration section of the calculate() method. This is where there is the most opportunity to use modern data structures and speed-enhancing libraries. Try to maintain direct conversion as much as possible, saving any streamlining and restructuring for later passes.
 4. Make a pass through to verify that all comments from the original Fortran code are preserved and that docstrings are clear and informative. DON'T FORGET THIS STEP. Preserve comments from the original fortran code unless changes render the comments inaccurate or irrelevant. Do not add comments like "Same structure as fortran", but add comments provided in the original fortran source that explain the purpose of the code blocks. 
 5. Make a final pass that checks for conversion completeness, leaving TODO's where any tasks remain. 
 
