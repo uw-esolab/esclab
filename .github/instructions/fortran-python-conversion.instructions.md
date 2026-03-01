@@ -103,6 +103,18 @@ for _idx in range(1, 25):
       locals()[f"input_{_idx}"] = Component.Input()
 to define inputs, parameters, or outputs. Use the descriptive variable names and declare them equal directly to the Component.Input(), Component.Parameter(), or Component.Output() member. 
 
+Components with dynamic allocation of parameters, inputs and outputs corresponding to TRNSYS cycle inputs allocate the number of inputs on the fly. This doesn't conform to the <name> = Component.<class> structure we are targeting very well. For input groups that require dynamic allocation, instead use numpy arrays as the data type of the Component.Input/Param/Output. The specification is something like:
+<item> = Component.<Parameter/Input>(np.array([]))
+This would replace things like:
+for _idx in range(1, n_inputs + 1):
+      locals()[f"input_{_idx}"] = Component.Input()
+or 
+pressure_1 = Component.Input()
+pressure_2 = Component.Input()
+...
+
+Output data types do not take initial values, but the array can be assigned in the main code body
+
 ## Odds and ends
 * Remember that Fortran is not case sensitive and there are typically a lot of cases of mixed case usage for the same variables in the TRNSYS code. In the conversion, variable names should be made consistent and follow Python naming conventions (e.g., snake_case for variables and functions, PascalCase for classes).
 * Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.
