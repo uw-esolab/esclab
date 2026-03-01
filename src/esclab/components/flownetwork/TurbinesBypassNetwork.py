@@ -1039,11 +1039,11 @@ class TurbinesBypassNetwork(Component):
             lp_drain_vpi = lp_drain_prev
 
         # Reheater and condenser side inputs
-        m_dot_htf = max(self._safe(self.m_dot_htf.v, 0.0), 0.0)
-        p_htf_in = max(self._safe(self.htf_p_in.v, 2.0e6), 1.0)
+        m_dot_htf = self._safe(self.m_dot_htf.v, 0.0)
+        p_htf_in = self._safe(self.htf_p_in.v, 2.0e6)
         t_htf_in = self._safe(self.htf_t_in.v, 560.0)
-        fluid_name = str(self._safe(self.fluid_id.v, "Nitrate Salt"))
-        p_cond = max(self._safe(self.p_cond.v, 1.0e5), 1.0)
+        fluid_name = str(self.fluid_id.v)
+        p_cond = self._safe(self.p_cond.v, 1.0e5)
 
         self._set_all_outputs_zero(self)
 

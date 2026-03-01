@@ -82,9 +82,11 @@ class TeeReturn(Component):
     _props = Inc()
 
     def _select_pressure_out(self):
-        if self.Pressure_Through.v == 0.0:
-            return self.P_1.v
-        return self.P_2.v
+        if self.P_1.v * self.P_2.v < 0.0:
+            return max(self.P_1.v, self.P_2.v)
+        if self.P_1.v > 0.0 and self.P_2.v > 0.0:
+            return 0.5 * (self.P_1.v + self.P_2.v)
+        return 1.0
 
     def _solve_mixed_temperature(self):
         # -------------------------------------------------------------------------------------------------------
@@ -94,25 +96,32 @@ class TeeReturn(Component):
         if np.abs(m_dot_tot) < 1.0e-12:
             if np.isfinite(self.Temperature.v):
                 return float(self.Temperature.v)
-            return float(np.clip(0.5 * (self.T_1.v + self.T_2.v), 273.0, 1000.0))
+            return float(0.5 * (self.T_1.v + self.T_2.v))
 
         # -------------------------------------------------------------------------------------------------------
         # Energy Balance
         # Compute c_p(T1), c_p(T2), then solve for T_out such that c_p(T_out)*T_out
         # matches the mixed enthalpy term from both branches.
         # -------------------------------------------------------------------------------------------------------
-        fluid_name = str(self.Fluid_ID.v) if self.Fluid_ID.v == self.Fluid_ID.v else "Nitrate Salt"
-        cp_t1 = float(self._props.specheat(fluid_name, max(self.T_1.v, 273.0), self.P_1.v))
-        cp_t2 = float(self._props.specheat(fluid_name, max(self.T_2.v, 273.0), self.P_2.v))
+        fluid_name = str(self.Fluid_ID.v)
+        if self.T_1.v > 273.0:
+            cp_t1 = float(self._props.specheat(fluid_name, self.T_1.v, self.P_1.v))
+        else:
+            cp_t1 = float(self._props.specheat(fluid_name, 300.0, self.P_1.v))
+
+        if self.T_2.v > 273.0:
+            cp_t2 = float(self._props.specheat(fluid_name, self.T_2.v, self.P_2.v))
+        else:
+            cp_t2 = float(self._props.specheat(fluid_name, 300.0, self.P_2.v))
         cp_times_t_out = (
             self.m_dot_1.v * cp_t1 * self.T_1.v
             + self.m_dot_2.v * cp_t2 * self.T_2.v
         ) / m_dot_tot
 
         if np.isfinite(self.Temperature.v):
-            t_out_guess = float(np.clip(self.Temperature.v, 273.0, 1000.0))
+            t_out_guess = float(self.Temperature.v)
         else:
-            t_out_guess = float(np.clip(0.5 * (self.T_1.v + self.T_2.v), 273.0, 1000.0))
+            t_out_guess = float(0.5 * (self.T_1.v + self.T_2.v))
 
         tol = 100.0
         learning_rate = 0.5
@@ -126,7 +135,7 @@ class TeeReturn(Component):
         # Iterative root solve with secant-like update and bounded guesses.
         while np.abs(error) > tol and n_iter < 1000:
             n_iter += 1
-            cp_guess = float(self._props.specheat(fluid_name, max(t_out_guess, 273.0), self.P_1.v))
+            cp_guess = float(self._props.specheat(fluid_name, t_out_guess, self.P_1.v))
             cp_times_t_out_guess = t_out_guess * cp_guess
             error = cp_times_t_out - cp_times_t_out_guess
 

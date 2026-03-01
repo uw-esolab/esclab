@@ -123,10 +123,6 @@ class STHX(Component):
     _props = Inc()
 
     @staticmethod
-    def _safe(value, default=0.0):
-        return value if value == value else default
-
-    @staticmethod
     def _alarm_trip(value, alarm_limit, trip_limit, high=True):
         if high:
             alarm = 1.0 if value >= alarm_limit else 0.0
@@ -192,9 +188,9 @@ class STHX(Component):
         ts_sec = max(self.model.settings.timestep, 1.0e-9)
         n_int = max(int(math.ceil(60.0 / ts_sec)), 1)
 
-        t_htf_out = self._safe(self.t_htf_out.v, t_htf)
+        t_htf_out = self.t_htf_out.v
         t_fw_eval = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw, 1.0)))
-        t_fw_out = self._safe(self.t_fw_out.v, t_fw_eval)
+        t_fw_out = self.t_fw_out.v
         t_fw = t_fw_eval
 
         if len(self._htf_in_hist) != n_int:
@@ -209,8 +205,8 @@ class STHX(Component):
         # High HTF Temp In Check
         alarm, trip = self._alarm_trip(
             t_htf,
-            self._safe(self.high_htf_temp_in_alarm.v),
-            self._safe(self.high_htf_temp_in_trip.v),
+            self.high_htf_temp_in_alarm.v,
+            self.high_htf_temp_in_trip.v,
             high=True,
         )
         self.alarm_high_htf_temp_in.v = alarm
@@ -219,8 +215,8 @@ class STHX(Component):
         # Low HTF Temp In Check
         alarm, trip = self._alarm_trip(
             t_htf,
-            self._safe(self.low_htf_temp_in_alarm.v),
-            self._safe(self.low_htf_temp_in_trip.v),
+            self.low_htf_temp_in_alarm.v,
+            self.low_htf_temp_in_trip.v,
             high=False,
         )
         self.alarm_low_htf_temp_in.v = alarm
@@ -229,8 +225,8 @@ class STHX(Component):
         # Low HTF Temp Out Check
         alarm, trip = self._alarm_trip(
             t_htf_out,
-            self._safe(self.low_htf_temp_out_alarm.v),
-            self._safe(self.low_htf_temp_out_trip.v),
+            self.low_htf_temp_out_alarm.v,
+            self.low_htf_temp_out_trip.v,
             high=False,
         )
         self.alarm_low_htf_temp_out.v = alarm
@@ -239,8 +235,8 @@ class STHX(Component):
         # High HTF Flow entering HX Check
         alarm, trip = self._alarm_trip(
             m_dot_htf,
-            self._safe(self.high_htf_flow_in_alarm.v),
-            self._safe(self.high_htf_flow_in_trip.v),
+            self.high_htf_flow_in_alarm.v,
+            self.high_htf_flow_in_trip.v,
             high=True,
         )
         self.alarm_high_htf_flow_in.v = alarm
@@ -249,8 +245,8 @@ class STHX(Component):
         # High HTF Pressure entering HX Check
         alarm, trip = self._alarm_trip(
             p_htf,
-            self._safe(self.high_htf_pressure_in_alarm.v),
-            self._safe(self.high_htf_pressure_in_trip.v),
+            self.high_htf_pressure_in_alarm.v,
+            self.high_htf_pressure_in_trip.v,
             high=True,
         )
         self.alarm_high_htf_pressure_in.v = alarm
@@ -259,8 +255,8 @@ class STHX(Component):
         # Low FW Temperature entering HX Check
         alarm, trip = self._alarm_trip(
             t_fw,
-            self._safe(self.low_fw_temp_in_alarm.v),
-            self._safe(self.low_fw_temp_in_trip.v),
+            self.low_fw_temp_in_alarm.v,
+            self.low_fw_temp_in_trip.v,
             high=False,
         )
         self.alarm_low_fw_temp_in.v = alarm
@@ -272,8 +268,8 @@ class STHX(Component):
         self.hr_htf_in.v = hr_htf
         alarm, trip = self._alarm_trip(
             abs(hr_htf),
-            self._safe(self.high_hr_htf_in_alarm.v),
-            self._safe(self.high_hr_htf_in_trip.v),
+            self.high_hr_htf_in_alarm.v,
+            self.high_hr_htf_in_trip.v,
             high=True,
         )
         self.alarm_high_hr_htf_in.v = alarm
@@ -284,8 +280,8 @@ class STHX(Component):
         self.hr_fw_out.v = hr_fw
         alarm, trip = self._alarm_trip(
             abs(hr_fw),
-            self._safe(self.high_hr_fw_out_alarm.v),
-            self._safe(self.high_hr_fw_out_trip.v),
+            self.high_hr_fw_out_alarm.v,
+            self.high_hr_fw_out_trip.v,
             high=True,
         )
         self.alarm_high_hr_fw_out.v = alarm
@@ -296,31 +292,25 @@ class STHX(Component):
 
     def calculate(self):
         # Read parameters and inputs (Fortran ordering).
-        heat_transfer_rated = max(self._safe(self.heat_transfer_rated.v), 0.0)
-        m_dot_htf_rated = max(self._safe(self.m_dot_htf_rated.v, 1.0), 1.0e-9)
-        rated_exp = self._safe(self.rated_exp.v, 0.8)
-        no_shell_passes = max(self._safe(self.no_shell_passes.v, 1.0), 1.0)
-        no_tube_passes = max(self._safe(self.no_tube_passes.v, 1.0), 1.0)
-        length_hx = max(self._safe(self.length_hx.v, 1.0), 1.0e-9)
-        tube_od = max(self._safe(self.tube_od.v, 0.02), 1.0e-9)
-        tube_th = max(self._safe(self.tube_th.v, 0.001), 0.0)
-        no_tubes = max(self._safe(self.no_tubes.v, 1.0), 1.0)
-        fluid_id = self._safe(self.fluid_id.v, "Nitrate Salt")
-        fluid_name = str(fluid_id)
+        heat_transfer_rated = max(self.heat_transfer_rated.v, 0.0)
+        m_dot_htf_rated = max(self.m_dot_htf_rated.v, 1.0e-9)
+        rated_exp = self.rated_exp.v
+        no_shell_passes = max(self.no_shell_passes.v, 1.0)
+        no_tube_passes = max(self.no_tube_passes.v, 1.0)
+        length_hx = max(self.length_hx.v, 1.0e-9)
+        tube_od = max(self.tube_od.v, 1.0e-9)
+        tube_th = max(self.tube_th.v, 0.0)
+        no_tubes = max(self.no_tubes.v, 1.0)
+        fluid_name = str(self.fluid_id.v)
 
-        m_dot_fw = max(self._safe(self.m_dot_fw.v), 0.0)
-        p_fw = self._safe(self.p_fw.v)
-        h_fw = self._safe(self.h_fw.v)
-        m_dot_htf = max(self._safe(self.m_dot_htf.v), 0.0)
-        p_htf = self._safe(self.p_htf.v)
-        t_htf = self._safe(self.t_htf.v, 500.0)
-        if t_htf == 0.0:
-            # default value until actual temperature enters
-            t_htf = 500.0
+        m_dot_fw = max(self.m_dot_fw.v, 0.0)
+        p_fw = self.p_fw.v
+        h_fw = self.h_fw.v
+        m_dot_htf = max(self.m_dot_htf.v, 0.0)
+        p_htf = self.p_htf.v
+        t_htf = self.t_htf.v
 
-        is_start_time = (
-            abs(self._safe(getattr(self.model, "time", 0.0)) - self._safe(getattr(self.model.settings, "start_time", 0.0))) < 1.0e-12
-        )
+        is_start_time = abs(getattr(self.model, "time", 0.0) - getattr(self.model.settings, "start_time", 0.0)) < 1.0e-12
         if is_start_time and not self.model.is_converged:
             # Do all of the first timestep manipulations here.
             # Set the initial values of outputs 1..11.

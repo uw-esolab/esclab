@@ -58,29 +58,25 @@ class TESTank(Component):
     _wall_temp = 305.0
     _props = Inc()
 
-    @staticmethod
-    def _safe(value, default):
-        return value if value == value else default
-
     def calculate(self):
         # Model Parameters
-        d_in = max(self._safe(self.d_in.v, 1.0), 1.0e-6)
-        height = max(self._safe(self.height.v, 1.0), 1.0e-6)
-        ins_th = max(self._safe(self.ins_th.v, 0.0), 0.0)
-        k_iso = max(self._safe(self.k_iso.v, 0.04), 1.0e-8)
-        emiss = min(max(self._safe(self.emiss.v, 0.8), 0.0), 1.0)
-        t0 = self._safe(self.t0.v, 600.0)
-        l0 = max(self._safe(self.l0.v, 0.0), 0.0)
-        fluid_id = self._safe(self.id_fluid.v, "Nitrate Salt")
+        d_in = self.d_in.v
+        height = self.height.v
+        ins_th = self.ins_th.v
+        k_iso = self.k_iso.v
+        emiss = self.emiss.v
+        t0 = self.t0.v
+        l0 = self.l0.v
+        fluid_id = self.id_fluid.v
         fluid_name = str(fluid_id)
 
         # Model Inputs
-        t_in = self._safe(self.t_in.v, t0)
-        m_in = max(self._safe(self.m_in.v, 0.0), 0.0)
-        m_out = max(self._safe(self.m_out.v, 0.0), 0.0)
-        t_env = self._safe(self.t_env.v, 300.0)
-        v_env = max(self._safe(self.v_env.v, 0.0), 0.0)
-        v_air = max(self._safe(self.v_air.v, 0.0), 0.0)
+        t_in = self.t_in.v
+        m_in = self.m_in.v
+        m_out = self.m_out.v
+        t_env = self.t_env.v
+        v_env = self.v_env.v
+        v_air = self.v_air.v
 
         p_salt = 101325.0
 
@@ -91,14 +87,14 @@ class TESTank(Component):
         rho_air = 1.1614
         visc_air = 15.89e-6
         alpha_air = 22.5e-6
-        beta_air = 1.0 / max(t_env, 1.0)
+        beta_air = 1.0 / t_env
         sigma = 5.67e-8
         pr_ext = 0.7
         t_crit = 10.0
 
         # Do All of the First Timestep Manipulations Here - There Are No Iterations at the Initial Time
         if self.model.is_first_step:
-            rho_salt = max(float(self._props.density(fluid_name, t0, p_salt)), 1.0)
+            rho_salt = float(self._props.density(fluid_name, t0, p_salt))
             area_cs = math.pi * d_in**2 / 4.0
             m_tank = rho_salt * (l0 * area_cs)
             tw = 305.0
@@ -125,7 +121,7 @@ class TESTank(Component):
         tw_start = self._wall_temp
 
         # BREAK UP TIMESTEP INTO SUB-TIMESTEPS IF NEEDED
-        ts = max(self.model.settings.timestep * 3600.0, 1.0e-9)
+        ts = self.model.settings.timestep * 3600.0
         if ts > t_crit:
             n_sub = int(math.ceil(ts / t_crit))
             sub_ts = ts / n_sub

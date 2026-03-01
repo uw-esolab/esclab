@@ -95,14 +95,12 @@ class SimplePipe(Component):
         if(self.m_dot_in.v > 0.00): # okay to continue
 
             self.m_dot_out.v = self.m_dot_in.v
-            self.guess.v =  max([self.ff.v,0.1]) # Friction Factor Guess from last iteration
+            self.guess.v = max([self.ff.v, 0.1])  # Friction Factor Guess from last iteration
 
             # Calculating Pressure Drop
-            fluid_name = str(self.fluid.v) if self.fluid.v == self.fluid.v else "Nitrate Salt"
-            t_in_eval = max(self.T_in.v, 1.0)
-            p_in_eval = max(self.P_in.v, 0.0)
-            rho = max(float(self._props.density(fluid_name, t_in_eval, p_in_eval)), 1.0e-9)
-            visc = max(float(self._props.viscosity(fluid_name, t_in_eval, p_in_eval)), 1.0e-12)
+            fluid_name = str(self.fluid.v)
+            rho = float(self._props.density(fluid_name, self.T_in.v, self.P_in.v))
+            visc = float(self._props.viscosity(fluid_name, self.T_in.v, self.P_in.v))
             vel = self.m_dot_in.v/rho/(3.14/4. *self.Pipe_ID.v**2.)
             Re = rho* vel * self.Pipe_ID.v/visc
 

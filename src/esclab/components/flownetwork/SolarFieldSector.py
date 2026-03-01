@@ -217,14 +217,6 @@ class SolarFieldSector(Component):
         return Path(__file__).resolve().parent / "fortran-source" / "debugging"
 
     @staticmethod
-    def _safe(value, default=0.0):
-        return value if value == value else default
-
-    @staticmethod
-    def _clamp(value, low=0.0, high=1.0):
-        return max(low, min(high, value))
-
-    @staticmethod
     def _h_dowtherm_a(temperature_k):
         td = temperature_k - 273.15
         return (-12.7078 + 1.481714 * td + 0.0014292857 * td**2) * 1000.0
@@ -252,18 +244,17 @@ class SolarFieldSector(Component):
         if mass_flow <= 0.0:
             return 0.0
 
-        d = max(diameter, 1.0e-5)
-        l = max(length, 0.0)
-        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-        rho = max(float(self._props.density(fluid_name, temperature_k, pressure_pa)), 1.0)
-        mu = max(float(self._props.viscosity(fluid_name, temperature_k, pressure_pa)), 1.0e-6)
+        d = diameter
+        l = length
+        fluid_name = str(self.fluid_id.v)
+        rho = float(self._props.density(fluid_name, temperature_k, pressure_pa))
+        mu = float(self._props.viscosity(fluid_name, temperature_k, pressure_pa))
         area = math.pi * d**2 / 4.0
-        vel = mass_flow / max(rho * area, 1.0e-9)
-        re = abs(rho * vel * d / max(mu, 1.0e-9))
+        vel = mass_flow / (rho * area)
+        re = abs(rho * vel * d / mu)
 
-        self._ff_guess = max(self._ff_guess, 0.05)
-        rel_rough = max(self._safe(self.roughness_pipe.v, 1.0e-5), 1.0e-8) / d
-        ff = FricFactor_IC(rel_rough, max(re, 1.0), self._ff_guess)
+        rel_rough = self.roughness_pipe.v / d
+        ff = FricFactor_IC(rel_rough, re, self._ff_guess)
         if ff is None:
             ff = self._ff_guess
         try:
@@ -272,25 +263,24 @@ class SolarFieldSector(Component):
             ff = self._ff_guess
         if not math.isfinite(ff):
             ff = self._ff_guess
-        ff = max(ff, 0.01)
         self._ff_guess = ff
 
         g = 9.81
         hl_pm = ff * vel * vel / (2.0 * d * g)
         dp_pipe = hl_pm * rho * g * l
 
-        dp_exp = 0.25 * rho * vel * vel * max(n_exp, 0.0)
-        dp_con = 0.25 * rho * vel * vel * max(n_con, 0.0)
-        d_over_f_hl = (d / max(ff, 1.0e-9)) * hl_pm * rho * g
-        dp_els = 0.9 * d_over_f_hl * max(n_els, 0.0)
-        dp_elm = 0.75 * d_over_f_hl * max(n_elm, 0.0)
-        dp_ell = 0.6 * d_over_f_hl * max(n_ell, 0.0)
-        dp_gav = 0.19 * d_over_f_hl * max(n_gav, 0.0)
-        dp_glv = 10.0 * d_over_f_hl * max(n_glv, 0.0)
-        dp_chv = 2.5 * d_over_f_hl * max(n_chv, 0.0)
-        dp_lw = 1.8 * d_over_f_hl * max(n_lw, 0.0)
-        dp_lcv = 10.0 * d_over_f_hl * max(n_lcv, 0.0)
-        dp_bja = 8.69 * d_over_f_hl * max(n_bja, 0.0)
+        dp_exp = 0.25 * rho * vel * vel * n_exp
+        dp_con = 0.25 * rho * vel * vel * n_con
+        d_over_f_hl = (d / ff) * hl_pm * rho * g
+        dp_els = 0.9 * d_over_f_hl * n_els
+        dp_elm = 0.75 * d_over_f_hl * n_elm
+        dp_ell = 0.6 * d_over_f_hl * n_ell
+        dp_gav = 0.19 * d_over_f_hl * n_gav
+        dp_glv = 10.0 * d_over_f_hl * n_glv
+        dp_chv = 2.5 * d_over_f_hl * n_chv
+        dp_lw = 1.8 * d_over_f_hl * n_lw
+        dp_lcv = 10.0 * d_over_f_hl * n_lcv
+        dp_bja = 8.69 * d_over_f_hl * n_bja
 
         return max(dp_pipe + dp_exp + dp_con + dp_els + dp_elm + dp_ell + dp_gav + dp_glv + dp_chv + dp_lw + dp_lcv + dp_bja, 0.0)
 
@@ -394,7 +384,7 @@ class SolarFieldSector(Component):
         self._h2_pressure = [np.array([], dtype=float) for _ in range(n_loop)]
         self._m_dot_var = np.ones(n_loop, dtype=float)
 
-        sf_label_int = int(round(self._safe(self.sf_label.v, 1.0)))
+        sf_label_int = int(round(self.sf_label.v))
         loop_file = Path(f"LoopDef_Sector{sf_label_int}") / "loops.txt"
         if not loop_file.exists():
             loop_file = self._debugging_root() / f"LoopDef_Sector{sf_label_int}" / "loops.txt"
@@ -657,9 +647,9 @@ class SolarFieldSector(Component):
         rho = np.zeros(n_cv, dtype=float)
         c_bar = np.zeros(n_cv, dtype=float)
         for n in range(n_cv):
-            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-            rho[n] = max(float(self._props.density(fluid_name, t_bar[n], 0.0)), 1.0)
-            c_bar[n] = max(float(self._props.specheat(fluid_name, t_bar[n], 0.0)) * 1000.0, 1.0)
+            fluid_name = str(self.fluid_id.v)
+            rho[n] = float(self._props.density(fluid_name, t_bar[n], 0.0))
+            c_bar[n] = float(self._props.specheat(fluid_name, t_bar[n], 0.0)) * 1000.0
 
         dt_bar = (q_in + m_dot * c_bar * (t_nodes[:-1] - t_nodes[1:])) / (mc_sf * rho * vol * c_bar)
 
@@ -763,8 +753,8 @@ class SolarFieldSector(Component):
         self._n_node_header = max(cc, 2)
         self._n_cv_header = max(self._n_node_header - 1, 1)
 
-        row_distance = max(self._safe(self.row_distance.v, 0.0), 0.0)
-        l_exp_loop = max(self._safe(self.l_exp_loop.v, 0.0), 0.0)
+        row_distance = self.row_distance.v
+        l_exp_loop = self.l_exp_loop.v
         l_base = row_distance * 2.0
         l_exp = (row_distance * 2.0 + l_exp_loop * 2.0) / 2.0
 
@@ -784,7 +774,7 @@ class SolarFieldSector(Component):
                 cc += 1
         self._l_cv_return[self._n_cv_header] = l_base
 
-        d_header = max(1.5 * max(self._safe(self.d_receiver.v, 0.07), 1.0e-4), 1.0e-4)
+        d_header = 1.5 * self.d_receiver.v
         self._d_inlet = self._diams_inlet(self._n_cv_header, self._n_loop_i, row_distance, l_exp_loop, self.geom_file.v, d_header)
         self._d_return = self._diams_return(self._n_cv_header + 1, self._n_loop_i, row_distance, l_exp_loop, self.geom_file.v, d_header)
         self._vol_inlet = self._vols_inlet(self._n_cv_header, self._n_loop_i, row_distance, l_exp_loop, self.geom_file.v, d_header)
@@ -844,10 +834,10 @@ class SolarFieldSector(Component):
         features = np.zeros((n_cv, 7), dtype=float)
 
         m_dot_eff = m_dot_loop * self._m_dot_var[loop_idx]
-        t_amb = self._safe(self.t_amb.v, 300.0)
-        wind = self._safe(self.wind.v, 0.0)
-        t_sky = self._safe(self.t_sky.v, 300.0)
-        w_ap = self._safe(self.w_ap.v, 0.0)
+        t_amb = self.t_amb.v
+        wind = self.wind.v
+        t_sky = self.t_sky.v
+        w_ap = self.w_ap.v
 
         for state in range(1, 5):
             inds = self._get_loop_state_indices(loop_idx, state)
@@ -894,9 +884,9 @@ class SolarFieldSector(Component):
         rho = np.zeros(n_cv, dtype=float)
         c_bar = np.zeros(n_cv, dtype=float)
         for n in range(n_cv):
-            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-            rho[n] = max(float(self._props.density(fluid_name, t_bar[n], 0.0)), 1.0)
-            c_bar[n] = max(float(self._props.specheat(fluid_name, t_bar[n], 0.0)) * 1000.0, 1.0)
+            fluid_name = str(self.fluid_id.v)
+            rho[n] = float(self._props.density(fluid_name, t_bar[n], 0.0))
+            c_bar[n] = float(self._props.specheat(fluid_name, t_bar[n], 0.0)) * 1000.0
 
         dt_bar = (q_in + m_dot * c_bar * (t_nodes[:-1] - t_nodes[1:])) / (mc_sf * rho * vol * c_bar)
 
@@ -912,20 +902,20 @@ class SolarFieldSector(Component):
         n_cv = n_nodes - 1
         d_t = np.zeros(n_nodes, dtype=float)
         d_t_bar = np.zeros(n_cv, dtype=float)
-        mc_mult = max(self._safe(self.mc_header_mult.v, 1.0), 1.0e-6)
-        heat_loss = self._safe(self.inlet_header_heat_loss.v, 0.0)
+        mc_mult = self.mc_header_mult.v
+        heat_loss = self.inlet_header_heat_loss.v
         p_ref = 0.0
 
         for n in range(n_cv):
             m_dot = max(self._m_dots_in[n], 0.0)
             vol = max(self._vol_inlet[n], 1.0e-9)
             t_bar = (t_nodes[n] + t_nodes[n + 1]) / 2.0
-            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-            c = max(float(self._props.specheat(fluid_name, t_bar, p_ref)) * 1000.0, 1.0)
-            rho = max(float(self._props.density(fluid_name, t_bar, p_ref)), 1.0)
+            fluid_name = str(self.fluid_id.v)
+            c = float(self._props.specheat(fluid_name, t_bar, p_ref)) * 1000.0
+            rho = float(self._props.density(fluid_name, t_bar, p_ref))
             h1 = self._h_dowtherm_a(t_nodes[n])
             h2 = self._h_dowtherm_a(t_nodes[n + 1])
-            d_t_bar[n] = (m_dot * (h1 - h2) - heat_loss * self._l_cv_inlet[n]) / max(mc_mult * vol * rho * c, 1.0e-9)
+            d_t_bar[n] = (m_dot * (h1 - h2) - heat_loss * self._l_cv_inlet[n]) / (mc_mult * vol * rho * c)
 
         d_t[0] = 0.0
         for n in range(1, n_nodes - 1):
@@ -938,16 +928,16 @@ class SolarFieldSector(Component):
         n_cv = n_nodes - 1
         d_t = np.zeros(n_nodes, dtype=float)
         d_t_bar = np.zeros(n_cv, dtype=float)
-        mc_mult = max(self._safe(self.mc_header_mult.v, 1.0), 1.0e-6)
-        heat_loss = self._safe(self.return_header_heat_loss.v, 0.0)
+        mc_mult = self.mc_header_mult.v
+        heat_loss = self.return_header_heat_loss.v
         p_ref = 0.0
 
         # Fortran jj = 2 (1-based) -> zero-based index 1
         jj = 1
         for n in range(n_cv):
-            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-            rho = max(float(self._props.density(fluid_name, (t_nodes[n] + t_nodes[n + 1]) / 2.0, p_ref)), 1.0)
-            c = max(float(self._props.specheat(fluid_name, (t_nodes[n] + t_nodes[n + 1]) / 2.0, p_ref)) * 1000.0, 1.0)
+            fluid_name = str(self.fluid_id.v)
+            rho = float(self._props.density(fluid_name, (t_nodes[n] + t_nodes[n + 1]) / 2.0, p_ref))
+            c = float(self._props.specheat(fluid_name, (t_nodes[n] + t_nodes[n + 1]) / 2.0, p_ref)) * 1000.0
             h1 = self._h_dowtherm_a(t_nodes[n])
             h2 = self._h_dowtherm_a(t_nodes[n + 1])
 
@@ -964,12 +954,12 @@ class SolarFieldSector(Component):
                         + self._m_dots_return[n - 1] * h1
                         - self._m_dots_return[n] * h2
                         - heat_loss * self._l_cv_return[n]
-                    ) / max(mc_mult * self._vol_return[n] * rho * c, 1.0e-9)
+                    ) / (mc_mult * self._vol_return[n] * rho * c)
                     jj += 1
                 else:
                     d_t_bar[n] = (
                         self._m_dots_return[n] * (h1 - h2) - heat_loss * self._l_cv_return[n]
-                    ) / max(self._vol_return[n] * rho * c, 1.0e-9)
+                    ) / (self._vol_return[n] * rho * c)
 
         d_t[0] = 0.0
         for n in range(1, n_nodes - 1):
@@ -1048,7 +1038,7 @@ class SolarFieldSector(Component):
             t_hold_l[n] = self._loop_t[-1, il]
             t_hold_r[n] = self._loop_t[-1, ir]
 
-        dt_seconds = max(self._safe(getattr(self.model.settings, "timestep", 0.0), 0.0) * 3600.0, 0.0)
+        dt_seconds = getattr(self.model.settings, "timestep", 0.0) * 3600.0
         self._t_header_return = self._rk4_step(
             lambda y: self._dt_dt_return(y, t_hold_l, t_hold_r, m_left, m_right),
             self._t_header_return,
@@ -1060,17 +1050,17 @@ class SolarFieldSector(Component):
         self._t_header_inlet[0] = t_inlet
 
     def _initialize_state(self):
-        self._n_loop_i = max(int(round(self._safe(self.n_loop.v, 1.0))), 1)
-        self._n_nodes_i = max(int(round(self._safe(self.n_nodes_per_loop.v, 2.0))), 2)
+        self._n_loop_i = int(round(self.n_loop.v))
+        self._n_nodes_i = int(round(self.n_nodes_per_loop.v))
 
-        l_tot = max(self._safe(self.l_tot.v, 1.0), 1.0e-6)
-        d_receiver = max(self._safe(self.d_receiver.v, 0.07), 1.0e-4)
-        l_segment = l_tot / max(self._n_nodes_i - 1, 1)
+        l_tot = self.l_tot.v
+        d_receiver = self.d_receiver.v
+        l_segment = l_tot / (self._n_nodes_i - 1)
         self._vol_loop_cv = l_segment * math.pi * (d_receiver / 2.0) ** 2
 
-        t_init_sf = self._safe(self.t_init_sf.v, self._safe(self.temperature.v, 573.15))
-        t_init_in = self._safe(self.t_init_in_header.v, t_init_sf)
-        t_init_ret = self._safe(self.t_init_return_header.v, t_init_sf)
+        t_init_sf = self.t_init_sf.v if self.t_init_sf.v == self.t_init_sf.v else self.temperature.v
+        t_init_in = self.t_init_in_header.v
+        t_init_ret = self.t_init_return_header.v
 
         self._configure_header_topology()
 
@@ -1087,14 +1077,14 @@ class SolarFieldSector(Component):
         self._features = np.zeros((self._n_nodes_i - 1, 7), dtype=float)
 
         fluid = self.fluid_id.v
-        rho_init = max(float(self._props.density(str(fluid), t_init_sf, 0.0)), 1.0)
+        rho_init = float(self._props.density(str(fluid), t_init_sf, 0.0))
         self._mass_htf_hold = self._n_loop_i * (self._n_nodes_i - 1) * self._vol_loop_cv * rho_init
         self._t4_ave_hold = t_init_sf
         self._is_initialized = True
 
         # Set the Initial Values of the Outputs (#,Value)
-        self.mass_flow_out.v = self._safe(self.mass_flow.v, 0.0)
-        self.pressure_out.v = self._safe(self.pressure.v, 0.0)
+        self.mass_flow_out.v = self.mass_flow.v
+        self.pressure_out.v = self.pressure.v
         self.temperature_out.v = t_init_ret
         self.t4_ave.v = t_init_sf
         self.mass_counter_out.v = self._mass_htf_hold
@@ -1105,44 +1095,43 @@ class SolarFieldSector(Component):
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         #!! Perform Thermal Computations at the End of Each Timestep !!
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        mass_flow = max(self._safe(self.mass_flow.v, 0.0), 0.0)
-        ani = max(self._safe(self.ani.v, 0.0), 0.0)
-        theta = self._safe(self.theta.v, 0.0)
-        phi = self._safe(self.phi.v, 0.0)
-        t_inlet = self._safe(self.temperature.v, self._loop_t[0, 0])
+        mass_flow = self.mass_flow.v
+        ani = self.ani.v
+        theta = self.theta.v
+        phi = self.phi.v
+        t_inlet = self.temperature.v
         fluid = self.fluid_id.v
 
         eta_defocus = np.array(
             [
-                self._clamp(self._safe(self.eta_defocus_1.v, 1.0)),
-                self._clamp(self._safe(self.eta_defocus_2.v, 1.0)),
-                self._clamp(self._safe(self.eta_defocus_3.v, 1.0)),
-                self._clamp(self._safe(self.eta_defocus_4.v, 1.0)),
+                self.eta_defocus_1.v,
+                self.eta_defocus_2.v,
+                self.eta_defocus_3.v,
+                self.eta_defocus_4.v,
             ],
             dtype=float,
         )
-        eta_tracking = self._clamp(self._safe(self.eta_tracking.v, 1.0))
-        eta_soil = self._clamp(self._safe(self.eta_soil.v, 1.0))
-        eta_reflect = self._clamp(self._safe(self.eta_reflect.v, 1.0))
-        sf_avail = self._clamp(self._safe(self.sf_avail.v, 1.0))
+        eta_tracking = self.eta_tracking.v
+        eta_soil = self.eta_soil.v
+        eta_reflect = self.eta_reflect.v
+        sf_avail = self.sf_avail.v
         eta_tot_base = eta_tracking * eta_soil * eta_reflect
 
-        eta_iam = self._safe(self.iam_a0.v, 1.0) + self._safe(self.iam_a1.v, 0.0) * theta + self._safe(self.iam_a2.v, 0.0) * theta**2
-        eta_iam = max(eta_iam, 0.0)
+        eta_iam = self.iam_a0.v + self.iam_a1.v * theta + self.iam_a2.v * theta**2
 
-        w_ap = max(self._safe(self.w_ap.v, 0.0), 0.0)
-        n_sca = max(int(round(self._safe(self.n_sca.v, 1.0))), 1)
-        m_dot_loop = mass_flow / max(self._n_loop_i, 1)
+        w_ap = self.w_ap.v
+        n_sca = int(round(self.n_sca.v))
+        m_dot_loop = mass_flow / self._n_loop_i
 
         self._update_headers_with_rk4(t_inlet, m_dot_loop)
         self._defocus_groups[:] = 0.0
 
         # Define Relevant Tracking Variables
-        t_41 = self._safe(self.t_tracking.v, t_inlet) + 2.0
-        t_42 = self._safe(self.t_tracking.v, t_inlet) + 4.0
-        t_4d = self._safe(self.t_tracking.v, t_inlet) + 6.0
+        t_41 = self.t_tracking.v + 2.0
+        t_42 = self.t_tracking.v + 4.0
+        t_4d = self.t_tracking.v + 6.0
 
-        timestep_s = max(self._safe(getattr(self.model.settings, "timestep", 0.0), 0.0) * 3600.0, 0.0)
+        timestep_s = getattr(self.model.settings, "timestep", 0.0) * 3600.0
         t_bar_sf_accum = np.zeros(self._n_nodes_i - 1, dtype=float)
 
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1187,7 +1176,7 @@ class SolarFieldSector(Component):
                     self._time_df[loop] = self._time_df[loop] + timestep_s
                     self._defocus_groups[group_index] = self._defocus_groups[group_index] - (self._defocus_groups[group_index] % 10.0) + 4.0
 
-                if self._time_df[loop] > max(self._safe(self.time_lim_df.v, 0.0), 0.0):
+                if self._time_df[loop] > self.time_lim_df.v:
                     mode = 5.0
                     self._defocus_groups[group_index] = self._defocus_groups[group_index] - (self._defocus_groups[group_index] % 10.0) + 5.0
             else:
@@ -1201,9 +1190,9 @@ class SolarFieldSector(Component):
             n_cv = self._n_nodes_i - 1
             dni_array = np.full(n_cv, ani, dtype=float)
 
-            l_sca = max(self._safe(self.l_tot.v, 1.0) / max(n_sca, 1), 1.0e-9)
-            end_gain_pred = max(self._safe(self.ave_focal_length.v, 0.0) * math.tan(theta) - self._safe(self.distance_sca.v, 0.0), 0.0) / l_sca
-            end_loss_pred = 1.0 - self._safe(self.ave_focal_length.v, 0.0) * math.tan(theta) / l_sca
+            l_sca = self.l_tot.v / n_sca
+            end_gain_pred = (self.ave_focal_length.v * math.tan(theta) - self.distance_sca.v) / l_sca
+            end_loss_pred = 1.0 - self.ave_focal_length.v * math.tan(theta) / l_sca
             if ((loop + 1) % 2) == 0:
                 eta_endloss = np.array(
                     [
@@ -1229,10 +1218,10 @@ class SolarFieldSector(Component):
                 dni_array[:] = 0.0
             else:
                 n_sca_i = max(n_sca, 1)
-                eta_row = self._row_shadow(phi, self._safe(self.row_distance.v, 0.0), w_ap)
+                eta_row = self._row_shadow(phi, self.row_distance.v, w_ap)
                 cos_theta = max(abs(math.cos(theta)), 1.0e-12)
                 for cc in range(1, n_sca_i + 1):
-                    eta_iam = self._safe(self.iam_a0.v, 1.0) + self._safe(self.iam_a1.v, 0.0) * theta / cos_theta + self._safe(self.iam_a2.v, 0.0) * theta**2 / cos_theta
+                    eta_iam = self.iam_a0.v + self.iam_a1.v * theta / cos_theta + self.iam_a2.v * theta**2 / cos_theta
                     eta_iam = max(eta_iam, 0.0)
                     idx0 = int((cc - 1) * n_cv / n_sca_i)
                     idx1 = int(cc * n_cv / n_sca_i)
@@ -1243,9 +1232,9 @@ class SolarFieldSector(Component):
             features = self._build_features_for_loop(loop, t_bar, dni_array, m_dot_loop)
 
             # Step through time with RK-4 (Fortran call sequence)
-            l_segment = max(self._safe(self.l_tot.v, 1.0), 1.0e-9) / max(self._n_nodes_i - 1, 1)
-            vol = max(self._vol_loop_cv, 1.0e-12)
-            mc_sf = max(self._safe(self.mc_receiver_mult.v, 1.0), 1.0e-9)
+            l_segment = self.l_tot.v / (self._n_nodes_i - 1)
+            vol = self._vol_loop_cv
+            mc_sf = self.mc_receiver_mult.v
             m_dot_eff = m_dot_loop * self._m_dot_var[loop]
 
             if self._nn_loaded:
@@ -1291,7 +1280,7 @@ class SolarFieldSector(Component):
         ind_4 = max(min(ind_4, self._n_nodes_i - 1), 0)
         self._t4_ave_hold = float(np.mean(self._loop_t[ind_4, :]))
 
-        rho_cv = max(float(self._props.density(str(fluid), float(np.mean(self._loop_t)), 0.0)), 1.0)
+        rho_cv = float(self._props.density(str(fluid), float(np.mean(self._loop_t)), 0.0))
         self._mass_htf_hold = self._n_loop_i * (self._n_nodes_i - 1) * self._vol_loop_cv * rho_cv
 
         # TODO(Type4034): Verify header derivative parity numerically against
@@ -1308,6 +1297,7 @@ class SolarFieldSector(Component):
     def _update_mass_and_temperature_groups(self):
         # HTF Mass in SF Computation (Only do once because temperatures aren't changing within timestep)
         n_cv_header = max(self._n_cv_header, 1)
+        n_sca = int(round(self.n_sca.v))
         self._mass_htf_hold = 0.0
         self._temperature_groups[:] = 0.0
 
@@ -1315,11 +1305,11 @@ class SolarFieldSector(Component):
         vol_header = max(self._vol_loop_cv, 1.0e-9)
         for n in range(n_cv_header):
             t_cv = (self._t_header_inlet[n] + self._t_header_inlet[n + 1]) / 2.0
-            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-            self._mass_htf_hold += vol_header * max(float(self._props.density(fluid_name, t_cv, 0.0)), 1.0)
+            fluid_name = str(self.fluid_id.v)
+            self._mass_htf_hold += vol_header * float(self._props.density(fluid_name, t_cv, 0.0))
 
         # Solar Field
-        ind_4 = self._n_nodes_i - int(math.ceil((self._n_nodes_i - 1) / max(int(round(self._safe(self.n_sca.v, 1.0))), 1) / 2.0)) - 1
+        ind_4 = self._n_nodes_i - int(math.ceil((self._n_nodes_i - 1) / max(n_sca, 1) / 2.0)) - 1
         ind_4 = max(min(ind_4, self._n_nodes_i - 2), 0)
 
         t4_accum = 0.0
@@ -1350,8 +1340,8 @@ class SolarFieldSector(Component):
 
             t_bar = (self._loop_t[1:, loop] + self._loop_t[:-1, loop]) / 2.0
             for n in range(self._n_nodes_i - 1):
-                fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-                self._mass_htf_hold += self._vol_loop_cv * max(float(self._props.density(fluid_name, float(t_bar[n]), 0.0)), 1.0)
+                fluid_name = str(self.fluid_id.v)
+                self._mass_htf_hold += self._vol_loop_cv * float(self._props.density(fluid_name, float(t_bar[n]), 0.0))
 
             t4_accum += t_ind_4
 
@@ -1361,29 +1351,29 @@ class SolarFieldSector(Component):
         for n in range(n_cv_header + 1):
             n2 = min(n + 1, len(self._t_header_return) - 1)
             t_cv = (self._t_header_return[n] + self._t_header_return[n2]) / 2.0
-            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-            self._mass_htf_hold += vol_header * max(float(self._props.density(fluid_name, t_cv, 0.0)), 1.0)
+            fluid_name = str(self.fluid_id.v)
+            self._mass_htf_hold += vol_header * float(self._props.density(fluid_name, t_cv, 0.0))
 
     def _pressure_drop_surrogate(self):
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         #!! Perform all hydraulic calculations here (allow new solution for every iteration) !!
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        mass_flow = max(self._safe(self.mass_flow.v, 0.0), 0.0)
+        mass_flow = self.mass_flow.v
         if mass_flow <= 0.0:
             return 0.0
 
-        d_receiver = max(self._safe(self.d_receiver.v, 0.07), 1.0e-4)
-        l_tot = max(self._safe(self.l_tot.v, 1.0), 1.0e-6)
-        row_distance = max(self._safe(self.row_distance.v, 0.0), 0.0)
-        pressure = self._safe(self.pressure.v, 0.0)
+        d_receiver = self.d_receiver.v
+        l_tot = self.l_tot.v
+        row_distance = self.row_distance.v
+        pressure = self.pressure.v
         n_loop = max(self._n_loop_i, 1)
         n_cv_header = max(self._n_cv_header, 1)
 
-        t_ref = self._safe(self.temperature_out.v, self._safe(self.temperature.v, self._t4_ave_hold))
+        t_ref = self.temperature_out.v
         m_dot_htf = mass_flow / n_loop
 
         # Pressure Drop Across Solar Field Loop
-        n_sca = max(int(round(self._safe(self.n_sca.v, 1.0))), 1)
+        n_sca = max(int(round(self.n_sca.v)), 1)
         n_nodes = max(self._n_nodes_i - 1, 1)
         sca_ind_orig = max(n_nodes / n_sca, 1.0)
         sca_ind = sca_ind_orig
@@ -1552,11 +1542,11 @@ class SolarFieldSector(Component):
         if timestep_iteration == 0:
             self._update_mass_and_temperature_groups()
 
-        p_in = self._safe(self.pressure.v, 0.0)
+        p_in = self.pressure.v
         dp_tot = self._pressure_drop_surrogate()
         defocusing = float(np.sum(self._defocus_mode) - self._n_loop_i)
 
-        self.mass_flow_out.v = self._safe(self.mass_flow.v, 0.0)
+        self.mass_flow_out.v = self.mass_flow.v
         self.pressure_out.v = p_in - dp_tot
         self.temperature_out.v = float(self._t_header_return[-1])
         self.t4_ave.v = self._t4_ave_hold

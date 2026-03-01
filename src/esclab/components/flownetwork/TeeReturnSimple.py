@@ -53,7 +53,7 @@ class TeeReturnSimple(Component):
     _props = Inc()
 
     def calculate(self):
-        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+        fluid_name = str(self.fluid_id.v)
         m_dot_tot = self.m_dot_1.v + self.m_dot_2.v
         if self.model.is_first_step:
             self.m_dot.v = m_dot_tot
@@ -67,12 +67,19 @@ class TeeReturnSimple(Component):
         if abs(m_dot_tot) < 1.0e-12:
             t_out = self.temperature.v if np.isfinite(self.temperature.v) else 0.5 * (self.t_1.v + self.t_2.v)
         else:
-            cp1 = float(self._props.specheat(fluid_name, max(self.t_1.v, 273.0), self.p_1.v))
-            cp2 = float(self._props.specheat(fluid_name, max(self.t_2.v, 273.0), self.p_2.v))
+            if self.t_1.v > 273.0:
+                cp1 = float(self._props.specheat(fluid_name, self.t_1.v, self.p_1.v))
+            else:
+                cp1 = float(self._props.specheat(fluid_name, 300.0, self.p_1.v))
+
+            if self.t_2.v > 273.0:
+                cp2 = float(self._props.specheat(fluid_name, self.t_2.v, self.p_2.v))
+            else:
+                cp2 = float(self._props.specheat(fluid_name, 300.0, self.p_2.v))
             cp_t = (self.m_dot_1.v * cp1 * self.t_1.v + self.m_dot_2.v * cp2 * self.t_2.v) / m_dot_tot
-            t_guess = float(np.clip(self.temperature.v if np.isfinite(self.temperature.v) else 500.0, 273.0, 1000.0))
+            t_guess = float(self.temperature.v if np.isfinite(self.temperature.v) else 500.0)
             for _ in range(50):
-                cp_guess = float(self._props.specheat(fluid_name, max(t_guess, 273.0), self.p_1.v))
+                cp_guess = float(self._props.specheat(fluid_name, t_guess, self.p_1.v))
                 err = cp_t - t_guess * cp_guess
                 if abs(err) < 100.0:
                     break

@@ -107,55 +107,40 @@ class Pipe(Component):
     _t_nodes = np.array([], dtype=float)
     _props = Inc()
 
-    @staticmethod
-    def _safe(value, default):
-        return value if value == value else default
-
     def _pressure_drop(self, mass_flow, t_ref):
         # 1. PressureDrop  (Pa)
-        m_dot = abs(self._safe(mass_flow, 0.0))
-        if m_dot <= 0.0:
-            return 0.0
+        m_dot = mass_flow
 
-        fluid = self._safe(self.fluid_id.v, "Nitrate Salt")
-        d = max(self._safe(self.diameter.v, 0.0), 1.0e-6)
-        rough = max(self._safe(self.roughness.v, 0.0), 1.0e-10)
-        l_pipe = max(self._safe(self.l_tot.v, 0.0), 0.0)
-        fluid_name = str(fluid) if fluid == fluid else "Nitrate Salt"
-        t_ref_bounded = max(self._safe(t_ref, 273.15), 1.0)
+        fluid_name = str(self.fluid_id.v)
+        d = self.diameter.v
+        rough = self.roughness.v
+        l_pipe = self.l_tot.v
 
-        rho = max(float(self._props.density(fluid_name, t_ref_bounded, 1.0)), 1.0)
-        mu = max(float(self._props.viscosity(fluid_name, t_ref_bounded, 1.0)), 1.0e-9)
-        nu = mu / max(rho, 1.0e-9)
-        v_dot = m_dot / max(rho, 1.0e-9)
+        rho = float(self._props.density(fluid_name, t_ref, 1.0))
+        mu = float(self._props.viscosity(fluid_name, t_ref, 1.0))
+        nu = mu / rho
+        v_dot = m_dot / rho
         u_fluid = v_dot / (math.pi * (d / 2.0) * (d / 2.0))
 
-        re = abs(u_fluid * d / max(nu, 1.0e-12))
+        re = abs(u_fluid * d / nu)
         if re < 2300.0:
-            f = 64.0 / max(re, 1.0)
+            f = 64.0 / re
         else:
-            f_val = FricFactor_IC(rough / d, max(re, 1.0), self._ff_guess)
-            try:
-                f = float(f_val)
-            except Exception:
-                f = self._ff_guess
-            if not math.isfinite(f):
-                f = self._ff_guess
-        f = max(f, 1.0e-5)
+            f = float(FricFactor_IC(rough / d, re, self._ff_guess))
         self._ff_guess = f
 
         g = 9.80665
         hl_pm = f * u_fluid * u_fluid / (2.0 * d * g)
         dp_pipe = hl_pm * rho * g * l_pipe
 
-        n_exp = max(self._safe(self.n_expansions.v, 0.0), 0.0)
-        n_con = max(self._safe(self.n_contractions.v, 0.0), 0.0)
-        n_els = max(self._safe(self.n_standard_elbows.v, 0.0), 0.0)
-        n_elm = max(self._safe(self.n_medium_elbows.v, 0.0), 0.0)
-        n_ell = max(self._safe(self.n_large_elbows.v, 0.0), 0.0)
-        n_gav = max(self._safe(self.n_gate_valves.v, 0.0), 0.0)
+        n_exp = self.n_expansions.v
+        n_con = self.n_contractions.v
+        n_els = self.n_standard_elbows.v
+        n_elm = self.n_medium_elbows.v
+        n_ell = self.n_large_elbows.v
+        n_gav = self.n_gate_valves.v
 
-        d_over_f_hl = d / max(f, 1.0e-12) * hl_pm * rho * g
+        d_over_f_hl = d / f * hl_pm * rho * g
         dp_exp = 0.25 * rho * u_fluid * u_fluid * n_exp
         dp_con = 0.25 * rho * u_fluid * u_fluid * n_con
         dp_els = 0.9 * d_over_f_hl * n_els
@@ -163,7 +148,7 @@ class Pipe(Component):
         dp_ell = 0.6 * d_over_f_hl * n_ell
         dp_gav = 0.19 * d_over_f_hl * n_gav
 
-        return max(dp_pipe + dp_exp + dp_con + dp_els + dp_elm + dp_ell + dp_gav, 0.0)
+        return dp_pipe + dp_exp + dp_con + dp_els + dp_elm + dp_ell + dp_gav
 
     def _pipe_dtdt(self, t_nodes, vol, mass_flow, mc_mult, fluid_id, heat_loss, l_cv):
         # Loop Through Control Volumes to compute CV temperature rate
@@ -178,12 +163,11 @@ class Pipe(Component):
             q_out = heat_loss * l_cv
             # Compute CV average temp and properties
             t_ave = 0.5 * (t_nodes[n] + t_nodes[n + 1])
-            fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-            t_ave_bounded = max(self._safe(t_ave, 273.15), 1.0)
-            rho = max(float(self._props.density(fluid_name, t_ave_bounded, 0.0)), 1.0)
-            c = max(float(self._props.specheat(fluid_name, t_ave_bounded, 0.0)) * 1000.0, 100.0)
+            fluid_name = str(fluid_id)
+            rho = float(self._props.density(fluid_name, t_ave, 0.0))
+            c = float(self._props.specheat(fluid_name, t_ave, 0.0)) * 1000.0
             # Compute CV temperature rate
-            dtdt_bar[n] = (mass_flow * c * (t_nodes[n] - t_nodes[n + 1]) - q_out) / max(vol * rho * c * mc_mult, 1.0e-12)
+            dtdt_bar[n] = (mass_flow * c * (t_nodes[n] - t_nodes[n + 1]) - q_out) / (vol * rho * c * mc_mult)
 
         # Compute Nodal Temperature Rates
         dt[0] = 0.0
@@ -193,32 +177,29 @@ class Pipe(Component):
         return dt
 
     def _initialize_state(self):
-        n_nodes = int(round(self._safe(self.n_nodes.v, 2.0)))
-        n_nodes = max(2, min(n_nodes, 500))
-        init_temp = self._safe(self.init_temp.v, self._safe(self.temperature.v, 300.0))
+        n_nodes = int(round(self.n_nodes.v))
+        init_temp = self.init_temp.v
 
         # Initialize temperatures in nodes of pipe
         self._t_nodes = np.full(n_nodes, init_temp, dtype=float)
 
         # Compute total mass in the pipe for mass counter
         # Define length of control volumes
-        l_cv = max(self._safe(self.l_tot.v, 0.0), 0.0) / max(float(n_nodes - 1), 1.0)
+        l_cv = self.l_tot.v / float(n_nodes - 1)
         # Define Volume of CV's
-        vol = math.pi * (max(self._safe(self.diameter.v, 0.0), 1.0e-6) / 2.0) ** 2 * l_cv
+        vol = math.pi * (self.diameter.v / 2.0) ** 2 * l_cv
 
         mass_counter = 0.0
-        fluid = self._safe(self.fluid_id.v, "Nitrate Salt")
-        fluid_name = str(fluid) if fluid == fluid else "Nitrate Salt"
+        fluid_name = str(self.fluid_id.v)
         for _ in range(n_nodes - 1):
             t_cv = init_temp
-            t_cv_bounded = max(self._safe(t_cv, 273.15), 1.0)
-            mass_counter += vol * max(float(self._props.density(fluid_name, t_cv_bounded, 0.0)), 1.0)
+            mass_counter += vol * float(self._props.density(fluid_name, t_cv, 0.0))
 
-        d_p = self._pressure_drop(self._safe(self.mass_flow.v, 0.0), init_temp)
+        d_p = self._pressure_drop(self.mass_flow.v, init_temp)
 
         self.temperature_out.v = init_temp
-        self.pressure_out.v = self._safe(self.pressure.v, 0.0) - d_p
-        self.mass_flow_out.v = self._safe(self.mass_flow.v, 0.0)
+        self.pressure_out.v = self.pressure.v - d_p
+        self.mass_flow_out.v = self.mass_flow.v
         self.mass_counter_out.v = mass_counter
         self._is_initialized = True
 
@@ -227,21 +208,21 @@ class Pipe(Component):
             return
 
         n_nodes = self._t_nodes.size
-        l_cv = max(self._safe(self.l_tot.v, 0.0), 0.0) / max(float(n_nodes - 1), 1.0)
-        vol = math.pi * (max(self._safe(self.diameter.v, 0.0), 1.0e-6) / 2.0) ** 2 * l_cv
-        mass_flow = self._safe(self.mass_flow.v, 0.0)
-        mc_mult = max(self._safe(self.mc_mult.v, 1.0), 1.0e-9)
-        fluid_id = self._safe(self.fluid_id.v, "Nitrate Salt")
-        heat_loss = max(self._safe(self.heat_loss.v, 0.0), 0.0)
+        l_cv = self.l_tot.v / float(n_nodes - 1)
+        vol = math.pi * (self.diameter.v / 2.0) ** 2 * l_cv
+        mass_flow = self.mass_flow.v
+        mc_mult = self.mc_mult.v
+        fluid_id = self.fluid_id.v
+        heat_loss = self.heat_loss.v
 
         model = getattr(self, "model", None)
-        timestep_hours = self._safe(getattr(getattr(model, "settings", None), "timestep", 1.0), 1.0)
-        timestep_s = max(timestep_hours * 3600.0, 1.0e-9)
+        timestep_hours = getattr(getattr(model, "settings", None), "timestep", 1.0)
+        timestep_s = timestep_hours * 3600.0
 
         # Load in temperatures from last timestep from dynamic array
         t_hat = self._t_nodes.copy()
         # Update Input Temperature
-        t_hat[0] = self._safe(self.temperature.v, t_hat[0])
+        t_hat[0] = self.temperature.v
         t_prev = t_hat.copy()
 
         # Step through time with RK-4
@@ -262,10 +243,9 @@ class Pipe(Component):
         if self._t_nodes.size < 2:
             return 0.0
         n_nodes = self._t_nodes.size
-        l_cv = max(self._safe(self.l_tot.v, 0.0), 0.0) / max(float(n_nodes - 1), 1.0)
-        vol = math.pi * (max(self._safe(self.diameter.v, 0.0), 1.0e-6) / 2.0) ** 2 * l_cv
-        fluid = self._safe(self.fluid_id.v, "Nitrate Salt")
-        fluid_name = str(fluid) if fluid == fluid else "Nitrate Salt"
+        l_cv = self.l_tot.v / float(n_nodes - 1)
+        vol = math.pi * (self.diameter.v / 2.0) ** 2 * l_cv
+        fluid_name = str(self.fluid_id.v)
 
         # Loop through each control volume
         mass_counter = 0.0
@@ -273,8 +253,7 @@ class Pipe(Component):
             # Compute control volume average temperature
             t_cv = 0.5 * (self._t_nodes[n] + self._t_nodes[n + 1])
             # Compute mass in CV
-            t_cv_bounded = max(self._safe(t_cv, 273.15), 1.0)
-            mass_counter += vol * max(float(self._props.density(fluid_name, t_cv_bounded, 0.0)), 1.0)
+            mass_counter += vol * float(self._props.density(fluid_name, t_cv, 0.0))
         return mass_counter
 
     def calculate(self):
@@ -296,9 +275,9 @@ class Pipe(Component):
 
         # Compute pressure drop
         t_ave = 0.5 * (self._t_nodes[0] + self._t_nodes[-1])
-        d_p = self._pressure_drop(self._safe(self.mass_flow.v, 0.0), t_ave)
+        d_p = self._pressure_drop(self.mass_flow.v, t_ave)
 
         self.temperature_out.v = float(self._t_nodes[-1])
-        self.pressure_out.v = self._safe(self.pressure.v, 0.0) - d_p
-        self.mass_flow_out.v = self._safe(self.mass_flow.v, 0.0)
+        self.pressure_out.v = self.pressure.v - d_p
+        self.mass_flow_out.v = self.mass_flow.v
         self.mass_counter_out.v = mass_counter

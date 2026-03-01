@@ -147,9 +147,9 @@ class ExpansionSystem(Component):
         return q * rho
 
     def _initialize_state(self):
-        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-        rho_of = max(float(self._props.density(fluid_name, self.t_of_init.v + 273.15, self.p_of.v)), 1.0)
-        rho_ev = max(float(self._props.density(fluid_name, self.t_ev_init.v + 273.15, self.p_ev.v)), 1.0)
+        fluid_name = str(self.fluid_id.v)
+        rho_of = float(self._props.density(fluid_name, self.t_of_init.v + 273.15, self.p_of.v))
+        rho_ev = float(self._props.density(fluid_name, self.t_ev_init.v + 273.15, self.p_ev.v))
 
         total_mass = self.total_mass.v
         only_exp = self.only_exp.v
@@ -171,13 +171,13 @@ class ExpansionSystem(Component):
             self._mass_of = max(of_vol * rho_of, 0.0)
             self._level_of = self._tank_level(self._mass_of, d_of, h_of, n_of, rho_of)
 
-        mass_ev = max(total_mass - self._mass_of - m_counter, 0.0)
+        mass_ev = total_mass - self._mass_of - m_counter
         self._level_ev = self._tank_level(mass_ev, d_ev, h_ev, n_ev, rho_ev)
 
         self._t_of = self.t_of_init.v
         self._t_ev = self.t_ev_init.v
-        self._p_bot_of = self.p_of.v + rho_of * 9.81 * self._level_of * max(h_of, 0.0)
-        self._p_bot_ev = self.p_ev.v + rho_ev * 9.81 * self._level_ev * max(h_ev, 0.0)
+        self._p_bot_of = self.p_of.v + rho_of * 9.81 * self._level_of * h_of
+        self._p_bot_ev = self.p_ev.v + rho_ev * 9.81 * self._level_ev * h_ev
         self._m_count_prev = m_counter
 
         self._lv_204_05_prev = self._clamp01(self.lv_204_05.v)
@@ -219,7 +219,7 @@ class ExpansionSystem(Component):
     def calculate(self):
         timestep_s = max(self.model.settings.timestep * 3600.0, 1.0e-6)
         fluid_id = self.fluid_id.v
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
+        fluid_name = str(fluid_id)
         p_ev = self.p_ev.v
         p_of = self.p_of.v
         pc_a = self.pc_a.v
@@ -234,7 +234,7 @@ class ExpansionSystem(Component):
         total_mass = self.total_mass.v
         only_exp = self.only_exp.v
         valve_speed = self.valve_speed.v
-        cv_orifice = max(self.cv_orifice.v, 1.0e-6)
+        cv_orifice = self.cv_orifice.v
         t_chill_out = self.t_chill_out.v
 
         hv_204_09a = self._clamp01(self.hv_204_09a.v)
@@ -249,8 +249,8 @@ class ExpansionSystem(Component):
         if self.model.is_first_step or self._t_of != self._t_of or self._t_ev != self._t_ev:
             self._initialize_state()
 
-        rho_of = max(float(self._props.density(fluid_name, self._t_of + 273.15, p_of)), 1.0)
-        rho_ev = max(float(self._props.density(fluid_name, self._t_ev + 273.15, p_ev)), 1.0)
+        rho_of = float(self._props.density(fluid_name, self._t_of + 273.15, p_of))
+        rho_ev = float(self._props.density(fluid_name, self._t_ev + 273.15, p_ev))
         p_bot_of = self._p_bot_of
         p_bot_ev = self._p_bot_ev
 

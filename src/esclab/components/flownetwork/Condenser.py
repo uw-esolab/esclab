@@ -75,30 +75,15 @@ class Condenser(Component):
     out_cond_q_dot = Component.Output()
     out_ff = Component.Output()
 
-    @staticmethod
-    def _safe(value, default=0.0):
-        return value if value == value else default
-
     def _solve_pump_flow(
         self, p_tank, l_tank, p_da, sys_losses, pump_speed, q_prev, point_1x, point_1y
     ):
         rho_f = 1000.0
-        coef_a = self._safe(self.pump_curve_a.v, 0.0)
-        coef_b = self._safe(self.pump_curve_b.v, 0.0)
-        coef_c = self._safe(self.pump_curve_c.v, 1.0)
-
-        a = coef_a
-        b = coef_b * max(pump_speed, 1.0e-8)
-        c = coef_c * max(pump_speed, 1.0e-8) ** 2
-        discr = max(b * b - 4.0 * a * c, 0.0)
-        if abs(a) < 1.0e-12:
-            q_max = max(1.0e-6, -c / max(b, 1.0e-12))
-        else:
-            q_max = max(
-                (-b + math.sqrt(discr)) / (2.0 * a),
-                (-b - math.sqrt(discr)) / (2.0 * a),
-                1.0e-6,
-            )
+        a = self.pump_curve_a.v
+        b = self.pump_curve_b.v * pump_speed
+        c = self.pump_curve_c.v * pump_speed**2
+        discr = b * b - 4.0 * a * c
+        q_max = max((-b + math.sqrt(discr)) / (2.0 * a), (-b - math.sqrt(discr)) / (2.0 * a))
 
         p_pump_in = p_tank + rho_f * 9.81 * l_tank
         p_pump_prev = (a * q_prev * q_prev + b * q_prev + c) * rho_f * 9.81 + p_pump_in
@@ -130,37 +115,37 @@ class Condenser(Component):
             q_new = min(max(q_new, 1.0e-9), q_max)
 
         p_pump_out = (a * q_new * q_new + b * q_new + c) * rho_f * 9.81 + p_pump_in
-        eta_a = self._safe(self.pump_eta_a.v, 0.0)
-        eta_b = self._safe(self.pump_eta_b.v, 0.0)
-        eta_c = self._safe(self.pump_eta_c.v, 0.0)
-        eta_d = self._safe(self.pump_eta_d.v, 0.5)
+        eta_a = self.pump_eta_a.v
+        eta_b = self.pump_eta_b.v
+        eta_c = self.pump_eta_c.v
+        eta_d = self.pump_eta_d.v
         spd = max(pump_speed, 1.0e-8)
         flow_ratio = q_new / spd
         eta_pump = max(
             eta_a * flow_ratio**4 + eta_b * flow_ratio**3 + eta_c * flow_ratio**2 + eta_d * flow_ratio,
             0.01,
         )
-        w_dot_pump = max(p_pump_out - p_pump_in, 0.0) * q_new / eta_pump
+        w_dot_pump = (p_pump_out - p_pump_in) * q_new / eta_pump
 
         point_1x_new = q_prev
         point_1y_new = point_2y
         return q_new, p_pump_in, p_pump_out, eta_pump, w_dot_pump, point_1x_new, point_1y_new
 
     def _condenser_hx(self, m_dot_cool_in, h_cool_in, p_cool_in, p_tank_prev, ff_guess):
-        ttd = self._safe(self.hx_ttd.v, 5.0)
-        no_tubes = max(self._safe(self.hx_tube_count.v, 1.0), 1.0)
-        length_tubes = max(self._safe(self.hx_tube_length.v, 1.0), 1.0e-9)
-        id_tube = max(self._safe(self.hx_tube_id.v, 0.02), 1.0e-6)
-        th_tube = max(self._safe(self.hx_tube_thickness.v, 0.001), 0.0)
+        ttd = self.hx_ttd.v
+        no_tubes = self.hx_tube_count.v
+        length_tubes = self.hx_tube_length.v
+        id_tube = self.hx_tube_id.v
+        th_tube = self.hx_tube_thickness.v
         od_tube = id_tube + 2.0 * th_tube
 
         p_sat = min(max(p_tank_prev, 1.0), 2.2e7)
         t_sat = float(fp.temperature("water", P=p_sat, Q=0.0))
         h_sat_f = float(fp.enthalpy("water", P=p_sat, Q=0.0))
         h_sat_g = float(fp.enthalpy("water", P=p_sat, Q=1.0))
-        rho_sat_f = max(float(fp.density("water", P=p_sat, Q=0.0)), 1.0e-6)
-        rho_sat_g = max(float(fp.density("water", P=p_sat, Q=1.0)), 1.0e-6)
-        t_cool_in = float(fp.temperature("water", P=max(p_cool_in, 1.0), h=max(h_cool_in, 1.0)))
+        rho_sat_f = float(fp.density("water", P=p_sat, Q=0.0))
+        rho_sat_g = float(fp.density("water", P=p_sat, Q=1.0))
+        t_cool_in = float(fp.temperature("water", P=p_cool_in, h=h_cool_in))
 
         if m_dot_cool_in <= 1.0:
             return (
@@ -170,11 +155,11 @@ class Condenser(Component):
                 p_cool_in,
                 h_cool_in,
                 0.0,
-                max(ff_guess, 1.0e-6),
+                ff_guess,
             )
 
         t_cool_out_ttd = min(max(t_sat - ttd, t_cool_in), 342.0)
-        h_cool_out_ttd = float(fp.enthalpy("water", P=max(p_cool_in, 1.0), T=max(t_cool_out_ttd, 273.15)))
+        h_cool_out_ttd = float(fp.enthalpy("water", P=p_cool_in, T=t_cool_out_ttd))
 
         # Inside convection (cooling water side)
         a_s_inner = math.pi * id_tube * length_tubes * no_tubes
@@ -184,47 +169,50 @@ class Condenser(Component):
         k_water = 0.6
         re_cw = 1000.0 * vel * id_tube / max(mu_water, 1.0e-12)
         if re_cw > 2300.0:
-            ff = FricFactor_IC(0.0, re_cw, max(ff_guess, 0.05))
+            ff = FricFactor_IC(0.0, re_cw, ff_guess)
             pr = mu_water * 4200.0 / k_water
-            nu = ((ff / 8.0) * (re_cw - 1000.0) * pr) / max(
-                1.0 + 12.7 * (ff / 8.0) ** 0.5 * (pr ** (2.0 / 3.0) - 1.0),
-                1.0e-9,
-            )
+            nu = ((ff / 8.0) * (re_cw - 1000.0) * pr) / (1.0 + 12.7 * (ff / 8.0) ** 0.5 * (pr ** (2.0 / 3.0) - 1.0))
             h_bar_cool = nu * k_water / id_tube
         else:
-            ff = max(ff_guess, 0.05)
+            ff = ff_guess
             nu = 3.67
             h_bar_cool = nu * k_water / id_tube
-        r_cool = 1.0 / max(h_bar_cool * a_s_inner, 1.0e-12)
+        if h_bar_cool > 0.0:
+            r_cool = 1.0 / (h_bar_cool * a_s_inner)
+        else:
+            r_cool = 1.0e7
 
         # Outside condensation coefficient (reduced-order from Incropera form)
         t_cw = 0.5 * (t_cool_in + t_cool_out_ttd)
         mu_l = 3.0e-4
         k_l = 0.65
         cp_l = 4200.0
-        h_fg_mod = (h_sat_g - h_sat_f) + 0.68 * cp_l * max(t_sat - t_cw, 1.0)
+        h_fg_mod = (h_sat_g - h_sat_f) + 0.68 * cp_l * (t_sat - t_cw)
         h_bar_cond = 0.729 * (
             (
                 9.81
                 * rho_sat_f
-                * max(rho_sat_f - rho_sat_g, 1.0e-6)
+                * (rho_sat_f - rho_sat_g)
                 * k_l**3
                 * h_fg_mod
             )
-            / max(mu_l * max(t_sat - t_cw, 1.0) * od_tube, 1.0e-12)
+            / (mu_l * (t_sat - t_cw) * od_tube)
         ) ** 0.25
-        r_cond = 1.0 / max(h_bar_cond * a_s_outer, 1.0e-12)
+        if h_bar_cond > 0.0:
+            r_cond = 1.0 / (h_bar_cond * a_s_outer)
+        else:
+            r_cond = 1.0e7
 
         r_tot = r_cool + r_cond
-        q_dot_r = (t_sat - t_cw) / max(r_tot, 1.0e-12)
+        q_dot_r = (t_sat - t_cw) / r_tot
         q_dot_cw = m_dot_cool_in * (h_cool_out_ttd - h_cool_in)
-        q_dot = max(min(q_dot_r, q_dot_cw), 0.0)
+        q_dot = min(q_dot_r, q_dot_cw)
 
-        h_cool_out = h_cool_in + q_dot / max(m_dot_cool_in, 1.0e-12)
-        t_cool_out = float(fp.temperature("water", P=max(p_cool_in, 1.0), h=max(h_cool_out, 1.0)))
+        h_cool_out = h_cool_in + q_dot / m_dot_cool_in
+        t_cool_out = float(fp.temperature("water", P=p_cool_in, h=h_cool_out))
         p_cool_out = p_cool_in
         vol_cool_out = m_dot_cool_in / 1000.0
-        return m_dot_cool_in, vol_cool_out, t_cool_out, p_cool_out, h_cool_out, q_dot, max(ff, 1.0e-6)
+        return m_dot_cool_in, vol_cool_out, t_cool_out, p_cool_out, h_cool_out, q_dot, ff
 
     def _tank_step(
         self,
@@ -246,15 +234,15 @@ class Condenser(Component):
         e_in = (m_dot_in * h_in + m_dot_res * h_sat_f_prev) * ts
         e_out = (m_dot_pump * h_pump + q_dot) * ts
 
-        m_tank_new = max(m_tank_prev + (m_dot_in - m_dot_pump + m_dot_res) * ts, 1.0)
-        e_new = max(e_prev + e_in - e_out, 1.0)
+        m_tank_new = m_tank_prev + (m_dot_in - m_dot_pump + m_dot_res) * ts
+        e_new = e_prev + e_in - e_out
         h_tank_new = e_new / m_tank_new
 
-        mass_ratio = m_tank_new / max(m_tank_prev, 1.0e-9)
-        enth_ratio = h_tank_new / max(h_tank_prev, 1.0e-9)
-        p_tank_new = max(p_tank_prev * (0.72 + 0.20 * mass_ratio + 0.08 * enth_ratio), 1.0)
-        t_tank_new = float(fp.temperature("water", P=max(p_tank_new, 1.0), h=max(h_tank_new, 1.0)))
-        l_tank_new = max(m_tank_new / (area_tank * 1000.0), 0.0)
+        mass_ratio = m_tank_new / m_tank_prev
+        enth_ratio = h_tank_new / h_tank_prev
+        p_tank_new = p_tank_prev * (0.72 + 0.20 * mass_ratio + 0.08 * enth_ratio)
+        t_tank_new = float(fp.temperature("water", P=p_tank_new, h=h_tank_new))
+        l_tank_new = m_tank_new / (area_tank * 1000.0)
         return m_tank_new, p_tank_new, h_tank_new, t_tank_new, l_tank_new
 
     def _solve_reservoir_flow(
@@ -335,21 +323,21 @@ class Condenser(Component):
 
     def calculate(self):
         # Parameters
-        height_tank = max(self._safe(self.tank_height.v, 1.0), 1.0e-6)
-        area_tank = max(self._safe(self.tank_area.v, 1.0), 1.0e-6)
-        l_tank_ini = self._safe(self.tank_level_initial.v, 0.0)
-        p_tank_ini = max(self._safe(self.tank_pressure_initial.v, 101325.0), 1.0)
+        height_tank = self.tank_height.v
+        area_tank = self.tank_area.v
+        l_tank_ini = self.tank_level_initial.v
+        p_tank_ini = self.tank_pressure_initial.v
 
         # Inputs
-        m_dot_in = max(self._safe(self.steam_m_dot_in.v, 0.0), 0.0)
-        h_in = self._safe(self.steam_h_in.v, 1.0e6)
-        p_in = max(self._safe(self.steam_p_in.v, p_tank_ini), 1.0)
-        m_dot_cool_in = max(self._safe(self.cooling_m_dot_in.v, 0.0), 0.0)
-        h_cool_in = self._safe(self.cooling_h_in.v, 1.0e6)
-        p_cool_in = self._safe(self.cooling_p_in.v, p_in)
-        p_da = self._safe(self.deaerator_pressure.v, p_in)
-        sys_losses = self._safe(self.system_losses.v, p_in)
-        pump_speed = max(self._safe(self.pump_speed_signal.v, 0.0), 0.0)
+        m_dot_in = self.steam_m_dot_in.v
+        h_in = self.steam_h_in.v
+        p_in = self.steam_p_in.v
+        m_dot_cool_in = self.cooling_m_dot_in.v
+        h_cool_in = self.cooling_h_in.v
+        p_cool_in = self.cooling_p_in.v
+        p_da = self.deaerator_pressure.v
+        sys_losses = self.system_losses.v
+        pump_speed = self.pump_speed_signal.v
 
         rho_f = 1000.0
         vol_tank = height_tank * area_tank
@@ -361,8 +349,8 @@ class Condenser(Component):
             m_tank = max(area_tank * max(l_tank_ini, 0.0) * rho_f, 1.0)
 
             p_pump_out = (
-                self._safe(self.pump_curve_c.v, 1.0)
-                * max(pump_speed, 1.0e-6) ** 2
+                self.pump_curve_c.v
+                * pump_speed**2
                 * rho_f
                 * 9.81
                 + p_tank_ini
@@ -401,22 +389,13 @@ class Condenser(Component):
             return
 
         # STEP 1: Pump-flow solve
-        p_tank_prev = max(self._safe(self.out_state_p_prev.v, p_tank_ini), 1.0)
-        l_tank_prev = max(self._safe(self.out_state_level_prev.v, l_tank_ini), 0.0)
-        h_tank_prev = self._safe(
-            self.out_state_h_prev.v,
-            float(fp.enthalpy("water", P=min(max(p_tank_prev, 1.0), 2.2e7), Q=0.0)),
-        )
-        m_tank_prev = max(
-            self._safe(self.out_state_m_prev.v, area_tank * l_tank_prev * rho_f),
-            1.0,
-        )
-        q_prev = max(
-            self._safe(self.out_pump_solver_q_prev.v, self._safe(self.out_pump_m_dot.v, 1.0e-6) / rho_f),
-            1.0e-9,
-        )
-        point_1x = self._safe(self.out_pump_solver_q_anchor.v, q_prev)
-        point_1y = self._safe(self.out_pump_solver_err.v, 0.0)
+        p_tank_prev = self.out_state_p_prev.v
+        l_tank_prev = self.out_state_level_prev.v
+        h_tank_prev = self.out_state_h_prev.v
+        m_tank_prev = self.out_state_m_prev.v
+        q_prev = self.out_pump_solver_q_prev.v
+        point_1x = self.out_pump_solver_q_anchor.v
+        point_1y = self.out_pump_solver_err.v
 
         q_new, _, p_pump_out, eta_pump, w_dot_pump, p1x_new, p1y_new = self._solve_pump_flow(
             p_tank_prev,
@@ -434,7 +413,7 @@ class Condenser(Component):
         t_pump_out = float(fp.temperature("water", P=max(p_pump_out, 1.0), h=max(h_pump_out, 1.0)))
 
         # STEP 2: Condenser HX calculations
-        ff_guess = self._safe(self.out_ff.v, 0.1)
+        ff_guess = self.out_ff.v
         m_dot_cool_out, vol_cool_out, t_cool_out, p_cool_out, h_cool_out, q_dot, ff_new = self._condenser_hx(
             m_dot_cool_in,
             h_cool_in,
@@ -444,7 +423,8 @@ class Condenser(Component):
         )
 
         # STEP 3: Hotwell tank + reservoir flow solve
-        ts = max(self.model.settings.timestep, 1.0e-9)
+        timestep_hours = getattr(self.model.settings, "timestep", 0.0)
+        ts = timestep_hours * 3600.0
         t_crit = 0.1
 
         if ts <= t_crit:
@@ -520,7 +500,6 @@ class Condenser(Component):
         self.out_pump_eta.v = eta_pump
         self.out_pump_w_dot.v = w_dot_pump
         self.out_reservoir_m_dot.v = m_dot_res
-        self.out_aux_h.v = self._safe(self.out_aux_h.v, h_cool_out)
         self.out_cond_q_dot.v = q_dot
         self.out_ff.v = ff_new
 

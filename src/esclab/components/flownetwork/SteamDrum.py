@@ -287,7 +287,7 @@ class SteamDrum(Component):
         tube_od = max(self._safe(self.tube_od.v, 0.01), 1.0e-6)
         tube_th = max(self._safe(self.tube_th.v, 0.001), 0.0)
         no_tubes = max(self._safe(self.no_tubes.v, 1.0), 1.0)
-        fluid_id = self._safe(self.fluid_id.v, "Nitrate Salt")
+        fluid_id = self.fluid_id.v
 
         m_dot_in = max(self._safe(self.m_dot_in.v), 0.0)
         h_in = self._safe(self.h_in.v)
@@ -331,9 +331,9 @@ class SteamDrum(Component):
             vol_dot_fw = m_dot_superheat / max(rho_tank_g, 1.0e-9)
 
             # Volumetric flow rate for HTF
-            fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-            rho_htf = max(float(self._props.density(fluid_name, htf_temp_in, htf_p_in)), 1.0e-9)
-            vol_dot_htf = htf_mass_in / max(rho_htf, 1.0e-9)
+            fluid_name = str(fluid_id)
+            rho_htf = float(self._props.density(fluid_name, htf_temp_in, htf_p_in))
+            vol_dot_htf = htf_mass_in / rho_htf
 
             # Set the Initial Values of the Outputs (#,Value)
             self.m_dot_superheat.v = m_dot_superheat
@@ -378,28 +378,28 @@ class SteamDrum(Component):
             return
 
         # Read previous-step storage outputs
-        m_tank_prev = max(self._safe(self.m_tank_begin.v, 1.0), 1.0)
-        p_tank_prev = min(max(self._safe(self.p_tank_begin.v, p_in), self._P_MIN_WATER), self._P_MAX_SAT_WATER)
-        l_tank_prev = max(self._safe(self.l_tank_begin.v, 0.0), 0.0)
+        m_tank_prev = self._safe(self.m_tank_begin.v, 1.0)
+        p_tank_prev = self._safe(self.p_tank_begin.v, p_in)
+        l_tank_prev = self._safe(self.l_tank_begin.v, 0.0)
         h_tank_prev = self._safe(self.h_tank_begin.v, h_in)
 
         t_tank_prev = float(fp.temperature("water", P=p_tank_prev, Q=0.0))
         h_sat_f_prev = float(fp.enthalpy("water", P=p_tank_prev, Q=0.0))
         h_sat_g_prev = float(fp.enthalpy("water", P=p_tank_prev, Q=1.0))
-        rho_g_prev = max(float(fp.density("water", P=p_tank_prev, Q=1.0)), 1.0e-6)
+        rho_g_prev = float(fp.density("water", P=p_tank_prev, Q=1.0))
 
         # Evaporator calculations
-        htf_mass_eval = max(htf_mass_in, 1.0e-5)
-        a_s = math.pi * max(tube_od - 2.0 * tube_th, 1.0e-6) * length_hx * no_tube_passes * no_tubes
+        htf_mass_eval = htf_mass_in
+        a_s = math.pi * (tube_od - 2.0 * tube_th) * length_hx * no_tube_passes * no_tubes
         ua_rated = rated_heat_transfer * a_s
         ua_od = ua_rated * self._safe_pow(htf_mass_eval / rated_htf_flow, rated_exp)
 
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        cp_htf_max = max(float(self._props.specheat(fluid_name, htf_temp_in, htf_p_in)) * 1000.0, 1.0)
-        cp_htf_min = max(float(self._props.specheat(fluid_name, t_tank_prev, htf_p_in)) * 1000.0, 1.0)
-        cp_htf_ave = max((cp_htf_max + cp_htf_min) / 2.0, 1.0)
+        fluid_name = str(fluid_id)
+        cp_htf_max = float(self._props.specheat(fluid_name, htf_temp_in, htf_p_in)) * 1000.0
+        cp_htf_min = float(self._props.specheat(fluid_name, t_tank_prev, htf_p_in)) * 1000.0
+        cp_htf_ave = (cp_htf_max + cp_htf_min) / 2.0
 
-        ntu_od = ua_od / max(htf_mass_eval * cp_htf_ave, 1.0e-9)
+        ntu_od = ua_od / (htf_mass_eval * cp_htf_ave)
         if ntu_od < 1.0e-10:
             eta_1pass = 0.0
         else:
@@ -410,9 +410,8 @@ class SteamDrum(Component):
             )
 
         cr = 0.0
-        ratio = (1.0 - eta_1pass * cr) / max(1.0 - eta_1pass, 1.0e-12)
-        eta_od = (ratio**no_shell_passes - 1.0) / max(ratio**no_shell_passes - cr, 1.0e-12)
-        eta_od = max(min(eta_od, 1.0), 0.0)
+        ratio = (1.0 - eta_1pass * cr) / (1.0 - eta_1pass)
+        eta_od = (ratio**no_shell_passes - 1.0) / (ratio**no_shell_passes - cr)
 
         q_dot_max = htf_mass_eval * cp_htf_ave * (htf_temp_in - t_tank_prev)
         q_dot_actual = eta_od * q_dot_max
