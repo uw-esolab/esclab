@@ -3,6 +3,7 @@
 import math
 
 from eeslib import fluid_properties as fp
+from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
 
@@ -13,7 +14,9 @@ class TESTank(Component):
 
     Parameters
     ----------
-    d_in, height, ins_th, k_iso, emiss, t0, l0, id_fluid : float
+    d_in, height, ins_th, k_iso, emiss, t0, l0 : float
+    id_fluid : str
+        Fluid name passed to :class:`esclab.components.esol_properties.Incompressible`.
 
     Inputs
     ------
@@ -54,21 +57,32 @@ class TESTank(Component):
     _tank_temp = 300.0
     _tank_level = 0.0
     _wall_temp = 305.0
+    _props = Inc()
 
     @staticmethod
     def _safe(value, default):
         return value if value == value else default
 
     def _density_salt(self, fluid_id, temperature, pressure):
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
         try:
-            return max(float(fp.density(fluid_id, T=temperature, P=pressure)), 1.0)
+            return max(float(self._props.density(fluid_name, temperature, pressure)), 1.0)
+        except Exception:
+            pass
+        try:
+            return max(float(fp.density(fluid_name, T=temperature, P=pressure)), 1.0)
         except Exception:
             return 1800.0
 
     def _cp_salt(self, fluid_id, temperature, pressure):
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
+        try:
+            return max(float(self._props.specheat(fluid_name, temperature, pressure)) * 1000.0, 100.0)
+        except Exception:
+            pass
         try:
             # SF_props specific heat in Type4100 is used as kJ/kg-K and converted to J/kg-K.
-            return max(float(fp.specheat(fluid_id, T=temperature, P=pressure)) * 1000.0, 100.0)
+            return max(float(fp.specheat(fluid_name, T=temperature, P=pressure)) * 1000.0, 100.0)
         except Exception:
             return 1500.0
 
@@ -81,7 +95,7 @@ class TESTank(Component):
         emiss = min(max(self._safe(self.emiss.v, 0.8), 0.0), 1.0)
         t0 = self._safe(self.t0.v, 600.0)
         l0 = max(self._safe(self.l0.v, 0.0), 0.0)
-        fluid_id = self._safe(self.id_fluid.v, 40.0)
+        fluid_id = self._safe(self.id_fluid.v, "Nitrate Salt")
 
         # Model Inputs
         t_in = self._safe(self.t_in.v, t0)

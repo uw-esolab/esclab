@@ -2,6 +2,7 @@
 
 import numpy as np
 from eeslib import fluid_properties as fp
+from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
 
@@ -14,7 +15,7 @@ class TeeReturnSimple(Component):
     ----------
     diameter_1, diameter_2, diameter_out : float
         Branch and outlet diameters [m].
-    fluid_id : float
+    fluid_id : str
         Fluid identifier used for specific heat lookups.
 
     Inputs
@@ -50,11 +51,17 @@ class TeeReturnSimple(Component):
     p_1_in = Component.Output()
     p_2_in = Component.Output()
     mass_counter = Component.Output()
+    _props = Inc()
 
     def _cp(self, t, p):
         t_eval = t if t > 273.0 else 300.0
+        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
         try:
-            return float(fp.specheat(self.fluid_id.v, T=t_eval, P=p))
+            return float(self._props.specheat(fluid_name, t_eval, p))
+        except Exception:
+            pass
+        try:
+            return float(fp.specheat(fluid_name, T=t_eval, P=p))
         except Exception:
             return float(fp.specheat("Water", T=t_eval, P=max(p, 101325.0)))
 

@@ -2,6 +2,7 @@
 
 import numpy as np
 from eeslib import fluid_properties as fp
+from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
 
@@ -79,6 +80,7 @@ class TeeReturn(Component):
     P_1_in = Component.Output()
     P_2_in = Component.Output()
     Mass_Counter = Component.Output()
+    _props = Inc()
 
     def _select_pressure_out(self):
         if self.Pressure_Through.v == 0.0:
@@ -88,8 +90,13 @@ class TeeReturn(Component):
     def _specific_heat(self, temperature, pressure):
         # Fallback temperature when T was not reasonable.
         t_eval = temperature if temperature > 273.0 else 300.0
+        fluid_name = str(self.Fluid_ID.v) if self.Fluid_ID.v == self.Fluid_ID.v else "Nitrate Salt"
         try:
-            return float(fp.specheat(self.Fluid_ID.v, T=t_eval, P=pressure))
+            return float(self._props.specheat(fluid_name, t_eval, pressure))
+        except Exception:
+            pass
+        try:
+            return float(fp.specheat(fluid_name, T=t_eval, P=pressure))
         except Exception:
             # Conservative fallback to keep simulation running if Fluid_ID is not recognized.
             return float(fp.specheat("Water", T=t_eval, P=pressure))

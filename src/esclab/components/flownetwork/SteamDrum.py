@@ -4,6 +4,7 @@ import math
 from collections import deque
 
 from eeslib import fluid_properties as fp
+from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
 
@@ -40,7 +41,7 @@ class SteamDrum(Component):
         Parameter 12, tube wall thickness [m].
     no_tubes : float
         Parameter 13, number of tubes.
-    fluid_id : float | str
+    fluid_id : str
         Parameter 14, HTF identifier for property calls.
     low_level_alarm_cond..high_htf_hr_trip_cond : float
         Parameters 15-28, alarm/trip thresholds.
@@ -151,6 +152,7 @@ class SteamDrum(Component):
     high_delta_t_htf_trip = Component.Output()
     high_htf_hr_alarm = Component.Output()
     high_htf_hr_trip = Component.Output()
+    _props = Inc()
 
     @staticmethod
     def _safe(value, default=0.0):
@@ -278,8 +280,15 @@ class SteamDrum(Component):
     def _cp_htf(self, fluid_id, temperature_k, pressure_pa):
         t_eval = max(temperature_k, 273.15)
         p_eval = max(pressure_pa, 1.0)
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
         try:
-            cp = float(fp.specheat(fluid_id, T=t_eval, P=p_eval))
+            cp = float(self._props.specheat(fluid_name, t_eval, p_eval))
+            if cp == cp and cp > 0.0:
+                return cp * 1000.0 if cp < 100.0 else cp
+        except Exception:
+            pass
+        try:
+            cp = float(fp.specheat(fluid_name, T=t_eval, P=p_eval))
             if cp == cp and cp > 0.0:
                 return cp * 1000.0 if cp < 100.0 else cp
         except Exception:
@@ -287,8 +296,17 @@ class SteamDrum(Component):
         return 2200.0
 
     def _rho_htf(self, fluid_id, temperature_k, pressure_pa):
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
+        t_eval = max(temperature_k, 273.15)
+        p_eval = max(pressure_pa, 1.0)
         try:
-            rho = float(fp.density(fluid_id, T=max(temperature_k, 273.15), P=max(pressure_pa, 1.0)))
+            rho = float(self._props.density(fluid_name, t_eval, p_eval))
+            if rho == rho and rho > 0.0:
+                return rho
+        except Exception:
+            pass
+        try:
+            rho = float(fp.density(fluid_name, T=t_eval, P=p_eval))
             if rho == rho and rho > 0.0:
                 return rho
         except Exception:
@@ -384,7 +402,7 @@ class SteamDrum(Component):
         tube_od = max(self._safe(self.tube_od.v, 0.01), 1.0e-6)
         tube_th = max(self._safe(self.tube_th.v, 0.001), 0.0)
         no_tubes = max(self._safe(self.no_tubes.v, 1.0), 1.0)
-        fluid_id = self._safe(self.fluid_id.v, "water")
+        fluid_id = self._safe(self.fluid_id.v, "Nitrate Salt")
 
         m_dot_in = max(self._safe(self.m_dot_in.v), 0.0)
         h_in = self._safe(self.h_in.v)

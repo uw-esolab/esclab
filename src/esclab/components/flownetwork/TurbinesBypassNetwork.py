@@ -1102,6 +1102,7 @@ class TurbinesBypassNetwork(Component):
         m_dot_htf = max(self._safe(self.m_dot_htf.v, 0.0), 0.0)
         p_htf_in = max(self._safe(self.htf_p_in.v, 2.0e6), 1.0)
         t_htf_in = self._safe(self.htf_t_in.v, 560.0)
+        fluid_name = str(self._safe(self.fluid_id.v, "Nitrate Salt"))
         p_cond = max(self._safe(self.p_cond.v, 1.0e5), 1.0)
 
         self._set_all_outputs_zero(self)
@@ -1177,14 +1178,16 @@ class TurbinesBypassNetwork(Component):
                 return fallback
 
         def _cp_incompressible(fluid_name, temperature_k, pressure_pa, fallback_jpkgk=1500.0):
+            fluid_eval = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
             try:
-                return max(float(self._inc_props.specheat(str(fluid_name), float(temperature_k), float(pressure_pa))) * 1000.0, 1.0)
+                return max(float(self._inc_props.specheat(fluid_eval, float(temperature_k), float(pressure_pa))) * 1000.0, 1.0)
             except Exception:
                 return fallback_jpkgk
 
         def _rho_incompressible(fluid_name, temperature_k, pressure_pa, fallback_kgm3=1000.0):
+            fluid_eval = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
             try:
-                return max(float(self._inc_props.density(str(fluid_name), float(temperature_k), float(pressure_pa))), 1.0e-6)
+                return max(float(self._inc_props.density(fluid_eval, float(temperature_k), float(pressure_pa))), 1.0e-6)
             except Exception:
                 return fallback_kgm3
 
@@ -1574,7 +1577,7 @@ class TurbinesBypassNetwork(Component):
 
         # REHEATER CODE
         if m_dot_ss_steam > 0.0 and m_dot_htf > 0.0:
-            cp_htf = _cp_incompressible(self.fluid_id.v, t_htf_in, p_htf_in)
+            cp_htf = _cp_incompressible(fluid_name, t_htf_in, p_htf_in)
             cp_steam = cp_water(p_lpmain_prev, 0.5 * (t_htf_in + t_ss_steam))
             hx_tube_od = self._safe(self.hx_tube_od.v, 0.05)
             hx_tube_th = self._safe(self.hx_tube_th.v, 0.002)
@@ -1629,7 +1632,7 @@ class TurbinesBypassNetwork(Component):
                 h_hx_out = (m_dot_ss_steam * h_ss_steam - q_dot_hx) / max(m_dot_ss_steam, 1.0e-9)
                 t_htf_out = (m_dot_htf * cp_htf * t_htf_in + q_dot_hx) / max(m_dot_htf * cp_htf, 1.0e-9)
 
-            rho_htf = _rho_incompressible(self.fluid_id.v, t_htf_out, p_htf_in)
+            rho_htf = _rho_incompressible(fluid_name, t_htf_out, p_htf_in)
             vol_dot_htf = m_dot_htf / max(rho_htf, 1.0e-9)
 
             if not math.isfinite(h_hx_out):
@@ -1647,7 +1650,7 @@ class TurbinesBypassNetwork(Component):
             h_hx_out = h_ss_steam
             t_hx_out = t_ss_steam
             t_htf_out = t_htf_in
-            vol_dot_htf = m_dot_htf / max(_rho_incompressible(self.fluid_id.v, t_htf_out, p_htf_in), 1.0e-9)
+            vol_dot_htf = m_dot_htf / max(_rho_incompressible(fluid_name, t_htf_out, p_htf_in), 1.0e-9)
             eta_od = 0.0
 
         # HP main / LP main / AUX piping code

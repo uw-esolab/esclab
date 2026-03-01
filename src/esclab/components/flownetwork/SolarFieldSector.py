@@ -28,7 +28,7 @@ class SolarFieldSector(Component):
         Solar-field geometry terms.
     n_sca, n_loop : float
         Number of SCA elements and loops in the sector.
-    fluid_id : float|str
+    fluid_id : str
         HTF identifier.
     mc_receiver_mult, mc_header_mult : float
         Thermal mass multipliers.
@@ -247,11 +247,11 @@ class SolarFieldSector(Component):
     def _fluid_viscosity(self, fluid_name, temperature_k, pressure_pa):
         name = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
         try:
-            mu = fp.viscosity(name, T=temperature_k, P=pressure_pa)
+            mu = self._props.viscosity(name, temperature_k, pressure_pa)
             return max(float(mu), 1.0e-6)
         except Exception:
             try:
-                mu = self._props.viscosity(name, temperature_k)
+                mu = fp.viscosity(name, T=temperature_k, P=pressure_pa)
                 return max(float(mu), 1.0e-6)
             except Exception:
                 return 2.5e-3
@@ -259,10 +259,14 @@ class SolarFieldSector(Component):
     def _fluid_density_ees(self, fluid_name, temperature_k, pressure_pa):
         name = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
         try:
-            rho = fp.density(name, T=temperature_k, P=pressure_pa)
+            rho = self._props.density(name, temperature_k, pressure_pa)
             return max(float(rho), 1.0)
         except Exception:
-            return self._fluid_density(name, temperature_k)
+            try:
+                rho = fp.density(name, T=temperature_k, P=pressure_pa)
+                return max(float(rho), 1.0)
+            except Exception:
+                return self._fluid_density(name, temperature_k)
 
     def _dp_segment(
         self,

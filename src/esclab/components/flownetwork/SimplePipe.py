@@ -2,6 +2,7 @@
 
 import numpy as np
 from eeslib import fluid_properties as fp
+from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
 
@@ -76,6 +77,7 @@ class SimplePipe(Component):
     P_out = Component.Output()
     DELTA_P = Component.Output()
     ff = Component.Output()
+    _props = Inc()
 
     def presim_setup(self, **kwargs):
         super().presim_setup(**kwargs)
@@ -97,8 +99,15 @@ class SimplePipe(Component):
             self.guess.v =  max([self.ff.v,0.1]) # Friction Factor Guess from last iteration
 
             # Calculating Pressure Drop
-            rho =  fp.density(self.fluid.v, T = self.T_in.v, P = self.P_in.v)
-            visc = fp.viscosity(self.fluid.v, T = self.T_in.v, P = self.P_in.v)
+            fluid_name = str(self.fluid.v) if self.fluid.v == self.fluid.v else "Nitrate Salt"
+            try:
+                rho = self._props.density(fluid_name, self.T_in.v, self.P_in.v)
+            except Exception:
+                rho = fp.density(fluid_name, T=self.T_in.v, P=self.P_in.v)
+            try:
+                visc = self._props.viscosity(fluid_name, self.T_in.v, self.P_in.v)
+            except Exception:
+                visc = fp.viscosity(fluid_name, T=self.T_in.v, P=self.P_in.v)
             vel = self.m_dot_in.v/rho/(3.14/4. *self.Pipe_ID.v**2.)
             Re = rho* vel * self.Pipe_ID.v/visc
 

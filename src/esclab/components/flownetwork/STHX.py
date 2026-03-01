@@ -3,6 +3,7 @@
 import math
 
 from eeslib import fluid_properties as fp
+from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
 
@@ -18,7 +19,6 @@ class STHX(Component):
     ----------
     heat_transfer_rated, m_dot_fw_rated, m_dot_htf_rated, rated_exp,
     no_shell_passes, no_tube_passes, length_hx, tube_od, tube_th, no_tubes,
-    fluid_id,
     high_htf_temp_in_alarm, high_htf_temp_in_trip,
     low_htf_temp_in_alarm, low_htf_temp_in_trip,
     low_htf_temp_out_alarm, low_htf_temp_out_trip,
@@ -28,6 +28,8 @@ class STHX(Component):
     high_hr_htf_in_alarm, high_hr_htf_in_trip,
     high_hr_fw_out_alarm, high_hr_fw_out_trip : float
         Ordered TRNSYS Type 6017 parameter map.
+    fluid_id : str
+        HTF fluid name passed to :class:`esclab.components.esol_properties.Incompressible`.
 
     Inputs
     ------
@@ -118,6 +120,7 @@ class STHX(Component):
 
     _htf_in_hist = []
     _fw_out_hist = []
+    _props = Inc()
 
     @staticmethod
     def _safe(value, default=0.0):
@@ -161,8 +164,15 @@ class STHX(Component):
             hist[-1] = new_val
 
     def _cp_htf(self, fluid_id, temperature, pressure):
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
         try:
-            cp = float(fp.specheat(fluid_id, T=temperature, P=pressure))
+            cp = float(self._props.specheat(fluid_name, temperature, pressure))
+            if cp == cp and cp > 0.0:
+                return cp * 1000.0 if cp < 100.0 else cp
+        except Exception:
+            pass
+        try:
+            cp = float(fp.specheat(fluid_name, T=temperature, P=pressure))
             if cp == cp and cp > 0.0:
                 return cp * 1000.0 if cp < 100.0 else cp
         except Exception:
@@ -254,8 +264,15 @@ class STHX(Component):
         return 1.0 / max((1.0 - x) / rho_l + x / rho_v, 1.0e-12)
 
     def _htf_density(self, fluid_id, temperature, pressure):
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
         try:
-            rho = float(fp.density(fluid_id, T=temperature, P=pressure))
+            rho = float(self._props.density(fluid_name, temperature, pressure))
+            if rho == rho and rho > 0.0:
+                return rho
+        except Exception:
+            pass
+        try:
+            rho = float(fp.density(fluid_name, T=temperature, P=pressure))
             if rho == rho and rho > 0.0:
                 return rho
         except Exception:
@@ -412,7 +429,7 @@ class STHX(Component):
         tube_od = max(self._safe(self.tube_od.v, 0.02), 1.0e-9)
         tube_th = max(self._safe(self.tube_th.v, 0.001), 0.0)
         no_tubes = max(self._safe(self.no_tubes.v, 1.0), 1.0)
-        fluid_id = self._safe(self.fluid_id.v, 0.0)
+        fluid_id = self._safe(self.fluid_id.v, "Nitrate Salt")
 
         m_dot_fw = max(self._safe(self.m_dot_fw.v), 0.0)
         p_fw = self._safe(self.p_fw.v)
