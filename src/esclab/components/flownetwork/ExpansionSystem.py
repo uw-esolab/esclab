@@ -78,9 +78,9 @@ class ExpansionSystem(Component):
     t_of = Component.Output()
     t_ev = Component.Output()
     alarm_high_high_pressure = Component.Output()
-    output_13 = Component.Output()
-    output_14 = Component.Output()
-    output_15 = Component.Output()
+    alarm_reserved_1 = Component.Output()
+    alarm_reserved_2 = Component.Output()
+    alarm_reserved_3 = Component.Output()
 
     _t_of = float("nan")
     _t_ev = float("nan")

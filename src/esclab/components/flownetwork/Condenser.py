@@ -17,12 +17,62 @@ class Condenser(Component):
     3) hotwell tank update with reservoir-flow correction.
     """
 
-    for _idx in range(1, 18):
-        locals()[f"parameter_{_idx}"] = Component.Parameter()
-    for _idx in range(1, 10):
-        locals()[f"input_{_idx}"] = Component.Input()
-    for _idx in range(1, 29):
-        locals()[f"output_{_idx}"] = Component.Output()
+    tank_height = Component.Parameter()
+    tank_area = Component.Parameter()
+    tank_level_initial = Component.Parameter()
+    tank_pressure_initial = Component.Parameter()
+    pump_curve_a = Component.Parameter()
+    pump_curve_b = Component.Parameter()
+    pump_curve_c = Component.Parameter()
+    reserved_parameter_8 = Component.Parameter()
+    pump_eta_a = Component.Parameter()
+    pump_eta_b = Component.Parameter()
+    pump_eta_c = Component.Parameter()
+    pump_eta_d = Component.Parameter()
+    hx_ttd = Component.Parameter()
+    hx_tube_count = Component.Parameter()
+    hx_tube_length = Component.Parameter()
+    hx_tube_id = Component.Parameter()
+    hx_tube_thickness = Component.Parameter()
+
+    steam_m_dot_in = Component.Input()
+    steam_h_in = Component.Input()
+    steam_p_in = Component.Input()
+    cooling_m_dot_in = Component.Input()
+    cooling_h_in = Component.Input()
+    cooling_p_in = Component.Input()
+    deaerator_pressure = Component.Input()
+    system_losses = Component.Input()
+    pump_speed_signal = Component.Input()
+
+    out_pump_m_dot = Component.Output()
+    out_pump_vol_dot = Component.Output()
+    out_pump_t = Component.Output()
+    out_pump_h = Component.Output()
+    out_pump_p = Component.Output()
+    out_cooling_m_dot = Component.Output()
+    out_cooling_vol_dot = Component.Output()
+    out_cooling_t = Component.Output()
+    out_cooling_p = Component.Output()
+    out_cooling_h = Component.Output()
+    out_tank_level = Component.Output()
+    out_tank_p = Component.Output()
+    out_tank_h = Component.Output()
+    out_tank_t = Component.Output()
+    out_tank_m = Component.Output()
+    out_state_level_prev = Component.Output()
+    out_state_p_prev = Component.Output()
+    out_state_h_prev = Component.Output()
+    out_state_m_prev = Component.Output()
+    out_pump_solver_err = Component.Output()
+    out_pump_solver_q_prev = Component.Output()
+    out_pump_solver_q_anchor = Component.Output()
+    out_pump_eta = Component.Output()
+    out_pump_w_dot = Component.Output()
+    out_reservoir_m_dot = Component.Output()
+    out_aux_h = Component.Output()
+    out_cond_q_dot = Component.Output()
+    out_ff = Component.Output()
 
     @staticmethod
     def _safe(value, default=0.0):
@@ -60,9 +110,9 @@ class Condenser(Component):
         self, p_tank, l_tank, p_da, sys_losses, pump_speed, q_prev, point_1x, point_1y
     ):
         rho_f = 1000.0
-        coef_a = self._safe(self.parameter_5.v, 0.0)
-        coef_b = self._safe(self.parameter_6.v, 0.0)
-        coef_c = self._safe(self.parameter_7.v, 1.0)
+        coef_a = self._safe(self.pump_curve_a.v, 0.0)
+        coef_b = self._safe(self.pump_curve_b.v, 0.0)
+        coef_c = self._safe(self.pump_curve_c.v, 1.0)
 
         a = coef_a
         b = coef_b * max(pump_speed, 1.0e-8)
@@ -107,10 +157,10 @@ class Condenser(Component):
             q_new = min(max(q_new, 1.0e-9), q_max)
 
         p_pump_out = (a * q_new * q_new + b * q_new + c) * rho_f * 9.81 + p_pump_in
-        eta_a = self._safe(self.parameter_9.v, 0.0)
-        eta_b = self._safe(self.parameter_10.v, 0.0)
-        eta_c = self._safe(self.parameter_11.v, 0.0)
-        eta_d = self._safe(self.parameter_12.v, 0.5)
+        eta_a = self._safe(self.pump_eta_a.v, 0.0)
+        eta_b = self._safe(self.pump_eta_b.v, 0.0)
+        eta_c = self._safe(self.pump_eta_c.v, 0.0)
+        eta_d = self._safe(self.pump_eta_d.v, 0.5)
         spd = max(pump_speed, 1.0e-8)
         flow_ratio = q_new / spd
         eta_pump = max(
@@ -124,11 +174,11 @@ class Condenser(Component):
         return q_new, p_pump_in, p_pump_out, eta_pump, w_dot_pump, point_1x_new, point_1y_new
 
     def _condenser_hx(self, m_dot_cool_in, h_cool_in, p_cool_in, p_tank_prev, ff_guess):
-        ttd = self._safe(self.parameter_13.v, 5.0)
-        no_tubes = max(self._safe(self.parameter_14.v, 1.0), 1.0)
-        length_tubes = max(self._safe(self.parameter_15.v, 1.0), 1.0e-9)
-        id_tube = max(self._safe(self.parameter_16.v, 0.02), 1.0e-6)
-        th_tube = max(self._safe(self.parameter_17.v, 0.001), 0.0)
+        ttd = self._safe(self.hx_ttd.v, 5.0)
+        no_tubes = max(self._safe(self.hx_tube_count.v, 1.0), 1.0)
+        length_tubes = max(self._safe(self.hx_tube_length.v, 1.0), 1.0e-9)
+        id_tube = max(self._safe(self.hx_tube_id.v, 0.02), 1.0e-6)
+        th_tube = max(self._safe(self.hx_tube_thickness.v, 0.001), 0.0)
         od_tube = id_tube + 2.0 * th_tube
 
         t_sat, h_sat_f, h_sat_g, rho_sat_f, rho_sat_g = self._sat_props_from_pressure(p_tank_prev)
@@ -306,21 +356,21 @@ class Condenser(Component):
 
     def calculate(self):
         # Parameters
-        height_tank = max(self._safe(self.parameter_1.v, 1.0), 1.0e-6)
-        area_tank = max(self._safe(self.parameter_2.v, 1.0), 1.0e-6)
-        l_tank_ini = self._safe(self.parameter_3.v, 0.0)
-        p_tank_ini = max(self._safe(self.parameter_4.v, 101325.0), 1.0)
+        height_tank = max(self._safe(self.tank_height.v, 1.0), 1.0e-6)
+        area_tank = max(self._safe(self.tank_area.v, 1.0), 1.0e-6)
+        l_tank_ini = self._safe(self.tank_level_initial.v, 0.0)
+        p_tank_ini = max(self._safe(self.tank_pressure_initial.v, 101325.0), 1.0)
 
         # Inputs
-        m_dot_in = max(self._safe(self.input_1.v, 0.0), 0.0)
-        h_in = self._safe(self.input_2.v, 1.0e6)
-        p_in = max(self._safe(self.input_3.v, p_tank_ini), 1.0)
-        m_dot_cool_in = max(self._safe(self.input_4.v, 0.0), 0.0)
-        h_cool_in = self._safe(self.input_5.v, 1.0e6)
-        p_cool_in = self._safe(self.input_6.v, p_in)
-        p_da = self._safe(self.input_7.v, p_in)
-        sys_losses = self._safe(self.input_8.v, p_in)
-        pump_speed = max(self._safe(self.input_9.v, 0.0), 0.0)
+        m_dot_in = max(self._safe(self.steam_m_dot_in.v, 0.0), 0.0)
+        h_in = self._safe(self.steam_h_in.v, 1.0e6)
+        p_in = max(self._safe(self.steam_p_in.v, p_tank_ini), 1.0)
+        m_dot_cool_in = max(self._safe(self.cooling_m_dot_in.v, 0.0), 0.0)
+        h_cool_in = self._safe(self.cooling_h_in.v, 1.0e6)
+        p_cool_in = self._safe(self.cooling_p_in.v, p_in)
+        p_da = self._safe(self.deaerator_pressure.v, p_in)
+        sys_losses = self._safe(self.system_losses.v, p_in)
+        pump_speed = max(self._safe(self.pump_speed_signal.v, 0.0), 0.0)
 
         rho_f = 1000.0
         vol_tank = height_tank * area_tank
@@ -331,62 +381,62 @@ class Condenser(Component):
             m_tank = max(area_tank * max(l_tank_ini, 0.0) * rho_f, 1.0)
 
             p_pump_out = (
-                self._safe(self.parameter_7.v, 1.0)
+                self._safe(self.pump_curve_c.v, 1.0)
                 * max(pump_speed, 1.0e-6) ** 2
                 * rho_f
                 * 9.81
                 + p_tank_ini
                 + l_tank_ini * rho_f * 9.81
             )
-            self.output_1.v = 1.0e-6
-            self.output_2.v = 0.0
-            self.output_3.v = t_tank
-            self.output_4.v = h_tank
-            self.output_5.v = p_pump_out
+            self.out_pump_m_dot.v = 1.0e-6
+            self.out_pump_vol_dot.v = 0.0
+            self.out_pump_t.v = t_tank
+            self.out_pump_h.v = h_tank
+            self.out_pump_p.v = p_pump_out
 
-            self.output_6.v = m_dot_cool_in
-            self.output_7.v = m_dot_cool_in / rho_f
-            self.output_8.v = 300.0
-            self.output_9.v = p_cool_in
-            self.output_10.v = h_cool_in
+            self.out_cooling_m_dot.v = m_dot_cool_in
+            self.out_cooling_vol_dot.v = m_dot_cool_in / rho_f
+            self.out_cooling_t.v = 300.0
+            self.out_cooling_p.v = p_cool_in
+            self.out_cooling_h.v = h_cool_in
 
-            self.output_11.v = l_tank_ini
-            self.output_12.v = p_tank_ini
-            self.output_13.v = h_tank
-            self.output_14.v = t_tank
-            self.output_15.v = m_tank
-            self.output_16.v = l_tank_ini
-            self.output_17.v = p_tank_ini
-            self.output_18.v = h_tank
-            self.output_19.v = m_tank
-            self.output_20.v = 0.0
-            self.output_21.v = 0.0
-            self.output_22.v = 0.0
-            self.output_23.v = 0.0
-            self.output_24.v = 0.0
-            self.output_25.v = 0.0
-            self.output_26.v = 0.0
-            self.output_27.v = 0.0
-            self.output_28.v = 0.1
+            self.out_tank_level.v = l_tank_ini
+            self.out_tank_p.v = p_tank_ini
+            self.out_tank_h.v = h_tank
+            self.out_tank_t.v = t_tank
+            self.out_tank_m.v = m_tank
+            self.out_state_level_prev.v = l_tank_ini
+            self.out_state_p_prev.v = p_tank_ini
+            self.out_state_h_prev.v = h_tank
+            self.out_state_m_prev.v = m_tank
+            self.out_pump_solver_err.v = 0.0
+            self.out_pump_solver_q_prev.v = 0.0
+            self.out_pump_solver_q_anchor.v = 0.0
+            self.out_pump_eta.v = 0.0
+            self.out_pump_w_dot.v = 0.0
+            self.out_reservoir_m_dot.v = 0.0
+            self.out_aux_h.v = 0.0
+            self.out_cond_q_dot.v = 0.0
+            self.out_ff.v = 0.1
             return
 
         # STEP 1: Pump-flow solve
-        p_tank_prev = max(self._safe(self.output_17.v, p_tank_ini), 1.0)
-        l_tank_prev = max(self._safe(self.output_16.v, l_tank_ini), 0.0)
+        p_tank_prev = max(self._safe(self.out_state_p_prev.v, p_tank_ini), 1.0)
+        l_tank_prev = max(self._safe(self.out_state_level_prev.v, l_tank_ini), 0.0)
         h_tank_prev = self._safe(
-            self.output_18.v,
+            self.out_state_h_prev.v,
             self._water_h_from_t(self._sat_temperature_from_pressure(p_tank_prev)),
         )
         m_tank_prev = max(
-            self._safe(self.output_19.v, area_tank * l_tank_prev * rho_f),
+            self._safe(self.out_state_m_prev.v, area_tank * l_tank_prev * rho_f),
             1.0,
         )
         q_prev = max(
-            self._safe(self.output_21.v, self._safe(self.output_1.v, 1.0e-6) / rho_f),
+            self._safe(self.out_pump_solver_q_prev.v, self._safe(self.out_pump_m_dot.v, 1.0e-6) / rho_f),
             1.0e-9,
         )
-        point_1x = self._safe(self.output_22.v, q_prev)
-        point_1y = self._safe(self.output_20.v, 0.0)
+        point_1x = self._safe(self.out_pump_solver_q_anchor.v, q_prev)
+        point_1y = self._safe(self.out_pump_solver_err.v, 0.0)
 
         q_new, _, p_pump_out, eta_pump, w_dot_pump, p1x_new, p1y_new = self._solve_pump_flow(
             p_tank_prev,
@@ -404,7 +454,7 @@ class Condenser(Component):
         t_pump_out = self._water_temp_from_h(h_pump_out)
 
         # STEP 2: Condenser HX calculations
-        ff_guess = self._safe(self.output_28.v, 0.1)
+        ff_guess = self._safe(self.out_ff.v, 0.1)
         m_dot_cool_out, vol_cool_out, t_cool_out, p_cool_out, h_cool_out, q_dot, ff_new = self._condenser_hx(
             m_dot_cool_in,
             h_cool_in,
@@ -467,35 +517,35 @@ class Condenser(Component):
             )
 
         # Outputs mapping
-        self.output_1.v = m_dot_pump
-        self.output_2.v = q_new
-        self.output_3.v = t_pump_out
-        self.output_4.v = h_pump_out
-        self.output_5.v = p_pump_out
-        self.output_6.v = m_dot_cool_out
-        self.output_7.v = vol_cool_out
-        self.output_8.v = t_cool_out
-        self.output_9.v = p_cool_out
-        self.output_10.v = h_cool_out
+        self.out_pump_m_dot.v = m_dot_pump
+        self.out_pump_vol_dot.v = q_new
+        self.out_pump_t.v = t_pump_out
+        self.out_pump_h.v = h_pump_out
+        self.out_pump_p.v = p_pump_out
+        self.out_cooling_m_dot.v = m_dot_cool_out
+        self.out_cooling_vol_dot.v = vol_cool_out
+        self.out_cooling_t.v = t_cool_out
+        self.out_cooling_p.v = p_cool_out
+        self.out_cooling_h.v = h_cool_out
 
-        self.output_11.v = l_tank_new
-        self.output_12.v = p_tank_new
-        self.output_13.v = h_tank_new
-        self.output_14.v = t_tank_new
-        self.output_15.v = m_tank_new
+        self.out_tank_level.v = l_tank_new
+        self.out_tank_p.v = p_tank_new
+        self.out_tank_h.v = h_tank_new
+        self.out_tank_t.v = t_tank_new
+        self.out_tank_m.v = m_tank_new
 
-        self.output_20.v = p1y_new
-        self.output_21.v = q_new
-        self.output_22.v = p1x_new
-        self.output_23.v = eta_pump
-        self.output_24.v = w_dot_pump
-        self.output_25.v = m_dot_res
-        self.output_26.v = self._safe(self.output_26.v, h_cool_out)
-        self.output_27.v = q_dot
-        self.output_28.v = ff_new
+        self.out_pump_solver_err.v = p1y_new
+        self.out_pump_solver_q_prev.v = q_new
+        self.out_pump_solver_q_anchor.v = p1x_new
+        self.out_pump_eta.v = eta_pump
+        self.out_pump_w_dot.v = w_dot_pump
+        self.out_reservoir_m_dot.v = m_dot_res
+        self.out_aux_h.v = self._safe(self.out_aux_h.v, h_cool_out)
+        self.out_cond_q_dot.v = q_dot
+        self.out_ff.v = ff_new
 
         if self.model.is_converged:
-            self.output_16.v = self.output_11.v
-            self.output_17.v = self.output_12.v
-            self.output_18.v = self.output_13.v
-            self.output_19.v = self.output_15.v
+            self.out_state_level_prev.v = self.out_tank_level.v
+            self.out_state_p_prev.v = self.out_tank_p.v
+            self.out_state_h_prev.v = self.out_tank_h.v
+            self.out_state_m_prev.v = self.out_tank_m.v

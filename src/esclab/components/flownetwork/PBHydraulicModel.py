@@ -30,17 +30,43 @@ class PBHydraulicModel(Component):
     ff4_guess = Component.Parameter()
     lr = Component.Parameter(0.5)
 
-    for _idx in range(1, 18):
-        locals()[f"input_{_idx}"] = Component.Input()
-    for _idx in range(1, 13):
-        locals()[f"output_{_idx}"] = Component.Output()
+    m_in_input = Component.Input()
+    reserved_input_2 = Component.Input()
+    reserved_input_3 = Component.Input()
+    reserved_input_4 = Component.Input()
+    reserved_input_5 = Component.Input()
+    reserved_input_6 = Component.Input()
+    reserved_input_7 = Component.Input()
+    reserved_input_8 = Component.Input()
+    reserved_input_9 = Component.Input()
+    reserved_input_10 = Component.Input()
+    p2_in = Component.Input()
+    p3_in = Component.Input()
+    p4_in = Component.Input()
+    p5_in = Component.Input()
+    p6_in = Component.Input()
+    p7_in = Component.Input()
+    reserved_input_17 = Component.Input()
+
+    m2_out = Component.Output()
+    m3_out = Component.Output()
+    m4_out = Component.Output()
+    m5_out = Component.Output()
+    m6_out = Component.Output()
+    m7_out = Component.Output()
+    m8_out = Component.Output()
+    m9_out = Component.Output()
+    ff1_out = Component.Output()
+    ff2_out = Component.Output()
+    ff3_out = Component.Output()
+    ff4_out = Component.Output()
 
     def _clipf(self, x):
         return max(min(x, 1.0), 0.0)
 
     def calculate(self):
-        m_in = self.input_1.v if self.input_1.v == self.input_1.v else max(self.m_guess.v, 0.0)
-        p_in, p2, p3, p4, p5, p6, p7 = self.input_10.v, self.input_11.v, self.input_12.v, self.input_13.v, self.input_14.v, self.input_15.v, self.input_16.v
+        m_in = self.m_in_input.v if self.m_in_input.v == self.m_in_input.v else max(self.m_guess.v, 0.0)
+        p2, p3, p4, p5, p6, p7 = self.p2_in.v, self.p3_in.v, self.p4_in.v, self.p5_in.v, self.p6_in.v, self.p7_in.v
 
         ff1 = self._clipf(self.ff1_guess.v if self.model.is_first_step else (p3 / max(p2 + p3, 1.0e-9) if p2 + p3 != 0 else self.ff1_guess.v))
         m2 = m_in * ff1
@@ -55,7 +81,16 @@ class PBHydraulicModel(Component):
         m8 = m4 * ff4
         m9 = m4 - m8
 
-        vals = [m2, m3, m4, m5, m6, m7, m8, m9, ff1, ff2, ff3, ff4]
-        for idx, val in enumerate(vals, start=1):
-            getattr(self, f"output_{idx}").v = val
+        self.m2_out.v = m2
+        self.m3_out.v = m3
+        self.m4_out.v = m4
+        self.m5_out.v = m5
+        self.m6_out.v = m6
+        self.m7_out.v = m7
+        self.m8_out.v = m8
+        self.m9_out.v = m9
+        self.ff1_out.v = ff1
+        self.ff2_out.v = ff2
+        self.ff3_out.v = ff3
+        self.ff4_out.v = ff4
 

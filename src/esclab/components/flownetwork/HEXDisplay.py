@@ -22,35 +22,86 @@ class HEXDisplay(Component):
         Top/bottom display streams and finite-difference temperature derivatives.
     """
 
-    for _idx in range(1, 26):
-        locals()[f"input_{_idx}"] = Component.Input()
-    for _idx in range(1, 17):
-        locals()[f"output_{_idx}"] = Component.Output()
+    tes_mode = Component.Input()
+
+    charge_shell_m_in = Component.Input()
+    charge_shell_t_in = Component.Input()
+    charge_shell_p_in = Component.Input()
+    discharge_shell_m_out = Component.Input()
+    discharge_shell_t_out = Component.Input()
+    discharge_shell_p_out = Component.Input()
+    charge_tube_m_in = Component.Input()
+    charge_tube_t_in = Component.Input()
+    charge_tube_p_in = Component.Input()
+    discharge_tube_m_in = Component.Input()
+    discharge_tube_t_in = Component.Input()
+    discharge_tube_p_in = Component.Input()
+    charge_shell_m_out = Component.Input()
+    charge_shell_t_out = Component.Input()
+    charge_shell_p_out = Component.Input()
+    discharge_shell_m_in = Component.Input()
+    discharge_shell_t_in = Component.Input()
+    discharge_shell_p_in = Component.Input()
+    charge_tube_m_out = Component.Input()
+    charge_tube_t_out = Component.Input()
+    charge_tube_p_out = Component.Input()
+    discharge_tube_m_out = Component.Input()
+    discharge_tube_t_out = Component.Input()
+    discharge_tube_p_out = Component.Input()
+
+    display_1 = Component.Output()
+    tfd_1 = Component.Output()
+    display_3 = Component.Output()
+    display_4 = Component.Output()
+    tfd_2 = Component.Output()
+    display_6 = Component.Output()
+    display_7 = Component.Output()
+    tfd_3 = Component.Output()
+    display_9 = Component.Output()
+    display_10 = Component.Output()
+    tfd_4 = Component.Output()
+    display_12 = Component.Output()
+    dtfd_1 = Component.Output()
+    dtfd_2 = Component.Output()
+    dtfd_3 = Component.Output()
+    dtfd_4 = Component.Output()
 
     _prev = [0.0, 0.0, 0.0, 0.0]
 
     def calculate(self):
-        mode = 1.0 if self.input_1.v < 2.0 else 2.0
+        mode = 1.0 if self.tes_mode.v < 2.0 else 2.0
         if mode == 1.0:
             vals = [
-                self.input_2.v, self.input_3.v, self.input_4.v,
-                self.input_20.v, self.input_21.v, self.input_22.v,
-                self.input_14.v, self.input_15.v, self.input_16.v,
-                self.input_8.v, self.input_9.v, self.input_10.v,
+                self.charge_shell_m_in.v, self.charge_shell_t_in.v, self.charge_shell_p_in.v,
+                self.charge_tube_m_out.v, self.charge_tube_t_out.v, self.charge_tube_p_out.v,
+                self.charge_shell_m_out.v, self.charge_shell_t_out.v, self.charge_shell_p_out.v,
+                self.charge_tube_m_in.v, self.charge_tube_t_in.v, self.charge_tube_p_in.v,
             ]
         else:
             vals = [
-                self.input_17.v, self.input_18.v, self.input_19.v,
-                self.input_11.v, self.input_12.v, self.input_13.v,
-                self.input_5.v, self.input_6.v, self.input_7.v,
-                self.input_23.v, self.input_24.v, self.input_25.v,
+                self.discharge_shell_m_in.v, self.discharge_shell_t_in.v, self.discharge_shell_p_in.v,
+                self.discharge_tube_m_in.v, self.discharge_tube_t_in.v, self.discharge_tube_p_in.v,
+                self.discharge_shell_m_out.v, self.discharge_shell_t_out.v, self.discharge_shell_p_out.v,
+                self.discharge_tube_m_out.v, self.discharge_tube_t_out.v, self.discharge_tube_p_out.v,
             ]
 
-        for idx, val in enumerate(vals, start=1):
-            getattr(self, f"output_{idx}").v = val
+        self.display_1.v = vals[0]
+        self.tfd_1.v = vals[1]
+        self.display_3.v = vals[2]
+        self.display_4.v = vals[3]
+        self.tfd_2.v = vals[4]
+        self.display_6.v = vals[5]
+        self.display_7.v = vals[6]
+        self.tfd_3.v = vals[7]
+        self.display_9.v = vals[8]
+        self.display_10.v = vals[9]
+        self.tfd_4.v = vals[10]
+        self.display_12.v = vals[11]
 
         ts = max(self.model.settings.timestep, 1.0)
-        curr = [self.output_2.v, self.output_5.v, self.output_8.v, self.output_11.v]
-        for i in range(4):
-            getattr(self, f"output_{13+i}").v = (curr[i] - self._prev[i]) / ts
+        curr = [self.tfd_1.v, self.tfd_2.v, self.tfd_3.v, self.tfd_4.v]
+        self.dtfd_1.v = (curr[0] - self._prev[0]) / ts
+        self.dtfd_2.v = (curr[1] - self._prev[1]) / ts
+        self.dtfd_3.v = (curr[2] - self._prev[2]) / ts
+        self.dtfd_4.v = (curr[3] - self._prev[3]) / ts
         self._prev = curr

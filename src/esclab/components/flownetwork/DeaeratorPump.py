@@ -23,12 +23,120 @@ class DeaeratorPump(Component):
     stable reduced-order mass/energy update suitable for iterative classroom use.
     """
 
-    for _idx in range(1, 47):
-        locals()[f"parameter_{_idx}"] = Component.Parameter()
-    for _idx in range(1, 19):
-        locals()[f"input_{_idx}"] = Component.Input()
-    for _idx in range(1, 44):
-        locals()[f"output_{_idx}"] = Component.Output()
+    p1_head_a = Component.Parameter()
+    p1_head_b = Component.Parameter()
+    p1_head_c = Component.Parameter()
+    p1_eta_a = Component.Parameter()
+    p1_eta_b = Component.Parameter()
+    p1_eta_c = Component.Parameter()
+    p1_eta_d = Component.Parameter()
+    p1_npsh_a = Component.Parameter()
+    p1_npsh_b = Component.Parameter()
+    p1_npsh_c = Component.Parameter()
+    p1_npsh_d = Component.Parameter()
+
+    p2_head_a = Component.Parameter()
+    p2_head_b = Component.Parameter()
+    p2_head_c = Component.Parameter()
+    p2_eta_a = Component.Parameter()
+    p2_eta_b = Component.Parameter()
+    p2_eta_c = Component.Parameter()
+    p2_eta_d = Component.Parameter()
+    p2_npsh_a = Component.Parameter()
+    p2_npsh_b = Component.Parameter()
+    p2_npsh_c = Component.Parameter()
+    p2_npsh_d = Component.Parameter()
+
+    p3_head_a = Component.Parameter()
+    p3_head_b = Component.Parameter()
+    p3_head_c = Component.Parameter()
+    p3_eta_a = Component.Parameter()
+    p3_eta_b = Component.Parameter()
+    p3_eta_c = Component.Parameter()
+    p3_eta_d = Component.Parameter()
+    p3_npsh_a = Component.Parameter()
+    p3_npsh_b = Component.Parameter()
+    p3_npsh_c = Component.Parameter()
+    p3_npsh_d = Component.Parameter()
+
+    tank_diameter = Component.Parameter()
+    tank_length = Component.Parameter()
+    tank_to_pump_length = Component.Parameter()
+    tank_pressure_initial = Component.Parameter()
+    tank_level_initial = Component.Parameter()
+    vent_setting = Component.Parameter()
+    lpb1_flow_max = Component.Parameter()
+    lpb1_ramp_limit = Component.Parameter()
+    extraction_tolerance = Component.Parameter()
+    ll_alarm_threshold = Component.Parameter()
+    ll_trip_threshold = Component.Parameter()
+    hl_alarm_threshold = Component.Parameter()
+    hl_trip_threshold = Component.Parameter()
+
+    in_turbine_on = Component.Input()
+    in_pump1_power = Component.Input()
+    in_pump2_power = Component.Input()
+    in_pump3_power = Component.Input()
+    in_pump_speed = Component.Input()
+    in_fw_m_dot = Component.Input()
+    in_fw_p = Component.Input()
+    in_fw_h = Component.Input()
+    in_sd_p = Component.Input()
+    in_sys_piping_p = Component.Input()
+    in_tb_m_dot = Component.Input()
+    in_unused_12 = Component.Input()
+    in_tb_h = Component.Input()
+    in_hpfwh_m_dot = Component.Input()
+    in_unused_15 = Component.Input()
+    in_hpfwh_h = Component.Input()
+    in_unused_17 = Component.Input()
+    in_lpb1_h = Component.Input()
+
+    out_pump_m_dot = Component.Output()
+    out_pump_vol_dot = Component.Output()
+    out_pump_p = Component.Output()
+    out_pump_h = Component.Output()
+    out_pump_t = Component.Output()
+    out_lpb1_m_dot = Component.Output()
+    out_vent_m_dot = Component.Output()
+    out_vent_h = Component.Output()
+    out_state_m_start = Component.Output()
+    out_state_p_start = Component.Output()
+    out_state_l_start = Component.Output()
+    out_state_h_start = Component.Output()
+    out_tank_m = Component.Output()
+    out_tank_t = Component.Output()
+    out_tank_l = Component.Output()
+    out_tank_p = Component.Output()
+    out_tank_h = Component.Output()
+    out_p1_m_dot = Component.Output()
+    out_p2_m_dot = Component.Output()
+    out_p3_m_dot = Component.Output()
+    out_pump_w_total = Component.Output()
+    out_p1_w_dot = Component.Output()
+    out_p1_eta = Component.Output()
+    out_p2_w_dot = Component.Output()
+    out_p2_eta = Component.Output()
+    out_p3_w_dot = Component.Output()
+    out_p3_eta = Component.Output()
+    out_p1_point_1x = Component.Output()
+    out_p1_point_1y = Component.Output()
+    out_p1_point_2x = Component.Output()
+    out_p2_point_1x = Component.Output()
+    out_p2_point_1y = Component.Output()
+    out_p2_point_2x = Component.Output()
+    out_p3_point_1x = Component.Output()
+    out_p3_point_1y = Component.Output()
+    out_p3_point_2x = Component.Output()
+    out_p1_cav = Component.Output()
+    out_p2_cav = Component.Output()
+    out_p3_cav = Component.Output()
+    out_ll_alarm = Component.Output()
+    out_ll_trip = Component.Output()
+    out_hl_alarm = Component.Output()
+    out_hl_trip = Component.Output()
+
+    p1_curve_c = p1_head_c
 
     @staticmethod
     def _safe(value, default=0.0):
@@ -74,21 +182,73 @@ class DeaeratorPump(Component):
         )
 
     def _pump_step(self, p_idx, power_on, speed_factor, rho_f, p_tank, l_tank, l_tank2pump, p_piping_sys, p_sd, p_pump_prev):
-        # Pump coefficient blocks: (1-11), (12-22), (23-33)
-        p_base = 1 + (p_idx - 1) * 11
-        coef_a = self._safe(getattr(self, f"parameter_{p_base}").v, -100.0)
-        coef_b = self._safe(getattr(self, f"parameter_{p_base + 1}").v, 100.0)
-        coef_c = self._safe(getattr(self, f"parameter_{p_base + 2}").v, 10.0)
-        eta_a = self._safe(getattr(self, f"parameter_{p_base + 3}").v, 0.0)
-        eta_b = self._safe(getattr(self, f"parameter_{p_base + 4}").v, 0.0)
-        eta_c = self._safe(getattr(self, f"parameter_{p_base + 5}").v, 0.0)
-        eta_d = self._safe(getattr(self, f"parameter_{p_base + 6}").v, 0.7)
+        pump_blocks = {
+            1: {
+                "head_a": self.p1_head_a,
+                "head_b": self.p1_head_b,
+                "head_c": self.p1_head_c,
+                "eta_a": self.p1_eta_a,
+                "eta_b": self.p1_eta_b,
+                "eta_c": self.p1_eta_c,
+                "eta_d": self.p1_eta_d,
+                "npsh_a": self.p1_npsh_a,
+                "npsh_b": self.p1_npsh_b,
+                "npsh_c": self.p1_npsh_c,
+                "npsh_d": self.p1_npsh_d,
+                "m_dot_out": self.out_p1_m_dot,
+                "point_1x_out": self.out_p1_point_1x,
+                "point_1y_out": self.out_p1_point_1y,
+                "point_2x_out": self.out_p1_point_2x,
+            },
+            2: {
+                "head_a": self.p2_head_a,
+                "head_b": self.p2_head_b,
+                "head_c": self.p2_head_c,
+                "eta_a": self.p2_eta_a,
+                "eta_b": self.p2_eta_b,
+                "eta_c": self.p2_eta_c,
+                "eta_d": self.p2_eta_d,
+                "npsh_a": self.p2_npsh_a,
+                "npsh_b": self.p2_npsh_b,
+                "npsh_c": self.p2_npsh_c,
+                "npsh_d": self.p2_npsh_d,
+                "m_dot_out": self.out_p2_m_dot,
+                "point_1x_out": self.out_p2_point_1x,
+                "point_1y_out": self.out_p2_point_1y,
+                "point_2x_out": self.out_p2_point_2x,
+            },
+            3: {
+                "head_a": self.p3_head_a,
+                "head_b": self.p3_head_b,
+                "head_c": self.p3_head_c,
+                "eta_a": self.p3_eta_a,
+                "eta_b": self.p3_eta_b,
+                "eta_c": self.p3_eta_c,
+                "eta_d": self.p3_eta_d,
+                "npsh_a": self.p3_npsh_a,
+                "npsh_b": self.p3_npsh_b,
+                "npsh_c": self.p3_npsh_c,
+                "npsh_d": self.p3_npsh_d,
+                "m_dot_out": self.out_p3_m_dot,
+                "point_1x_out": self.out_p3_point_1x,
+                "point_1y_out": self.out_p3_point_1y,
+                "point_2x_out": self.out_p3_point_2x,
+            },
+        }
+        pump = pump_blocks[p_idx]
 
-        # NPSH curve for cavitation signal (outputs 37-39)
-        npsh_a = self._safe(getattr(self, f"parameter_{p_base + 7}").v, 0.0)
-        npsh_b = self._safe(getattr(self, f"parameter_{p_base + 8}").v, 0.0)
-        npsh_c = self._safe(getattr(self, f"parameter_{p_base + 9}").v, 0.0)
-        npsh_d = self._safe(getattr(self, f"parameter_{p_base + 10}").v, 0.0)
+        coef_a = self._safe(pump["head_a"].v, -100.0)
+        coef_b = self._safe(pump["head_b"].v, 100.0)
+        coef_c = self._safe(pump["head_c"].v, 10.0)
+        eta_a = self._safe(pump["eta_a"].v, 0.0)
+        eta_b = self._safe(pump["eta_b"].v, 0.0)
+        eta_c = self._safe(pump["eta_c"].v, 0.0)
+        eta_d = self._safe(pump["eta_d"].v, 0.7)
+
+        npsh_a = self._safe(pump["npsh_a"].v, 0.0)
+        npsh_b = self._safe(pump["npsh_b"].v, 0.0)
+        npsh_c = self._safe(pump["npsh_c"].v, 0.0)
+        npsh_d = self._safe(pump["npsh_d"].v, 0.0)
 
         if power_on != 1.0:
             return {
@@ -121,12 +281,11 @@ class DeaeratorPump(Component):
             eta_d_eff = eta_d / 100.0
 
         a = coef_a
-        q_prev = max(self._safe(getattr(self, f"output_{17 + p_idx}").v, 1.0e-6) / max(rho_f, 1.0e-9), 1.0e-9)
+        q_prev = max(self._safe(pump["m_dot_out"].v, 1.0e-6) / max(rho_f, 1.0e-9), 1.0e-9)
 
-        out_base = {1: 28, 2: 31, 3: 34}[p_idx]
-        point_1x = self._safe(getattr(self, f"output_{out_base}").v, q_prev)
-        point_1y = self._safe(getattr(self, f"output_{out_base + 1}").v, 0.0)
-        point_2x = self._safe(getattr(self, f"output_{out_base + 2}").v, q_prev)
+        point_1x = self._safe(pump["point_1x_out"].v, q_prev)
+        point_1y = self._safe(pump["point_1y_out"].v, 0.0)
+        point_2x = self._safe(pump["point_2x_out"].v, q_prev)
 
         discr = max(b * b - 4.0 * a * c, 0.0)
         if abs(a) < 1.0e-12:
@@ -220,39 +379,39 @@ class DeaeratorPump(Component):
 
     def calculate(self):
         # Parameters
-        d_tank = max(self._safe(self.parameter_34.v, 1.0), 1.0e-3)
-        length_tank = max(self._safe(self.parameter_35.v, 1.0), 1.0e-3)
-        length_tank2pump = max(self._safe(self.parameter_36.v, 0.0), 0.0)
-        p_tank_ini = max(self._safe(self.parameter_37.v, 101325.0), 1.0)
-        l_tank_ini = max(self._safe(self.parameter_38.v, 0.0), 0.0)
+        d_tank = max(self._safe(self.tank_diameter.v, 1.0), 1.0e-3)
+        length_tank = max(self._safe(self.tank_length.v, 1.0), 1.0e-3)
+        length_tank2pump = max(self._safe(self.tank_to_pump_length.v, 0.0), 0.0)
+        p_tank_ini = max(self._safe(self.tank_pressure_initial.v, 101325.0), 1.0)
+        l_tank_ini = max(self._safe(self.tank_level_initial.v, 0.0), 0.0)
 
-        vent_param = max(self._safe(self.parameter_39.v, 0.0), 0.0)
-        m_dot_lpb1_max = max(self._safe(self.parameter_40.v, 0.0), 0.0)
-        da_ss_lpb1 = max(self._safe(self.parameter_41.v, 0.0), 0.0)
-        extraction_tol = max(self._safe(self.parameter_42.v, 0.0), 0.0)
-        ll_alarm_th = self._safe(self.parameter_43.v, -1.0)
-        ll_trip_th = self._safe(self.parameter_44.v, -1.0)
-        hl_alarm_th = self._safe(self.parameter_45.v, 1.0e9)
-        hl_trip_th = self._safe(self.parameter_46.v, 1.0e9)
+        vent_param = max(self._safe(self.vent_setting.v, 0.0), 0.0)
+        m_dot_lpb1_max = max(self._safe(self.lpb1_flow_max.v, 0.0), 0.0)
+        da_ss_lpb1 = max(self._safe(self.lpb1_ramp_limit.v, 0.0), 0.0)
+        extraction_tol = max(self._safe(self.extraction_tolerance.v, 0.0), 0.0)
+        ll_alarm_th = self._safe(self.ll_alarm_threshold.v, -1.0)
+        ll_trip_th = self._safe(self.ll_trip_threshold.v, -1.0)
+        hl_alarm_th = self._safe(self.hl_alarm_threshold.v, 1.0e9)
+        hl_trip_th = self._safe(self.hl_trip_threshold.v, 1.0e9)
 
         # Inputs
-        turbine_on = self._safe(self.input_1.v, 0.0)
-        power_p1 = self._safe(self.input_2.v, 0.0)
-        power_p2 = self._safe(self.input_3.v, 0.0)
-        power_p3 = self._safe(self.input_4.v, 0.0)
-        pump_speed = max(self._safe(self.input_5.v, 0.0), 0.0)
+        turbine_on = self._safe(self.in_turbine_on.v, 0.0)
+        power_p1 = self._safe(self.in_pump1_power.v, 0.0)
+        power_p2 = self._safe(self.in_pump2_power.v, 0.0)
+        power_p3 = self._safe(self.in_pump3_power.v, 0.0)
+        pump_speed = max(self._safe(self.in_pump_speed.v, 0.0), 0.0)
 
-        m_dot_fw_in = max(self._safe(self.input_6.v, 0.0), 0.0)
-        p_fw_in = max(self._safe(self.input_7.v, 101325.0), 1.0)
-        h_fw_in = self._safe(self.input_8.v, 1.0e6)
-        p_sd = max(self._safe(self.input_9.v, p_fw_in), 1.0)
-        p_piping_sys = max(self._safe(self.input_10.v, p_fw_in), 1.0)
+        m_dot_fw_in = max(self._safe(self.in_fw_m_dot.v, 0.0), 0.0)
+        p_fw_in = max(self._safe(self.in_fw_p.v, 101325.0), 1.0)
+        h_fw_in = self._safe(self.in_fw_h.v, 1.0e6)
+        p_sd = max(self._safe(self.in_sd_p.v, p_fw_in), 1.0)
+        p_piping_sys = max(self._safe(self.in_sys_piping_p.v, p_fw_in), 1.0)
 
-        m_dot_tb = max(self._safe(self.input_11.v, 0.0), 0.0)
-        h_tb = self._safe(self.input_13.v, h_fw_in)
-        m_dot_hpfwh = max(self._safe(self.input_14.v, 0.0), 0.0)
-        h_hpfwh = self._safe(self.input_16.v, h_fw_in)
-        h_lpb1 = self._safe(self.input_18.v, h_fw_in)
+        m_dot_tb = max(self._safe(self.in_tb_m_dot.v, 0.0), 0.0)
+        h_tb = self._safe(self.in_tb_h.v, h_fw_in)
+        m_dot_hpfwh = max(self._safe(self.in_hpfwh_m_dot.v, 0.0), 0.0)
+        h_hpfwh = self._safe(self.in_hpfwh_h.v, h_fw_in)
+        h_lpb1 = self._safe(self.in_lpb1_h.v, h_fw_in)
 
         ts = max(self.model.settings.timestep * 3600.0, 1.0e-9)
         radius = d_tank / 2.0
@@ -268,59 +427,66 @@ class DeaeratorPump(Component):
             h_tank = h_f + x_tank * (h_g - h_f)
 
             m_dot_lpb1 = m_dot_lpb1_max if turbine_on == 1.0 else 0.0
-            p_pump_out = self._safe(self.parameter_3.v, 1.0) * max(pump_speed, 0.01) ** 2 * rho_f * 9.81 + p_tank_ini + (l_tank_ini + length_tank2pump) * rho_f * 9.81
+            p_pump_out = self._safe(self.p1_curve_c.v, 1.0) * max(pump_speed, 0.01) ** 2 * rho_f * 9.81 + p_tank_ini + (l_tank_ini + length_tank2pump) * rho_f * 9.81
             m_dot_pump = 1.0e-4
             q_dot_pump = m_dot_pump / rho_f
             eta_p1 = 0.01
             w_dot_total = max(p_pump_out - (p_tank_ini + (l_tank_ini + length_tank2pump) * rho_f * 9.81), 0.0) * q_dot_pump / eta_p1
             h_pump_out = h_f + w_dot_total / max(m_dot_pump, 1.0e-9)
 
-            self.output_1.v = m_dot_pump
-            self.output_2.v = q_dot_pump
-            self.output_3.v = p_pump_out
-            self.output_4.v = h_pump_out
-            self.output_5.v = self._water_temp_from_h(h_pump_out)
-            self.output_6.v = m_dot_lpb1
-            self.output_7.v = 0.0
-            self.output_8.v = 0.0
-            self.output_9.v = m_tank
-            self.output_10.v = p_tank_ini
-            self.output_11.v = l_tank_ini
-            self.output_12.v = h_tank
-            self.output_13.v = m_tank
-            self.output_14.v = t_sat
-            self.output_15.v = l_tank_ini
-            self.output_16.v = p_tank_ini
-            self.output_17.v = h_tank
-            self.output_18.v = 1.0e-4
-            self.output_19.v = 0.0
-            self.output_20.v = 0.0
-            self.output_21.v = w_dot_total
-            self.output_22.v = w_dot_total
-            self.output_23.v = eta_p1
-            self.output_24.v = 0.0
-            self.output_25.v = 0.0
-            self.output_26.v = 0.0
-            self.output_27.v = 0.0
-            for idx in range(28, 37):
-                getattr(self, f"output_{idx}").v = 0.0
-            self.output_37.v = 0.0
-            self.output_38.v = 0.0
-            self.output_39.v = 0.0
-            self.output_40.v = 1.0 if l_tank_ini <= ll_alarm_th else 0.0
-            self.output_41.v = 1.0 if l_tank_ini <= ll_trip_th else 0.0
-            self.output_42.v = 1.0 if l_tank_ini >= hl_alarm_th else 0.0
-            self.output_43.v = 1.0 if l_tank_ini >= hl_trip_th else 0.0
+            self.out_pump_m_dot.v = m_dot_pump
+            self.out_pump_vol_dot.v = q_dot_pump
+            self.out_pump_p.v = p_pump_out
+            self.out_pump_h.v = h_pump_out
+            self.out_pump_t.v = self._water_temp_from_h(h_pump_out)
+            self.out_lpb1_m_dot.v = m_dot_lpb1
+            self.out_vent_m_dot.v = 0.0
+            self.out_vent_h.v = 0.0
+            self.out_state_m_start.v = m_tank
+            self.out_state_p_start.v = p_tank_ini
+            self.out_state_l_start.v = l_tank_ini
+            self.out_state_h_start.v = h_tank
+            self.out_tank_m.v = m_tank
+            self.out_tank_t.v = t_sat
+            self.out_tank_l.v = l_tank_ini
+            self.out_tank_p.v = p_tank_ini
+            self.out_tank_h.v = h_tank
+            self.out_p1_m_dot.v = 1.0e-4
+            self.out_p2_m_dot.v = 0.0
+            self.out_p3_m_dot.v = 0.0
+            self.out_pump_w_total.v = w_dot_total
+            self.out_p1_w_dot.v = w_dot_total
+            self.out_p1_eta.v = eta_p1
+            self.out_p2_w_dot.v = 0.0
+            self.out_p2_eta.v = 0.0
+            self.out_p3_w_dot.v = 0.0
+            self.out_p3_eta.v = 0.0
+            self.out_p1_point_1x.v = 0.0
+            self.out_p1_point_1y.v = 0.0
+            self.out_p1_point_2x.v = 0.0
+            self.out_p2_point_1x.v = 0.0
+            self.out_p2_point_1y.v = 0.0
+            self.out_p2_point_2x.v = 0.0
+            self.out_p3_point_1x.v = 0.0
+            self.out_p3_point_1y.v = 0.0
+            self.out_p3_point_2x.v = 0.0
+            self.out_p1_cav.v = 0.0
+            self.out_p2_cav.v = 0.0
+            self.out_p3_cav.v = 0.0
+            self.out_ll_alarm.v = 1.0 if l_tank_ini <= ll_alarm_th else 0.0
+            self.out_ll_trip.v = 1.0 if l_tank_ini <= ll_trip_th else 0.0
+            self.out_hl_alarm.v = 1.0 if l_tank_ini >= hl_alarm_th else 0.0
+            self.out_hl_trip.v = 1.0 if l_tank_ini >= hl_trip_th else 0.0
             return
 
         # Current tank states at beginning of timestep/iteration
-        m_tank = max(self._safe(self.output_9.v, 1.0), 1.0)
-        p_tank = max(self._safe(self.output_10.v, p_tank_ini), 1.0)
-        l_tank = max(self._safe(self.output_11.v, l_tank_ini), 0.0)
-        h_tank = self._safe(self.output_12.v, h_fw_in)
+        m_tank = max(self._safe(self.out_state_m_start.v, 1.0), 1.0)
+        p_tank = max(self._safe(self.out_state_p_start.v, p_tank_ini), 1.0)
+        l_tank = max(self._safe(self.out_state_l_start.v, l_tank_ini), 0.0)
+        h_tank = self._safe(self.out_state_h_start.v, h_fw_in)
         _, h_sat_f, h_sat_g, rho_tank_f, _ = self._sat_props_from_pressure(p_tank)
 
-        p_pump_prev = max(self._safe(self.output_3.v, p_tank), 1.0)
+        p_pump_prev = max(self._safe(self.out_pump_p.v, p_tank), 1.0)
 
         # Step 1-3: Pump curve solves
         p1 = self._pump_step(1, power_p1, pump_speed, rho_tank_f, p_tank, l_tank, length_tank2pump, p_piping_sys, p_sd, p_pump_prev)
@@ -336,14 +502,14 @@ class DeaeratorPump(Component):
         else:
             m_dot_pump = 1.0e-8
             vol_dot_pump = 0.0
-            h_pump_out = self._safe(self.output_4.v, h_fw_in)
-            p_pump_out = self._safe(self.output_3.v, p_tank)
+            h_pump_out = self._safe(self.out_pump_h.v, h_fw_in)
+            p_pump_out = self._safe(self.out_pump_p.v, p_tank)
         t_pump_out = self._water_temp_from_h(h_pump_out)
         w_dot_total = p1["w_dot"] + p2["w_dot"] + p3["w_dot"]
 
         # Step 5: LP bleed request
         if turbine_on == 1.0:
-            m_dot_lpb1_prev = max(self._safe(self.output_6.v, 0.0), 0.0)
+            m_dot_lpb1_prev = max(self._safe(self.out_lpb1_m_dot.v, 0.0), 0.0)
             h_mix_target = h_sat_f + 0.05 * (h_sat_g - h_sat_f)
             denom = max(h_mix_target - h_lpb1, -1.0e-6)
             if abs(denom) < 1.0e-6:
@@ -418,54 +584,54 @@ class DeaeratorPump(Component):
         hl_trip = 1.0 if l_tank_new >= hl_trip_th else 0.0
 
         # Outputs
-        self.output_1.v = m_dot_pump
-        self.output_2.v = vol_dot_pump
-        self.output_3.v = p_pump_out
-        self.output_4.v = h_pump_out
-        self.output_5.v = t_pump_out
-        self.output_6.v = m_dot_lpb1
-        self.output_7.v = m_dot_vent
-        self.output_8.v = h_vent
+        self.out_pump_m_dot.v = m_dot_pump
+        self.out_pump_vol_dot.v = vol_dot_pump
+        self.out_pump_p.v = p_pump_out
+        self.out_pump_h.v = h_pump_out
+        self.out_pump_t.v = t_pump_out
+        self.out_lpb1_m_dot.v = m_dot_lpb1
+        self.out_vent_m_dot.v = m_dot_vent
+        self.out_vent_h.v = h_vent
 
-        self.output_13.v = m_tank_new
-        self.output_14.v = t_tank_new
-        self.output_15.v = l_tank_new
-        self.output_16.v = p_tank_new
-        self.output_17.v = h_tank_new
+        self.out_tank_m.v = m_tank_new
+        self.out_tank_t.v = t_tank_new
+        self.out_tank_l.v = l_tank_new
+        self.out_tank_p.v = p_tank_new
+        self.out_tank_h.v = h_tank_new
 
-        self.output_18.v = p1["m_dot"]
-        self.output_19.v = p2["m_dot"]
-        self.output_20.v = p3["m_dot"]
-        self.output_21.v = w_dot_total
-        self.output_22.v = p1["w_dot"]
-        self.output_23.v = p1["eta"]
-        self.output_24.v = p2["w_dot"]
-        self.output_25.v = p2["eta"]
-        self.output_26.v = p3["w_dot"]
-        self.output_27.v = p3["eta"]
+        self.out_p1_m_dot.v = p1["m_dot"]
+        self.out_p2_m_dot.v = p2["m_dot"]
+        self.out_p3_m_dot.v = p3["m_dot"]
+        self.out_pump_w_total.v = w_dot_total
+        self.out_p1_w_dot.v = p1["w_dot"]
+        self.out_p1_eta.v = p1["eta"]
+        self.out_p2_w_dot.v = p2["w_dot"]
+        self.out_p2_eta.v = p2["eta"]
+        self.out_p3_w_dot.v = p3["w_dot"]
+        self.out_p3_eta.v = p3["eta"]
 
-        self.output_28.v = p1["point_1x"]
-        self.output_29.v = p1["point_1y"]
-        self.output_30.v = p1["point_2x"]
-        self.output_31.v = p2["point_1x"]
-        self.output_32.v = p2["point_1y"]
-        self.output_33.v = p2["point_2x"]
-        self.output_34.v = p3["point_1x"]
-        self.output_35.v = p3["point_1y"]
-        self.output_36.v = p3["point_2x"]
+        self.out_p1_point_1x.v = p1["point_1x"]
+        self.out_p1_point_1y.v = p1["point_1y"]
+        self.out_p1_point_2x.v = p1["point_2x"]
+        self.out_p2_point_1x.v = p2["point_1x"]
+        self.out_p2_point_1y.v = p2["point_1y"]
+        self.out_p2_point_2x.v = p2["point_2x"]
+        self.out_p3_point_1x.v = p3["point_1x"]
+        self.out_p3_point_1y.v = p3["point_1y"]
+        self.out_p3_point_2x.v = p3["point_2x"]
 
         # Fortran does cavitation checks in end-of-timestep block; map to converged state.
-        self.output_37.v = p1["cav"]
-        self.output_38.v = p2["cav"]
-        self.output_39.v = p3["cav"]
-        self.output_40.v = ll_alarm
-        self.output_41.v = ll_trip
-        self.output_42.v = hl_alarm
-        self.output_43.v = hl_trip
+        self.out_p1_cav.v = p1["cav"]
+        self.out_p2_cav.v = p2["cav"]
+        self.out_p3_cav.v = p3["cav"]
+        self.out_ll_alarm.v = ll_alarm
+        self.out_ll_trip.v = ll_trip
+        self.out_hl_alarm.v = hl_alarm
+        self.out_hl_trip.v = hl_trip
 
         # Persist beginning-of-timestep states after convergence.
         if self.model.is_converged:
-            self.output_9.v = self.output_13.v
-            self.output_10.v = self.output_16.v
-            self.output_11.v = self.output_15.v
-            self.output_12.v = self.output_17.v
+            self.out_state_m_start.v = self.out_tank_m.v
+            self.out_state_p_start.v = self.out_tank_p.v
+            self.out_state_l_start.v = self.out_tank_l.v
+            self.out_state_h_start.v = self.out_tank_h.v

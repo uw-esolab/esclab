@@ -98,6 +98,11 @@ Don't bother with integration tests. The models integrating the components are n
 
 New files should be created in the 'components' folder with descriptive names that reflect the functionality of the component. For example, Type 4001 is a simple pipe flow component, so it could be named 'PipeFlow.py'. The component class should be named using PascalCase and should also reflect the functionality of the component, such as 'PipeFlow'.
 
+Do not use code like:
+for _idx in range(1, 25):
+      locals()[f"input_{_idx}"] = Component.Input()
+to define inputs, parameters, or outputs. Use the descriptive variable names and declare them equal directly to the Component.Input(), Component.Parameter(), or Component.Output() member. 
+
 ## Odds and ends
 * Remember that Fortran is not case sensitive and there are typically a lot of cases of mixed case usage for the same variables in the TRNSYS code. In the conversion, variable names should be made consistent and follow Python naming conventions (e.g., snake_case for variables and functions, PascalCase for classes).
 * Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.

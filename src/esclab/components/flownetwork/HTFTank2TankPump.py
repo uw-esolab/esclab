@@ -8,25 +8,49 @@ class HTFTank2TankPump(Component):
     TRNSYS Type 6032: HTFTank2TankPump.
     """
 
-    for _idx in range(1, 11):
-        locals()[f"parameter_{_idx}"] = Component.Parameter()
-    for _idx in range(1, 8):
-        locals()[f"input_{_idx}"] = Component.Input()
-    for _idx in range(1, 12):
-        locals()[f"output_{_idx}"] = Component.Output()
+    l_down = Component.Parameter()
+    pcoef_a = Component.Parameter()
+    pcoef_b = Component.Parameter()
+    pcoef_c = Component.Parameter()
+    reserved_parameter_5 = Component.Parameter()
+    reserved_parameter_6 = Component.Parameter()
+    reserved_parameter_7 = Component.Parameter()
+    reserved_parameter_8 = Component.Parameter()
+    reserved_parameter_9 = Component.Parameter()
+    reserved_parameter_10 = Component.Parameter()
+
+    pump_on = Component.Input()
+    pump_speed_i = Component.Input()
+    h_in = Component.Input()
+    p_tank1 = Component.Input()
+    l_tank1 = Component.Input()
+    reserved_input_6 = Component.Input()
+    reserved_input_7 = Component.Input()
+
+    m_dot_out = Component.Output()
+    vol_dot_out = Component.Output()
+    p_out = Component.Output()
+    h_out = Component.Output()
+    aux_out_1 = Component.Output()
+    aux_out_2 = Component.Output()
+    m_dot_recycle = Component.Output()
+    head_prev = Component.Output()
+    vol_dot_pump = Component.Output()
+    head_out = Component.Output()
+    speed_out = Component.Output()
 
     def calculate(self):
-        pump_on = self.input_1.v
-        pump_speed_i = self.input_2.v
-        p_tank1 = self.input_4.v
-        l_tank1 = self.input_5.v
+        pump_on = self.pump_on.v
+        pump_speed_i = self.pump_speed_i.v
+        p_tank1 = self.p_tank1.v
+        l_tank1 = self.l_tank1.v
 
         rho = 1000.0
         g = 9.81
-        pcoef_a = self.parameter_2.v
-        pcoef_b = self.parameter_3.v
-        pcoef_c = self.parameter_4.v
-        l_down = self.parameter_1.v
+        pcoef_a = self.pcoef_a.v
+        pcoef_b = self.pcoef_b.v
+        pcoef_c = self.pcoef_c.v
+        l_down = self.l_down.v
 
         if pump_on == 1.0:
             q = max(pump_speed_i, 1.0e-6)
@@ -39,14 +63,14 @@ class HTFTank2TankPump(Component):
             p_out = p_tank1
             head = 0.0
 
-        self.output_1.v = max(m_dot, 1.0e-10)
-        self.output_2.v = m_dot / rho
-        self.output_3.v = p_out
-        self.output_4.v = self.input_3.v
-        self.output_5.v = 0.0
-        self.output_6.v = 0.0
-        self.output_7.v = self.output_9.v if self.output_9.v == self.output_9.v else 0.0
-        self.output_8.v = self.output_10.v if self.output_10.v == self.output_10.v else 0.0
-        self.output_9.v = m_dot / rho
-        self.output_10.v = head
-        self.output_11.v = pump_speed_i
+        self.m_dot_out.v = max(m_dot, 1.0e-10)
+        self.vol_dot_out.v = m_dot / rho
+        self.p_out.v = p_out
+        self.h_out.v = self.h_in.v
+        self.aux_out_1.v = 0.0
+        self.aux_out_2.v = 0.0
+        self.m_dot_recycle.v = self.vol_dot_pump.v if self.vol_dot_pump.v == self.vol_dot_pump.v else 0.0
+        self.head_prev.v = self.head_out.v if self.head_out.v == self.head_out.v else 0.0
+        self.vol_dot_pump.v = m_dot / rho
+        self.head_out.v = head
+        self.speed_out.v = pump_speed_i

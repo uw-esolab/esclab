@@ -41,8 +41,15 @@ class TESTank(Component):
     v_env = Component.Input()
     v_air = Component.Input()
 
-    for _idx in range(1, 10):
-        locals()[f"output_{_idx}"] = Component.Output()
+    m_outlet = Component.Output()
+    vol_dot_outlet = Component.Output()
+    t_outlet = Component.Output()
+    p_outlet = Component.Output()
+    t_tank_out = Component.Output()
+    level_out = Component.Output()
+    mass_out = Component.Output()
+    wall_temp_out = Component.Output()
+    q_loss_out = Component.Output()
 
     _tank_temp = 300.0
     _tank_level = 0.0
@@ -110,15 +117,15 @@ class TESTank(Component):
             self._tank_level = l0
             self._wall_temp = tw
 
-            self.output_1.v = 0.0
-            self.output_2.v = 0.0
-            self.output_3.v = t0
-            self.output_4.v = p_out
-            self.output_5.v = t0
-            self.output_6.v = l0
-            self.output_7.v = m_tank
-            self.output_8.v = tw
-            self.output_9.v = 0.0
+            self.m_outlet.v = 0.0
+            self.vol_dot_outlet.v = 0.0
+            self.t_outlet.v = t0
+            self.p_outlet.v = p_out
+            self.t_tank_out.v = t0
+            self.level_out.v = l0
+            self.mass_out.v = m_tank
+            self.wall_temp_out.v = tw
+            self.q_loss_out.v = 0.0
             return
 
         # Tank level and temperature at the end of the last timestep
@@ -225,15 +232,15 @@ class TESTank(Component):
 
         vol_dot_out = m_out / max(self._density_salt(fluid_id, t_tank, p_salt), 1.0e-9)
 
-        self.output_1.v = m_out
-        self.output_2.v = vol_dot_out
-        self.output_3.v = t_tank
-        self.output_4.v = p_salt
-        self.output_5.v = t_tank
-        self.output_6.v = l_tank
-        self.output_7.v = m_tank
-        self.output_8.v = tw
-        self.output_9.v = q_loss_total
+        self.m_outlet.v = m_out
+        self.vol_dot_outlet.v = vol_dot_out
+        self.t_outlet.v = t_tank
+        self.p_outlet.v = p_salt
+        self.t_tank_out.v = t_tank
+        self.level_out.v = l_tank
+        self.mass_out.v = m_tank
+        self.wall_temp_out.v = tw
+        self.q_loss_out.v = q_loss_total
 
         # Store dynamic values when the timestep is converged
         if self.model.is_converged:
