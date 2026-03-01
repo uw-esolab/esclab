@@ -87,6 +87,39 @@ We are focusing on converting the following types first:
 6032
 6034
 
+Here is a summary of where the conversion process stands:
+
+Still Need Full Conversion (placeholder/surrogate level)
+  * SolanaHydraulicModel.py — very high reserved I/O count, reduced split-ratio logic only.
+  * ParallelFlowSolver.py — simplified fraction solver, many reserved inputs.
+  * PBHydraulicModel.py — simplified pressure-ratio split, many reserved inputs.
+  * BoilerFeedwaterHeater.py — baseline delta-T model, not full heater physics.
+  * SCWaterPumps.py — dynamic-array scaffold with surrogate per-pump behavior.
+  * HTFTank2TankPump.py — reduced pump model with multiple reserved params/inputs.
+  * FITTPtoH.py — explicit surrogate with TODO replacing FIT calls.
+  * Weather.py — weather reader works, but solar-tracking physics still TODO.
+  * PBValve.py — simplified Cv correlation with TODO for PB_CV_data.
+  * PBPiping.py — functional but reduced hydraulic/thermo fidelity.
+  * Pipe.py — simplified fluid/thermal assumptions versus likely richer source behavior.
+
+Nearly Fully Translated (or close)
+  * TurbinesBypassNetwork.py
+  * SteamDrum.py
+  * Condenser.py
+  * DeaeratorPump.py
+  * STHX.py
+  * HEX.py
+  * TESTank.py
+  * ExpansionSystem.py
+  * LPBFWHTankPump.py
+  * TESModes.py
+  * TeeOutSimple.py
+  * TeeReturnSimple.py
+
+Borderline / Usable but not fully parity-verified
+  * HEXDisplay.py
+  * SolarFieldSector.py — large and advanced, but still includes multiple surrogate/TODO blocks.
+
 Conversions can be complex and could be completed in multiple stages. 
 1. Focus on mapping of the parameters, inputs, outputs, and the if/then blocks for iteration and time step conditions. 
 2. Identify libraries or function reference that require conversion and ask for help in locating those to appropriate libraries if needed.
@@ -120,6 +153,7 @@ Output data types do not take initial values, but the array can be assigned in t
 * Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.
 * Include a docstring at the beginning of the component class that states the Type number of the TRNSYS source, and describes the component, its parameters, inputs, and outputs. 
 * Docstrings should be configured for sphinx documentation generation. This means using the reStructuredText format and including sections for parameters, inputs, outputs, and any other relevant information.
+* Assume Fluid_id (int) from Fortran will be replaced with a string input for the fluid name, which can be used in calls to the esol_properties.Incompressible functions. Extra infrastructure beyond mapping the fluid_id to the function call is not normally needed.
 
 ## Places where direct mapping is appropriate:
 1. Parameters or Inputs declared as DOUBLE PRECISION or INTEGER <varname> should map to Component members <varname> = Component.Parameter() or Component.Input() depending on the context.
