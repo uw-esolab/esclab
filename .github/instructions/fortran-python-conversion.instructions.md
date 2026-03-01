@@ -1,11 +1,10 @@
 ---
-description: Load when converting TRNSYS Fortran types to Python esclab types. Try running with GPT-5.3-Codex.
+description: Load when converting TRNSYS Fortran types to Python esclab types. 
 ---
 
 # Your role
-You are a software engineer with a mechanical engineering (thermo-fluids) background and expertise in both Fortran and Python, particularly in the context of engineering simulations. Your task is to convert TRNSYS Fortran code into Python code for the esclab project. This involves understanding the structure and functionality of the original Fortran code, mapping code directly where appropriate, but using the conversion as an opportunity to use modern data structures and speed-enhancing libraries. 
+You are a software engineer with a mechanical engineering (thermo-fluids) background and expertise in both Fortran and Python, particularly in the context of engineering simulations. Your task is to convert TRNSYS Fortran code into Python code for the esclab project.  
 
-You are also an educator and care about the students that will use the library in a classroom setting. Therefore, you should prioritize writing clear, well-documented code that encourages good coding practices and software engineering principles.
 
 # Background
 TRNSYS is a widely used software for simulating the behavior of transient systems, particularly in the field of energy and building performance. It is written in Fortran 90. TRNSYS is organized into: 
@@ -53,37 +52,73 @@ esclab ("engineering simulation and controls lab") is a Python-based teaching to
 
 # Mapping
 
-## Odds and ends
-* Remember that Fortran is not case sensitive and there are typically a lot of cases of mixed case usage for the same variables in the TRNSYS code. In the conversion, variable names should be made consistent and follow Python naming conventions (e.g., snake_case for variables and functions, PascalCase for classes).
-* Types should be converted to Component classes and placed in their own file. Modify the __init__.py file in the components folder to import the new component class.
-* Include a docstring at the beginning of the component class that states the Type number of the TRNSYS source, and describes the component, its parameters, inputs, and outputs. 
-* Docstrings should be configured for sphinx documentation generation. This means using the reStructuredText format and including sections for parameters, inputs, outputs, and any other relevant information.
-* Preserve comments from the original fortran code unless changes render the comments inaccurate or irrelevant.
+## RUN TYPE 1
 
-## Places where direct mapping is appropriate:
-1. Parameters or Inputs declared as DOUBLE PRECISION or INTEGER <varname> should map to Component members <varname> = Component.Parameter() or Component.Input() depending on the context.
-2. the getParameterValue(<number>) function should map to the Component.Parameter() member that corresponds to the parameter number in the Fortran code. The same applies for getInputValue(<number>) and getOutputValue(<number>). 
-3. Code inside the 'getIsStartTime()' block should be moved inside an if statement checking for the model.is_first_step flag.
-4. Code inside the 'getIsEndOfTimestep()' block should be moved inside an if statement checking for the model.is_converged flag.
-5. Code inside the 'getIsFirstCallofTimestep()' block should be moved inside an if statement checking for the model.is_first_iteration flag.
-6. Code checking against the time step iteration number using 'getTimestepIteration()' should be moved inside an if statement checking for the model.timestep_iteration member.
-7. Code checking against the simulation time using 'getCurrentTime()' should be moved inside an if statement checking for the model.current_time member.
+Please refer to the directory ./src/esclab/components/flownetwork/fortran-sources for the Fortran source files.
+
+Source files are identified by the Type number. Generally, the file name contains the number, but sometimes this can instead by found on the first line of the file with the Subroutine definition. 
+
+We are focusing on converting the following types:
+4001
+4004
+4006
+4007
+4008
+4012
+4015
+4016
+4034
+4035
+4050
+4097
+4100
+4101
+4102
+6001
+6003
+6007
+6011
+6014
+6016
+6017
+6019
+6022
+6027
+6028
+6030
+6031
+6032
+6034
+
+You must follow the instructions below when converting the Fortran code to Python, in this order. Do not execute the code and test for output values until explicitly stated.
+
+1. Using subagents assigned each to one file, starting with Type 4001, create a new python file in flownetwork corresponding to the type. Name the file with a descriptive name that reflects the functionality of the component. For example, Type 4001 is a simple pipe flow component, so it could be named 'PipeFlow.py'. The file name and component class should be named using PascalCase and should also reflect the functionality of the component, such as 'PipeFlow'. Modify the __init__.py file in the components folder to import the new component class.
+2. Proceed line by line, making only direct conversions from Fortran to Python. Do not change the structure of the code. The goal is direct mapping and the code would fail if executed. In this step, you should handle the following:
+  a. Map parameters and inputs declared at the top of the Fortran file to Component members. the getParameterValue(<number>) function should map to the Component.Parameter() member that corresponds to the parameter number in the Fortran code. The same applies for getInputValue(<number>). Do not use parameter_<num> or input_<num> variable names. Instead, use the corresponding variable name directly as the parameter name. 
+  b. Declare outputs as Component.Output() members. You will need to identify appropriate output names based on the SetOutputValue() function calls near the end of the fortran file.
+  c. Replace syntax like exponentiation with **, array indexing with [], and function definitions with def. 
+  d. Replace if statements and loops with python syntax. Mark any conversions that are not straightforward with a comment like "# TODO-NEEDS CONVERSION REVIEW: " and a brief description of the issue.
+  e. Never introduce value clamping, min/max functions, safety fallbacks, or other modifications that change the behavior of the code. The goal is a direct mapping in this step.
+  f. Leave missing libraries and functions alone and mark with a comment like "# TODO-NEEDS LIBRARY: " and a brief description of the library or function needed. For example, if there is a call to a function in the FIT library for fluid properties, mark it with a comment like "# TODO-NEEDS LIBRARY: FIT library for fluid properties".
+  g. Port all comments from the original Fortran code. If a line is <fortran code> !comment, the comment should be ported as a python comment on the line above the code. If there are block comments, these should be ported as block comments in Python. Do not add conversion comments like "Same structure as fortran" aside from explicitly stated TODO's in these instructions, but add comments provided in the original fortran source that explain the purpose of the code blocks.
+3. Move code blocks that are inside the 'getIsStartTime()', 'getIsEndOfTimestep()', 'getIsFirstCallofTimestep()', 'getTimestepIteration()==0', and 'getCurrentTime()' blocks to if statements that check for the appropriate model flags or members. For example, code inside the 'getIsStartTime()' block should be moved inside an if statement checking for the model.is_first_step flag.
+4. Convert property library calls. HTF properties map to esol_properties.Incompressible. Water properties map to eeslib.fluid_properties. Function arguments must be specified with the parameter name (e.g., T=Teval, P=Peval, etc.). Do not use surrogates for properties.  The fluid_id in fortran is a number, but in the new implementation, assume fluid_id is a string that is directly passed on. Do not use "fallback" fluid names like "Nitrate salt". Assume the property functions check for validity and return float values, and do not attempt to convert the return type or clamp/clip/limit input arguments. Flag any suspected units mismatches (e.g., J->kJ) with a comment like "# TODO-NEEDS UNITS CHECK: " and a brief description of the issue.
+5. After direct conversion, note that there are some redundancies in setting and using parameters, inputs, and outputs. Find instances where a local scope variable is assigned the value of the Component.<class> member, and prefer instead to directly use the Component.<class> member in the code. For example, if there is a line like "param1 = self.myparameter.v", and then param1 is used in the code, it would be better to directly use "self.myparameter.v" instead of creating a new variable. Make these changes throughout the code, but do not change any of the underlying logic or structure of the code except to remove these redundancies. 
+
+
+## RUN TYPE 2
 
 
 
-## TRNSYS/Fortran code that generally should be ignored in the conversion:
-* "getIsFirstCallofSimulation()" this block is mostly used to set up Fortran data structures that are not needed in esclab. In some cases, there may be code in this block that is needed to set initial values for parameters or outputs, but this should be evaluated on a case-by-case basis. If such code exists, it should be moved to the 'initialize()' method of the component.
-* Parameter and input read blocks are generally not needed. These are updated during the connection updates during simulation. 'getParameterValue(<number>)' and 'getInputValue(<number>)' function calls at the top of each calculation block can be ignored and replaced with direct reference to the Component.Parameter() or Component.Input() member that corresponds to the parameter or input number in the Fortran code.
 
 
+## RUN TYPE 3
 
-## Places where there is a rough mapping but some interpretation and streamlining is needed
-1. Outputs are generally not given a consistent variable name. Output values are set using the setOutputValue(<number>, <value>) function, but the output variable name is not explicitly declared. In the conversion, outputs should be given consistent and descriptive variable names that reflect their meaning in the context of the component. The setOutputValue function should be replaced with direct assignment to the Component.Output() member that corresponds to the output number in the Fortran code.
-2. TRNSYS has several modules provided for property lookups and other functions. If these are missing during the conversion, make a note and we can come back to the conversion later. However, a bunch of functions are provided in the esol_properties module.
-3. Note that many of the ESOL types were written by students and may contain errors, inconsistencies, or poor coding practices. Please flag any suspected errors or code implementations that contradict the objectives of the component model, and suggest a better implementation.  
+Skipped (too complex): Types 4012, 4034, 6011, 6028.
 
+Common TODO flags across files to review:
 
-## Places with no clear mapping and where the code needs to be rethought and rewritten in Python:
-1. There are usually opportunities to make better use of if/then structures to reduce the amount of code written and make things clearer. For example, setOutputValue(...) blocks are often repeated multiple times with only slight variations in the code. These can often be streamlined using if/then structures.
-2. TRNSYS uses an internal data storage system with function calls like "SetDynamicArrayValueThisIteration". This should generally not be needed in esclab, but data that is stored across multiple iterations should be stored as a direct member of the component class. 
-3. Make use of hashes and arrays where it can streamline code and make it more efficient.
+Resolve the following todo's:
+* TODO-NEEDS UNITS CHECK — kPa↔Pa and kJ/kg↔J/kg at eeslib call sites
+* TODO-NEEDS LIBRARY — PB_CV_data, CV_data (ESOL6015), solar_tracking, PressureDrop not yet mapped to Python
+* TODO-NEEDS CONVERSION REVIEW — dynamic array storage patterns, variable input/output count (Types 4050, 6027)
