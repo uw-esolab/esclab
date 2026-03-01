@@ -301,13 +301,9 @@ def h_lpt_stage(h_guess, h_min, h_max, p_stage_pa, delta_s, a0, a1, a2, tol):
 
 def cp_water(pressure_pa, temperature_k):
     """Type6015 f_cp_water(P,T) approximation in J/kg-K using enthalpy differences."""
-    p = max(float(pressure_pa), 1.0)
+    p = min(max(float(pressure_pa), 1.0), 2.2e7)
     t = float(temperature_k)
-
-    try:
-        t_sat = float(fp.temperature("water", P=p, Q=0.0))
-    except Exception:
-        t_sat = t
+    t_sat = float(fp.temperature("water", P=p, Q=0.0))
 
     def _h(pt):
         return float(fp.enthalpy("water", P=p, T=max(pt, 273.15)))
@@ -322,12 +318,9 @@ def cp_water(pressure_pa, temperature_k):
         t_high = t + 1.0
         t_low = t_sat
 
-    try:
-        h_high = _h(t_high)
-        h_low = _h(t_low)
-        return max((h_high - h_low) / max(t_high - t_low, 1.0e-6), 1.0)
-    except Exception:
-        return 4200.0
+    h_high = _h(t_high)
+    h_low = _h(t_low)
+    return max((h_high - h_low) / max(t_high - t_low, 1.0e-6), 1.0)
 
 
 def _u_ph(pressure_pa, enthalpy_jkg):
@@ -339,62 +332,50 @@ def _u_ph(pressure_pa, enthalpy_jkg):
 
 def drhodhcp(pressure_pa, enthalpy_jkg, dh):
     """Type6015 drhodhcp(P,h,dh): (drho/dh)_P in kg^2/(m^3·J)."""
-    p = max(float(pressure_pa), 1.0)
+    p = min(max(float(pressure_pa), 1.0), 2.0e8)
     h = max(float(enthalpy_jkg), 1.0)
     dh = max(abs(float(dh)), 1.0)
     h_low = max(h - dh, 1.0)
     h_high = h + dh
-    try:
-        rho_low = float(fp.density("water", P=p, h=h_low))
-        rho_high = float(fp.density("water", P=p, h=h_high))
-        return (rho_high - rho_low) / max(h_high - h_low, 1.0e-9)
-    except Exception:
-        return 0.0
+    rho_low = float(fp.density("water", P=p, h=h_low))
+    rho_high = float(fp.density("water", P=p, h=h_high))
+    return (rho_high - rho_low) / max(h_high - h_low, 1.0e-9)
 
 
 def drhodpch(pressure_pa, enthalpy_jkg, dp):
     """Type6015 drhodpch(P,h,dP): (drho/dP)_h in kg/(m^3·Pa)."""
-    p = max(float(pressure_pa), 1.0)
+    p = min(max(float(pressure_pa), 1.0), 2.0e8)
     h = max(float(enthalpy_jkg), 1.0)
     dp = max(abs(float(dp)), 1.0)
     p_low = max(p - dp, 1.0)
-    p_high = p + dp
-    try:
-        rho_low = float(fp.density("water", P=p_low, h=h))
-        rho_high = float(fp.density("water", P=p_high, h=h))
-        return (rho_high - rho_low) / max(p_high - p_low, 1.0e-9)
-    except Exception:
-        return 1.0e-9
+    p_high = min(p + dp, 2.0e8)
+    rho_low = float(fp.density("water", P=p_low, h=h))
+    rho_high = float(fp.density("water", P=p_high, h=h))
+    return (rho_high - rho_low) / max(p_high - p_low, 1.0e-9)
 
 
 def dudhcp(pressure_pa, enthalpy_jkg, dh):
     """Type6015 dudhcp(P,h,dh): (du/dh)_P as dimensionless slope."""
-    p = max(float(pressure_pa), 1.0)
+    p = min(max(float(pressure_pa), 1.0), 2.0e8)
     h = max(float(enthalpy_jkg), 1.0)
     dh = max(abs(float(dh)), 1.0)
     h_low = max(h - dh, 1.0)
     h_high = h + dh
-    try:
-        u_low = _u_ph(p, h_low)
-        u_high = _u_ph(p, h_high)
-        return (u_high - u_low) / max(h_high - h_low, 1.0e-9)
-    except Exception:
-        return 1.0
+    u_low = _u_ph(p, h_low)
+    u_high = _u_ph(p, h_high)
+    return (u_high - u_low) / max(h_high - h_low, 1.0e-9)
 
 
 def dudpch(pressure_pa, enthalpy_jkg, dp):
     """Type6015 dudpch(P,h,dP): (du/dP)_h in J/(kg·Pa)."""
-    p = max(float(pressure_pa), 1.0)
+    p = min(max(float(pressure_pa), 1.0), 2.0e8)
     h = max(float(enthalpy_jkg), 1.0)
     dp = max(abs(float(dp)), 1.0)
     p_low = max(p - dp, 1.0)
-    p_high = p + dp
-    try:
-        u_low = _u_ph(p_low, h)
-        u_high = _u_ph(p_high, h)
-        return (u_high - u_low) / max(p_high - p_low, 1.0e-9)
-    except Exception:
-        return 0.0
+    p_high = min(p + dp, 2.0e8)
+    u_low = _u_ph(p_low, h)
+    u_high = _u_ph(p_high, h)
+    return (u_high - u_low) / max(p_high - p_low, 1.0e-9)
 
 
 def _fric_factor_ic(rough, reynold, guess):
@@ -434,7 +415,7 @@ def _viscosity_steam(temperature_k):
 
 def convection_dynamicpipe(pressure_pa, enthalpy_jkg, diameter_m, m_dot, ff_guess, t_metal_k):
     """Type6015 convection_dynamicpipe(P,h,D,m_dot,ff_guess,T_metal) in W/m^2-K."""
-    p = max(float(pressure_pa), 1.0)
+    p = min(max(float(pressure_pa), 1.0), 2.0e8)
     h = max(float(enthalpy_jkg), 1.0)
     d_pipe = max(float(diameter_m), 1.0e-4)
     m_dot = float(m_dot)
@@ -443,47 +424,23 @@ def convection_dynamicpipe(pressure_pa, enthalpy_jkg, diameter_m, m_dot, ff_gues
 
     area = math.pi * d_pipe ** 2 / 4.0
 
-    try:
-        t_steam = float(fp.temperature("water", P=p, h=h))
-        rho_steam = max(float(fp.density("water", P=p, h=h)), 1.0e-9)
-        x = min(max(float(fp.quality("water", P=p, h=h)), 0.0), 1.0)
-    except Exception:
-        t_steam = max(t_metal, 273.15)
-        rho_steam = 1.0
-        x = 1.0
-    try:
-        mu_steam = max(float(fp.viscosity("water", P=p, h=h)), 1.0e-9)
-    except Exception:
-        mu_steam = _viscosity_steam(t_steam)
+    t_steam = float(fp.temperature("water", P=p, h=h))
+    rho_steam = max(float(fp.density("water", P=p, h=h)), 1.0e-9)
+    x = min(max(float(fp.quality("water", P=p, h=h)), 0.0), 1.0)
+    mu_steam = max(float(fp.viscosity("water", P=p, h=h)), 1.0e-9)
 
-    try:
-        t_sat = float(fp.temperature("water", P=p, Q=1.0))
-        h_sat_g = float(fp.enthalpy("water", P=p, Q=1.0))
-        rho_sat_g = max(float(fp.density("water", P=p, Q=1.0)), 1.0e-9)
-        mu_g = max(float(fp.viscosity("water", P=p, Q=1.0)), 1.0e-9)
-    except Exception:
-        t_sat = t_steam
-        h_sat_g = 2.6e6
-        rho_sat_g = 0.6
-        mu_g = 1.5e-5
+    p_sat = min(max(p, 1.0), 2.2e7)
+    t_sat = float(fp.temperature("water", P=p_sat, Q=1.0))
+    h_sat_g = float(fp.enthalpy("water", P=p_sat, Q=1.0))
+    rho_sat_g = max(float(fp.density("water", P=p_sat, Q=1.0)), 1.0e-9)
+    mu_g = max(float(fp.viscosity("water", P=p_sat, Q=1.0)), 1.0e-9)
 
-    try:
-        h_sat_f = float(fp.enthalpy("water", P=p, Q=0.0))
-        rho_sat_f = max(float(fp.density("water", P=p, Q=0.0)), 1.0e-9)
-        mu_l = max(float(fp.viscosity("water", P=p, Q=0.0)), 1.0e-9)
-    except Exception:
-        h_sat_f = 5.0e5
-        rho_sat_f = 950.0
-        mu_l = 2.0e-4
+    h_sat_f = float(fp.enthalpy("water", P=p_sat, Q=0.0))
+    rho_sat_f = max(float(fp.density("water", P=p_sat, Q=0.0)), 1.0e-9)
+    mu_l = max(float(fp.viscosity("water", P=p_sat, Q=0.0)), 1.0e-9)
 
-    try:
-        k_steam = max(float(fp.conductivity("water", P=p, h=h)), 1.0e-6)
-    except Exception:
-        k_steam = 0.03
-    try:
-        k_l = max(float(fp.conductivity("water", P=p, Q=0.0)), 1.0e-6)
-    except Exception:
-        k_l = 0.6
+    k_steam = max(float(fp.conductivity("water", P=p, h=h)), 1.0e-6)
+    k_l = max(float(fp.conductivity("water", P=p_sat, Q=0.0)), 1.0e-6)
 
     vel = m_dot / max(rho_steam * area, 1.0e-9)
     cp_l = 4200.0
@@ -530,17 +487,14 @@ def convection_dynamicpipe(pressure_pa, enthalpy_jkg, diameter_m, m_dot, ff_gues
 
 def stodola_stage(p_in_d, p_out_d, p_in, h_in_d, h_in, m_dot_in_d, m_dot_in):
     """Pressure drop through a turbine stage using Stodola's ellipse relation."""
-    try:
-        v_in_d = max(float(fp.volume("water", P=max(p_in_d, 1.0), h=max(h_in_d, 1.0))), 1.0e-9)
-    except Exception:
-        v_in_d = 1.0e-3
-    try:
-        v_in = max(float(fp.volume("water", P=max(p_in, 1.0), h=max(h_in, 1.0))), 1.0e-9)
-    except Exception:
-        v_in = v_in_d
-
     p_in_d = max(float(p_in_d), 1.0)
     p_in = max(float(p_in), 1.0)
+    h_in_d = max(float(h_in_d), 1.0)
+    h_in = max(float(h_in), 1.0)
+
+    v_in_d = max(float(fp.volume("water", P=p_in_d, h=h_in_d)), 1.0e-9)
+    v_in = max(float(fp.volume("water", P=p_in, h=h_in)), 1.0e-9)
+
     pr_d = max(min(float(p_out_d) / p_in_d, 0.999999), 0.001)
     phi_d = max(float(m_dot_in_d) / math.sqrt(p_in_d / v_in_d), 1.0e-12)
     phi_max = math.sqrt(0.999999 / max(1.0 - pr_d ** 2, 1.0e-12)) * phi_d
@@ -561,18 +515,12 @@ def valve_massflow(cv, p_in, h_in, p_out):
         return 0.0
 
     kv = cv / 1.156
-    try:
-        t_in = float(fp.temperature("water", P=p_in, h=h_in))
-        rho_in = max(float(fp.density("water", P=p_in, h=h_in)), 1.0e-9)
-        h_sat_f = float(fp.enthalpy("water", P=p_in, Q=0.0))
-        h_sat_g = float(fp.enthalpy("water", P=p_in, Q=1.0))
-        t_sat = float(fp.temperature("water", P=p_in, Q=0.0))
-    except Exception:
-        t_in = 373.15
-        t_sat = t_in
-        rho_in = 1000.0
-        h_sat_f = 4.2e5
-        h_sat_g = 2.7e6
+    p_sat = min(max(p_in, 1.0), 2.2e7)
+    t_in = float(fp.temperature("water", P=p_in, h=h_in))
+    rho_in = max(float(fp.density("water", P=p_in, h=h_in)), 1.0e-9)
+    h_sat_f = float(fp.enthalpy("water", P=p_sat, Q=0.0))
+    h_sat_g = float(fp.enthalpy("water", P=p_sat, Q=1.0))
+    t_sat = float(fp.temperature("water", P=p_sat, Q=0.0))
 
     if h_in <= h_sat_f:
         p_crit = 22064000.0
@@ -605,12 +553,8 @@ def valve_massflow(cv, p_in, h_in, p_out):
             m_dot = kv * n6 * y * math.sqrt(max(f_y * x_t * p_in / 1000.0 * rho_in, 0.0))
         return max(m_dot / 3600.0, 0.0)
 
-    try:
-        qual = min(max(float(fp.quality("water", P=p_in, h=h_in)), 0.0), 1.0)
-        rho_sat_g = max(float(fp.density("water", P=p_in, Q=1.0)), 1.0e-9)
-    except Exception:
-        qual = 0.5
-        rho_sat_g = 0.6
+    qual = min(max((h_in - h_sat_f) / max(h_sat_g - h_sat_f, 1.0e-9), 0.0), 1.0)
+    rho_sat_g = max(float(fp.density("water", P=p_sat, Q=1.0)), 1.0e-9)
 
     x_t = 0.35
     n6 = 3.16
@@ -973,10 +917,6 @@ class TurbinesBypassNetwork(Component):
         return value if value == value else default
 
     @staticmethod
-    def _sat_temperature_from_pressure(pressure_pa):
-        return max(273.15, min(650.0, 373.15 + 42.0 * math.log(max(pressure_pa, 1.0) / 101325.0 + 1.0)))
-
-    @staticmethod
     def _alarm_trip(value, alarm_limit, trip_limit, high=True):
         if high:
             alarm = 1.0 if value >= alarm_limit else 0.0
@@ -1121,75 +1061,34 @@ class TurbinesBypassNetwork(Component):
         self.lp_drain_position.v = lp_drain_vpi
 
         # Previous-timestep pipe states used by turbine, bypass, and separator blocks
-        p_hpmain_prev = max(self._safe(self.p_hpmain.v, self._safe(self.p_hpmain_ini.v, p_sgt_in)), 1.0)
+        p_hpmain_prev = self._safe(self.p_hpmain.v, self._safe(self.p_hpmain_ini.v, p_sgt_in))
+        if p_hpmain_prev <= 0.0:
+            p_hpmain_prev = self._safe(self.p_hpmain_ini.v, p_sgt_in)
+        p_hpmain_prev = max(p_hpmain_prev, 700.0)
         t_hpmain_prev = self._safe(self.t_hpmain.v, self._safe(self.t_hpmain_ini.v, 520.0))
-        p_lpmain_prev = max(self._safe(self.p_lpmain.v, self._safe(self.p_lpmain_ini.v, p_cond)), 1.0)
+        if t_hpmain_prev <= 0.0:
+            t_hpmain_prev = self._safe(self.t_hpmain_ini.v, 520.0)
+        p_lpmain_prev = self._safe(self.p_lpmain.v, self._safe(self.p_lpmain_ini.v, p_cond))
+        if p_lpmain_prev <= 0.0:
+            p_lpmain_prev = self._safe(self.p_lpmain_ini.v, p_cond)
+        p_lpmain_prev = max(p_lpmain_prev, 700.0)
         t_lpmain_prev = self._safe(self.t_lpmain.v, self._safe(self.t_lpmain_ini.v, 380.0))
-        p_aux_prev = max(self._safe(self.p_aux.v, self._safe(self.p_aux_ini.v, p_cond)), 1.0)
+        if t_lpmain_prev <= 0.0:
+            t_lpmain_prev = self._safe(self.t_lpmain_ini.v, 380.0)
+        p_aux_prev = self._safe(self.p_aux.v, self._safe(self.p_aux_ini.v, p_cond))
+        if p_aux_prev <= 0.0:
+            p_aux_prev = self._safe(self.p_aux_ini.v, p_cond)
+        p_aux_prev = max(p_aux_prev, 700.0)
         t_aux_prev = self._safe(self.t_aux.v, self._safe(self.t_aux_ini.v, 360.0))
+        if t_aux_prev <= 0.0:
+            t_aux_prev = self._safe(self.t_aux_ini.v, 360.0)
         t_hppipe_prev = self._safe(self.t_hppipe.v, self._safe(self.t_hppipe_ini.v, t_hpmain_prev))
         t_lppipe_prev = self._safe(self.t_lppipe.v, self._safe(self.t_lppipe_ini.v, t_lpmain_prev))
         t_auxpipe_prev = self._safe(self.t_auxpipe.v, self._safe(self.t_auxpipe_ini.v, t_aux_prev))
 
-        def _enthalpy_pt(pressure_pa, temperature_k, fallback):
-            try:
-                return float(fp.enthalpy("water", P=max(pressure_pa, 1.0), T=max(temperature_k, 273.15)))
-            except Exception:
-                return fallback
-
-        h_hpmain_prev = _enthalpy_pt(p_hpmain_prev, t_hpmain_prev, h_sgt_in)
-        h_lpmain_prev = _enthalpy_pt(p_lpmain_prev, t_lpmain_prev, h_sgt_in)
-        h_aux_prev = _enthalpy_pt(p_aux_prev, t_aux_prev, h_sgt_in)
-
-        def _rho_from_ph(pressure_pa, enthalpy_jkg, fallback):
-            try:
-                return max(float(fp.density("water", P=max(pressure_pa, 1.0), h=max(enthalpy_jkg, 1.0))), 1.0e-6)
-            except Exception:
-                return fallback
-
-        def _rho_from_pt(pressure_pa, temperature_k, fallback):
-            try:
-                return max(float(fp.density("water", P=max(pressure_pa, 1.0), T=max(temperature_k, 273.15))), 1.0e-6)
-            except Exception:
-                return fallback
-
-        def _temperature_ph(pressure_pa, enthalpy_jkg, fallback):
-            try:
-                return float(fp.temperature("water", P=max(pressure_pa, 1.0), h=max(enthalpy_jkg, 1.0)))
-            except Exception:
-                return fallback
-
-        def _entropy_ph(pressure_pa, enthalpy_jkg, fallback):
-            try:
-                return float(fp.entropy("water", P=max(pressure_pa, 1.0), h=max(enthalpy_jkg, 1.0)))
-            except Exception:
-                return fallback
-
-        def _enthalpy_ps(pressure_pa, entropy_jkgk, fallback):
-            try:
-                return float(fp.enthalpy("water", P=max(pressure_pa, 1.0), s=entropy_jkgk))
-            except Exception:
-                return fallback
-
-        def _quality_ph(pressure_pa, enthalpy_jkg, fallback):
-            try:
-                return min(max(float(fp.quality("water", P=max(pressure_pa, 1.0), h=max(enthalpy_jkg, 1.0))), 0.0), 1.0)
-            except Exception:
-                return fallback
-
-        def _cp_incompressible(fluid_name, temperature_k, pressure_pa, fallback_jpkgk=1500.0):
-            fluid_eval = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
-            try:
-                return max(float(self._inc_props.specheat(fluid_eval, float(temperature_k), float(pressure_pa))) * 1000.0, 1.0)
-            except Exception:
-                return fallback_jpkgk
-
-        def _rho_incompressible(fluid_name, temperature_k, pressure_pa, fallback_kgm3=1000.0):
-            fluid_eval = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
-            try:
-                return max(float(self._inc_props.density(fluid_eval, float(temperature_k), float(pressure_pa))), 1.0e-6)
-            except Exception:
-                return fallback_kgm3
+        h_hpmain_prev = float(fp.enthalpy("water", P=max(p_hpmain_prev, 1.0), T=max(t_hpmain_prev, 273.15)))
+        h_lpmain_prev = float(fp.enthalpy("water", P=max(p_lpmain_prev, 1.0), T=max(t_lpmain_prev, 273.15)))
+        h_aux_prev = float(fp.enthalpy("water", P=max(p_aux_prev, 1.0), T=max(t_aux_prev, 273.15)))
 
         # HIGH PRESSURE TURBINE MASS FLOW
         # Turbine block using ESOL6015 helper correlations
@@ -1216,8 +1115,8 @@ class TurbinesBypassNetwork(Component):
                 p_hpt_in = p_hpmain_prev
                 h_hpt_in = h_hpmain_prev
 
-                rho_hpt_in = _rho_from_ph(p_hpt_in, h_hpt_in, 8.0)
-                rho_hpt_design = _rho_from_pt(self._safe(self.p_hpt_in_d.v, p_hpt_in), self._safe(self.t_hpt_in_d.v, 773.15), 8.0)
+                rho_hpt_in = max(float(fp.density("water", P=max(p_hpt_in, 1.0), h=max(h_hpt_in, 1.0))), 1.0e-6)
+                rho_hpt_design = max(float(fp.density("water", P=max(self._safe(self.p_hpt_in_d.v, p_hpt_in), 1.0), T=max(self._safe(self.t_hpt_in_d.v, 773.15), 273.15))), 1.0e-6)
                 v_hpt_in = 1.0 / rho_hpt_in
                 v_hpt_design = 1.0 / rho_hpt_design
 
@@ -1275,10 +1174,10 @@ class TurbinesBypassNetwork(Component):
                 p_hpt2 = max(p_hpt2, p_cond + 1000.0)
                 p_hpt_exh = p_hpt2
 
-                s_gs_out = _entropy_ph(p_gs_out, h_gs_out, 6500.0)
-                h_hpt2_s = _enthalpy_ps(p_hpt2, s_gs_out, h_gs_out - 1.0e5)
+                s_gs_out = float(fp.entropy("water", P=max(p_gs_out, 1.0), h=max(h_gs_out, 1.0)))
+                h_hpt2_s = float(fp.enthalpy("water", P=max(p_hpt2, 1.0), s=s_gs_out))
                 h_hpt2 = h_gs_out - eta_hpt * max(h_gs_out - h_hpt2_s, 0.0)
-                h_hpt1_s = _enthalpy_ps(p_hpt1, s_gs_out, h_gs_out - 5.0e4)
+                h_hpt1_s = float(fp.enthalpy("water", P=max(p_hpt1, 1.0), s=s_gs_out))
                 h_hpt1 = h_gs_out - eta_hpt * max(h_gs_out - h_hpt1_s, 0.0)
 
                 pressure_error_hpt = p_hpt2 - p_lpmain_prev
@@ -1291,7 +1190,7 @@ class TurbinesBypassNetwork(Component):
             m_dot_hpt_s1 = m_dot_hpt_in
             m_dot_hpt_s2 = max(m_dot_hpt_s1 - m_dot_hpt1_extr, 0.0)
             m_dot_hpt_exh = max(m_dot_hpt_s2 - m_dot_hpt2_extr, 0.0)
-            t_hpt2 = _temperature_ph(p_hpt_exh, h_hpt2, 500.0)
+            t_hpt2 = float(fp.temperature("water", P=max(p_hpt_exh, 1.0), h=max(h_hpt2, 1.0)))
             h_hpt_exh = h_hpt2
 
             # LOW PRESSURE TURBINE MASS FLOW
@@ -1328,11 +1227,11 @@ class TurbinesBypassNetwork(Component):
                 m_dot_lpt_s4 = max(m_dot_lpt_s3 - m_dot_lpt3_extr, 1.0e-6)
                 m_dot_lpt_exh = max(m_dot_lpt_s4 - m_dot_lpt4_extr, 1.0e-6)
 
-                rho_lpt_in = _rho_from_ph(p_lpt_in, h_lpt_in, 5.0)
-                rho_lpt_design = _rho_from_pt(self._safe(self.p_lpt_in_d.v, p_lpt_in), self._safe(self.t_lpt_in_d.v, 673.15), 5.0)
+                rho_lpt_in = max(float(fp.density("water", P=max(p_lpt_in, 1.0), h=max(h_lpt_in, 1.0))), 1.0e-6)
+                rho_lpt_design = max(float(fp.density("water", P=max(self._safe(self.p_lpt_in_d.v, p_lpt_in), 1.0), T=max(self._safe(self.t_lpt_in_d.v, 673.15), 273.15))), 1.0e-6)
                 v_lpt_in = 1.0 / rho_lpt_in
                 v_lpt_design = 1.0 / rho_lpt_design
-                t_lpt_in = _temperature_ph(p_lpt_in, h_lpt_in, 450.0)
+                t_lpt_in = float(fp.temperature("water", P=max(p_lpt_in, 1.0), h=max(h_lpt_in, 1.0)))
 
                 eta_lpt = eta_scc_lpt(
                     m_dot_lpt_in,
@@ -1365,12 +1264,12 @@ class TurbinesBypassNetwork(Component):
                 p_lpt4 = max(p_lpt4, p_cond + 1000.0)
                 p_lpt_exh = max(p_lpt_exh, p_cond + 1000.0)
 
-                s_lpt_in = _entropy_ph(p_lpt_in, h_lpt_in, 7000.0)
-                h_lpt_exh_s = _enthalpy_ps(p_lpt_exh, s_lpt_in, h_lpt_in - 2.0e5)
+                s_lpt_in = float(fp.entropy("water", P=max(p_lpt_in, 1.0), h=max(h_lpt_in, 1.0)))
+                h_lpt_exh_s = float(fp.enthalpy("water", P=max(p_lpt_exh, 1.0), s=s_lpt_in))
                 h_lpt_exh = h_lpt_in - eta_lpt * max(h_lpt_in - h_lpt_exh_s, 0.0)
                 h_lpt_exh = min(max(h_lpt_exh, 1.0e5), h_lpt_in)
 
-                s_lpt_exh = _entropy_ph(p_lpt_exh, h_lpt_exh, 7000.0)
+                s_lpt_exh = float(fp.entropy("water", P=max(p_lpt_exh, 1.0), h=max(h_lpt_exh, 1.0)))
                 a0 = self._safe(self.lpt_exp_a0.v, 0.0)
                 a1 = self._safe(self.lpt_exp_a1.v, 0.0)
                 a2 = self._safe(self.lpt_exp_a2.v, 0.0)
@@ -1393,12 +1292,12 @@ class TurbinesBypassNetwork(Component):
             m_dot_lpt_s3 = max(m_dot_lpt_s2 - m_dot_lpt2_extr, 0.0)
             m_dot_lpt_s4 = max(m_dot_lpt_s3 - m_dot_lpt3_extr, 0.0)
             m_dot_lpt_exh = max(m_dot_lpt_s4 - m_dot_lpt4_extr, 0.0)
-            t_lpt_exh = _temperature_ph(p_lpt_exh, h_lpt_exh, 350.0)
+            t_lpt_exh = float(fp.temperature("water", P=max(p_lpt_exh, 1.0), h=max(h_lpt_exh, 1.0)))
 
-            t_lpt1 = _temperature_ph(p_lpt1, h_lpt1, 430.0)
-            t_lpt2 = _temperature_ph(p_lpt2, h_lpt2, 400.0)
-            t_lpt3 = _temperature_ph(p_lpt3, h_lpt3, 380.0)
-            t_lpt4 = _temperature_ph(p_lpt4, h_lpt4, 360.0)
+            t_lpt1 = float(fp.temperature("water", P=max(p_lpt1, 1.0), h=max(h_lpt1, 1.0)))
+            t_lpt2 = float(fp.temperature("water", P=max(p_lpt2, 1.0), h=max(h_lpt2, 1.0)))
+            t_lpt3 = float(fp.temperature("water", P=max(p_lpt3, 1.0), h=max(h_lpt3, 1.0)))
+            t_lpt4 = float(fp.temperature("water", P=max(p_lpt4, 1.0), h=max(h_lpt4, 1.0)))
 
             # Solve for work produced by turbine and temperatures of each turbine stage.
             w_hpt = max(m_dot_hpt_s1 * (h_hpmain_prev - h_hpt1) + m_dot_hpt_s2 * (h_hpt1 - h_hpt2), 0.0)
@@ -1469,13 +1368,10 @@ class TurbinesBypassNetwork(Component):
 
         area_hpmain = math.pi * max(self.d_hpmain.v, 1.0e-3) ** 2 / 4.0
         vol_hpmain = area_hpmain * max(self.length_hpmain.v, 1.0)
-        m_hpmain_prev = vol_hpmain * _rho_from_ph(p_hpmain_prev, h_hpmain_prev, 10.0)
-        x_hp = _quality_ph(p_hpmain_prev, h_hpmain_prev, 1.0 if h_hpmain_prev > 2.5e6 else 0.0)
+        m_hpmain_prev = vol_hpmain * max(float(fp.density("water", P=max(p_hpmain_prev, 1.0), h=max(h_hpmain_prev, 1.0))), 1.0e-6)
+        x_hp = min(max(float(fp.quality("water", P=max(p_hpmain_prev, 1.0), h=max(h_hpmain_prev, 1.0))), 0.0), 1.0)
         if hp_drain_vpi > 0.0 and x_hp < 1.0:
-            try:
-                h_sat_f_hp = float(fp.enthalpy("water", P=p_hpmain_prev, Q=0.0))
-            except Exception:
-                h_sat_f_hp = h_hpmain_prev
+            h_sat_f_hp = float(fp.enthalpy("water", P=max(p_hpmain_prev, 1.0), Q=0.0))
             m_dot_hp_drain_cap = max(m_hpmain_prev * (1.0 - x_hp) / ts_sec, 0.0)
             m_dot_hp_drain = min(valve_massflow(hp_drain_cv, p_hpmain_prev, h_sat_f_hp, p_atm), m_dot_hp_drain_cap)
             h_hp_drain = h_sat_f_hp
@@ -1495,13 +1391,10 @@ class TurbinesBypassNetwork(Component):
 
         area_lpmain = math.pi * max(self.d_lpmain.v, 1.0e-3) ** 2 / 4.0
         vol_lpmain = area_lpmain * max(self.length_lpmain.v, 1.0)
-        m_lpmain_prev = vol_lpmain * _rho_from_ph(p_lpmain_prev, h_lpmain_prev, 3.0)
-        x_lp = _quality_ph(p_lpmain_prev, h_lpmain_prev, 1.0 if h_lpmain_prev > 2.3e6 else 0.0)
+        m_lpmain_prev = vol_lpmain * max(float(fp.density("water", P=max(p_lpmain_prev, 1.0), h=max(h_lpmain_prev, 1.0))), 1.0e-6)
+        x_lp = min(max(float(fp.quality("water", P=max(p_lpmain_prev, 1.0), h=max(h_lpmain_prev, 1.0))), 0.0), 1.0)
         if lp_drain_vpi > 0.0 and x_lp < 1.0:
-            try:
-                h_sat_f_lp = float(fp.enthalpy("water", P=p_lpmain_prev, Q=0.0))
-            except Exception:
-                h_sat_f_lp = h_lpmain_prev
+            h_sat_f_lp = float(fp.enthalpy("water", P=max(p_lpmain_prev, 1.0), Q=0.0))
             m_dot_lp_drain_cap = max(m_lpmain_prev * (1.0 - x_lp) / ts_sec, 0.0)
             m_dot_lp_drain = min(valve_massflow(lp_drain_cv, p_lpmain_prev, h_sat_f_lp, p_atm), m_dot_lp_drain_cap)
             h_lp_drain = h_sat_f_lp
@@ -1514,57 +1407,37 @@ class TurbinesBypassNetwork(Component):
         m_dot_ss_in = m_dot_hpt_exh + m_dot_hp_bypass
         if m_dot_ss_in > 0.0:
             h_ss_in = (m_dot_hpt_exh * h_hpt_exh + m_dot_hp_bypass * h_sgt_in) / m_dot_ss_in
-            try:
-                h_sat_g = float(fp.enthalpy("water", P=max(p_lpmain_prev, 1.0), Q=1.0))
-                h_sat_f = float(fp.enthalpy("water", P=max(p_lpmain_prev, 1.0), Q=0.0))
-                t_sat = float(fp.temperature("water", P=max(p_lpmain_prev, 1.0), Q=0.0))
-                rho_sat_g = max(float(fp.density("water", P=max(p_lpmain_prev, 1.0), Q=1.0)), 1.0e-6)
-                rho_sat_f = max(float(fp.density("water", P=max(p_lpmain_prev, 1.0), Q=0.0)), 1.0e-6)
+            p_ss_sat = min(max(p_lpmain_prev, 1.0), 2.2e7)
+            h_sat_g = float(fp.enthalpy("water", P=p_ss_sat, Q=1.0))
+            h_sat_f = float(fp.enthalpy("water", P=p_ss_sat, Q=0.0))
+            t_sat = float(fp.temperature("water", P=p_ss_sat, Q=0.0))
+            rho_sat_g = max(float(fp.density("water", P=p_ss_sat, Q=1.0)), 1.0e-6)
+            rho_sat_f = max(float(fp.density("water", P=p_ss_sat, Q=0.0)), 1.0e-6)
 
-                if h_ss_in >= h_sat_g:
-                    m_dot_ss_drain = 0.0
-                    vol_dot_ss_drain = 0.0
-                    h_ss_drain = 0.0
-                    t_ss_drain = 0.0
+            if h_ss_in >= h_sat_g:
+                m_dot_ss_drain = 0.0
+                vol_dot_ss_drain = 0.0
+                h_ss_drain = 0.0
+                t_ss_drain = 0.0
 
-                    m_dot_ss_steam = m_dot_ss_in
-                    rho_ss_in = max(float(fp.density("water", P=max(p_lpmain_prev, 1.0), h=max(h_ss_in, 1.0))), 1.0e-6)
-                    vol_dot_ss_steam = m_dot_ss_steam / rho_ss_in
-                    h_ss_steam = h_ss_in
-                    t_ss_steam = float(fp.temperature("water", P=max(p_lpmain_prev, 1.0), h=max(h_ss_steam, 1.0)))
-                else:
-                    x_ss_in = min(max((h_ss_in - h_sat_f) / max(h_sat_g - h_sat_f, 1.0e-6), 0.0), 1.0)
-                    x_ss_in = round(x_ss_in, 3)
+                m_dot_ss_steam = m_dot_ss_in
+                rho_ss_in = max(float(fp.density("water", P=max(p_lpmain_prev, 1.0), h=max(h_ss_in, 1.0))), 1.0e-6)
+                vol_dot_ss_steam = m_dot_ss_steam / rho_ss_in
+                h_ss_steam = h_ss_in
+                t_ss_steam = float(fp.temperature("water", P=max(p_lpmain_prev, 1.0), h=max(h_ss_steam, 1.0)))
+            else:
+                x_ss_in = min(max((h_ss_in - h_sat_f) / max(h_sat_g - h_sat_f, 1.0e-6), 0.0), 1.0)
+                x_ss_in = round(x_ss_in, 3)
 
-                    m_dot_ss_drain = m_dot_ss_in * (1.0 - x_ss_in)
-                    vol_dot_ss_drain = m_dot_ss_drain / rho_sat_f
-                    h_ss_drain = h_sat_f
-                    t_ss_drain = t_sat
+                m_dot_ss_drain = m_dot_ss_in * (1.0 - x_ss_in)
+                vol_dot_ss_drain = m_dot_ss_drain / rho_sat_f
+                h_ss_drain = h_sat_f
+                t_ss_drain = t_sat
 
-                    m_dot_ss_steam = m_dot_ss_in - m_dot_ss_drain
-                    vol_dot_ss_steam = m_dot_ss_steam / rho_sat_g
-                    h_ss_steam = h_sat_g
-                    t_ss_steam = t_sat
-            except Exception:
-                if h_ss_in > 2.5e6:
-                    m_dot_ss_drain = 0.0
-                    vol_dot_ss_drain = 0.0
-                    h_ss_drain = 0.0
-                    t_ss_drain = 0.0
-                    m_dot_ss_steam = m_dot_ss_in
-                    vol_dot_ss_steam = m_dot_ss_steam / 0.6
-                    h_ss_steam = h_ss_in
-                    t_ss_steam = 450.0
-                else:
-                    x_ss_in = min(max((h_ss_in - 4.0e5) / max(2.5e6 - 4.0e5, 1.0), 0.0), 1.0)
-                    m_dot_ss_drain = m_dot_ss_in * (1.0 - x_ss_in)
-                    m_dot_ss_steam = m_dot_ss_in - m_dot_ss_drain
-                    h_ss_drain = 4.0e5
-                    h_ss_steam = 2.5e6
-                    t_ss_drain = 373.15
-                    t_ss_steam = 373.15
-                    vol_dot_ss_drain = m_dot_ss_drain / 1000.0
-                    vol_dot_ss_steam = m_dot_ss_steam / 0.6
+                m_dot_ss_steam = m_dot_ss_in - m_dot_ss_drain
+                vol_dot_ss_steam = m_dot_ss_steam / rho_sat_g
+                h_ss_steam = h_sat_g
+                t_ss_steam = t_sat
         else:
             m_dot_ss_drain = 0.0
             vol_dot_ss_drain = 0.0
@@ -1577,7 +1450,7 @@ class TurbinesBypassNetwork(Component):
 
         # REHEATER CODE
         if m_dot_ss_steam > 0.0 and m_dot_htf > 0.0:
-            cp_htf = _cp_incompressible(fluid_name, t_htf_in, p_htf_in)
+            cp_htf = max(float(self._inc_props.specheat(fluid_name, float(t_htf_in), float(p_htf_in))), 1.0)
             cp_steam = cp_water(p_lpmain_prev, 0.5 * (t_htf_in + t_ss_steam))
             hx_tube_od = self._safe(self.hx_tube_od.v, 0.05)
             hx_tube_th = self._safe(self.hx_tube_th.v, 0.002)
@@ -1632,7 +1505,7 @@ class TurbinesBypassNetwork(Component):
                 h_hx_out = (m_dot_ss_steam * h_ss_steam - q_dot_hx) / max(m_dot_ss_steam, 1.0e-9)
                 t_htf_out = (m_dot_htf * cp_htf * t_htf_in + q_dot_hx) / max(m_dot_htf * cp_htf, 1.0e-9)
 
-            rho_htf = _rho_incompressible(fluid_name, t_htf_out, p_htf_in)
+            rho_htf = max(float(self._inc_props.density(fluid_name, float(t_htf_out), float(p_htf_in))), 1.0e-6)
             vol_dot_htf = m_dot_htf / max(rho_htf, 1.0e-9)
 
             if not math.isfinite(h_hx_out):
@@ -1650,7 +1523,7 @@ class TurbinesBypassNetwork(Component):
             h_hx_out = h_ss_steam
             t_hx_out = t_ss_steam
             t_htf_out = t_htf_in
-            vol_dot_htf = m_dot_htf / max(_rho_incompressible(fluid_name, t_htf_out, p_htf_in), 1.0e-9)
+            vol_dot_htf = m_dot_htf / max(float(self._inc_props.density(fluid_name, float(t_htf_out), float(p_htf_in))), 1.0e-9)
             eta_od = 0.0
 
         # HP main / LP main / AUX piping code
@@ -1664,8 +1537,8 @@ class TurbinesBypassNetwork(Component):
             dh_fd = 25000.0
             dp_fd = 25000.0
 
-            p_state = max(p_prev, 1.0)
-            h_state = _enthalpy_pt(p_state, t_prev, h_out)
+            p_state = max(p_prev, 700.0)
+            h_state = float(fp.enthalpy("water", P=max(p_state, 1.0), T=max(t_prev, 273.15)))
             t_pipe_state = t_pipe_prev
             ff_state = max(ff_guess, 1.0e-4)
 
@@ -1673,12 +1546,12 @@ class TurbinesBypassNetwork(Component):
             t_crit = ts_sec / n_sub
 
             def _rhs(p_local, h_local, t_pipe_local, ff_local):
-                p_local = max(p_local, 1.0)
+                p_local = max(p_local, 700.0)
                 h_local = max(h_local, 1.0)
-                p_prop = min(max(p_local, 1.0), 3.0e7)
+                p_prop = min(max(p_local, 700.0), 3.0e7)
                 h_prop = min(max(h_local, 1.0), 5.0e6)
-                rho_local = _rho_from_ph(p_prop, h_prop, 5.0)
-                t_fluid = _temperature_ph(p_prop, h_prop, t_prev)
+                rho_local = max(float(fp.density("water", P=max(p_prop, 1.0), h=max(h_prop, 1.0))), 1.0e-6)
+                t_fluid = float(fp.temperature("water", P=max(p_prop, 1.0), h=max(h_prop, 1.0)))
                 u_local = h_prop - p_prop / max(rho_local, 1.0e-9)
 
                 h_bar = convection_dynamicpipe(p_prop, h_prop, diameter, m_dot_ave, ff_local, t_pipe_local)
@@ -1735,15 +1608,12 @@ class TurbinesBypassNetwork(Component):
                     ff_state,
                 )
 
-                p_state = max(p_state + (t_crit / 6.0) * (k1_p + 2.0 * k2_p + 2.0 * k3_p + k4_p), 1.0)
+                p_state = max(p_state + (t_crit / 6.0) * (k1_p + 2.0 * k2_p + 2.0 * k3_p + k4_p), 700.0)
                 h_state = max(h_state + (t_crit / 6.0) * (k1_h + 2.0 * k2_h + 2.0 * k3_h + k4_h), 1.0)
                 t_pipe_state = t_pipe_state + (t_crit / 6.0) * (k1_tp + 2.0 * k2_tp + 2.0 * k3_tp + k4_tp)
 
-                t_now = _temperature_ph(p_state, h_state, t_prev)
-                try:
-                    mu_now = max(float(fp.viscosity("water", P=max(p_state, 1.0), T=max(t_now, 273.15))), 1.0e-6)
-                except Exception:
-                    mu_now = 1.0e-4
+                t_now = float(fp.temperature("water", P=max(p_state, 1.0), h=max(h_state, 1.0)))
+                mu_now = max(float(fp.viscosity("water", P=max(p_state, 1.0), h=max(h_state, 1.0))), 1.0e-6)
                 re_now = max(4.0 * abs(m_dot_ave) / (math.pi * diameter * mu_now), 1.0)
                 if re_now < 2300.0:
                     ff_state = min(max(64.0 / re_now, 1.0e-4), 0.5)
@@ -1753,22 +1623,16 @@ class TurbinesBypassNetwork(Component):
             p_new = p_state
             h_new = h_state
             t_pipe_new = t_pipe_state
-            t_new = _temperature_ph(p_new, h_new, t_prev)
+            t_new = float(fp.temperature("water", P=max(p_new, 1.0), h=max(h_new, 1.0)))
 
-            try:
-                mu = max(float(fp.viscosity("water", P=max(p_new, 1.0), T=max(t_new, 273.15))), 1.0e-6)
-            except Exception:
-                mu = 1.0e-4
+            mu = max(float(fp.viscosity("water", P=max(p_new, 1.0), h=max(h_new, 1.0))), 1.0e-6)
             re = max(4.0 * abs(m_dot_ave) / (math.pi * diameter * mu), 1.0)
             if re < 2300.0:
                 ff = min(max(64.0 / re, 1.0e-4), 0.5)
             else:
                 ff = min(max(0.3164 / (re ** 0.25), 1.0e-4), 0.2)
 
-            try:
-                x_new = min(max(float(fp.quality("water", P=max(p_new, 1.0), h=max(h_new, 1.0))), 0.0), 1.0)
-            except Exception:
-                x_new = 1.0 if h_new >= 2.5e6 else 0.0
+            x_new = min(max(float(fp.quality("water", P=max(p_new, 1.0), h=max(h_new, 1.0))), 0.0), 1.0)
 
             return p_new, t_new, x_new * 100.0, t_pipe_new, h_new, ff
 
@@ -1923,7 +1787,7 @@ class TurbinesBypassNetwork(Component):
         self.p_lpt4.v = p_lpt4
         self.h_lpt4.v = h_lpt4
         self.m_dot_lpt_exh.v = m_dot_lpt_exh
-        self.vol_dot_lpt_exh.v = m_dot_lpt_exh / max(_rho_from_ph(max(p_lpt_exh, p_cond), h_lpt_exh, 1.0), 1.0e-9)
+        self.vol_dot_lpt_exh.v = m_dot_lpt_exh / max(float(fp.density("water", P=max(max(p_lpt_exh, p_cond), 1.0), h=max(h_lpt_exh, 1.0))), 1.0e-9)
         self.t_lpt_exh.v = t_lpt_exh
         self.h_lpt_exh.v = h_lpt_exh
 
@@ -1990,7 +1854,7 @@ class TurbinesBypassNetwork(Component):
             lpt_high_t_timed = self._safe(self.lpt_hightemp_timedtrip.v, 800.0)
             lpt_high_t_trip = self._safe(self.lpt_hightemp_trip.v, 850.0)
 
-            t_sat_hp = self._sat_temperature_from_pressure(max(self.p_hpmain.v, 1.0))
+            t_sat_hp = float(fp.temperature("water", P=min(max(self.p_hpmain.v, 1.0), 2.2e7), Q=0.0))
             superheat_hp = self.t_hpmain.v - t_sat_hp
             if self.w_dot_total.v > partial_load:
                 alarm, trip = self._alarm_trip(superheat_hp, hpt_sh_alarm_fl, hpt_sh_trip_fl, high=False)
@@ -2008,7 +1872,7 @@ class TurbinesBypassNetwork(Component):
             self.alarm_hpt_exhpres.v = alarm
             self.trip_hpt_exhpres.v = trip
 
-            t_sat_lp = self._sat_temperature_from_pressure(max(self.p_lpmain.v, 1.0))
+            t_sat_lp = float(fp.temperature("water", P=min(max(self.p_lpmain.v, 1.0), 2.2e7), Q=0.0))
             superheat_lp = self.t_lpmain.v - t_sat_lp
             alarm, trip = self._alarm_trip(superheat_lp, lpt_sh_alarm, lpt_sh_trip, high=False)
             self.alarm_lpt_superheat.v = alarm

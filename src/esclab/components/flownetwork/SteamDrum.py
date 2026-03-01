@@ -76,6 +76,10 @@ class SteamDrum(Component):
     numerically from water properties.
     """
 
+    _P_MIN_WATER = 700.0
+    _P_MAX_SAT_WATER = 2.2e7
+    _P_MAX_PH_WATER = 2.0e8
+
     # Parameters (Type6003: 1-28)
     d_tank = Component.Parameter()
     length_tank = Component.Parameter()
@@ -216,152 +220,33 @@ class SteamDrum(Component):
             level = mid
         return max(min(level, d_tank), 0.0)
 
-    def _sat_props_from_pressure(self, pressure_pa):
-        pressure_eval = max(pressure_pa, 1.0)
-
-        t_sat = None
-        h_f = None
-        h_g = None
-        rho_f = None
-        rho_g = None
-
-        for p_value in (pressure_eval, pressure_eval / 1000.0):
-            try:
-                t_sat = float(fp.temperature("water", P=p_value, Q=1.0))
-            except Exception:
-                pass
-            try:
-                h_f_raw = float(fp.enthalpy("water", P=p_value, Q=0.0))
-                h_g_raw = float(fp.enthalpy("water", P=p_value, Q=1.0))
-                h_f = h_f_raw * 1000.0 if abs(h_f_raw) < 1.0e4 else h_f_raw
-                h_g = h_g_raw * 1000.0 if abs(h_g_raw) < 1.0e4 else h_g_raw
-            except Exception:
-                pass
-            try:
-                rho_f = float(fp.density("water", P=p_value, Q=0.0))
-                rho_g = float(fp.density("water", P=p_value, Q=1.0))
-            except Exception:
-                pass
-
-        if t_sat is None or h_f is None or h_g is None or rho_f is None or rho_g is None:
-            pressure_ratio = pressure_eval / 101325.0
-            t_sat = max(273.15, min(650.0, 373.15 + 42.0 * math.log(pressure_ratio + 1.0)))
-            h_f = 4200.0 * (t_sat - 273.15)
-            h_fg = max(2.5e6 - 1800.0 * (t_sat - 273.15), 5.0e5)
-            h_g = h_f + h_fg
-            rho_f = max(1000.0 - 0.35 * (t_sat - 273.15), 600.0)
-            rho_g = max(pressure_eval / (461.5 * max(t_sat, 200.0)), 0.05)
-
-        return t_sat, h_f, h_g, max(rho_f, 1.0e-6), max(rho_g, 1.0e-6)
-
-    def _temperature_from_ph(self, pressure_pa, enthalpy_j_kg):
-        pressure_eval = max(pressure_pa, 1.0)
-        h_eval = enthalpy_j_kg
-        for kwargs in (
-            {"fluid": "water", "P": pressure_eval, "H": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "H": h_eval / 1000.0},
-            {"fluid": "water", "P": pressure_eval, "h": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "h": h_eval / 1000.0},
-        ):
-            try:
-                temperature = float(fp.temperature(**kwargs))
-                if temperature == temperature and 200.0 <= temperature <= 2000.0:
-                    return temperature
-            except Exception:
-                continue
-
-        t_sat, h_f, h_g, _, _ = self._sat_props_from_pressure(pressure_eval)
-        if h_eval <= h_f:
-            return max(273.15, min(t_sat - 0.5, 273.15 + h_eval / 4200.0))
-        if h_eval >= h_g:
-            return min(1200.0, t_sat + (h_eval - h_g) / 2100.0)
-        return t_sat
-
-    def _cp_htf(self, fluid_id, temperature_k, pressure_pa):
-        t_eval = max(temperature_k, 273.15)
-        p_eval = max(pressure_pa, 1.0)
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            cp = float(self._props.specheat(fluid_name, t_eval, p_eval))
-            if cp == cp and cp > 0.0:
-                return cp * 1000.0 if cp < 100.0 else cp
-        except Exception:
-            pass
-        try:
-            cp = float(fp.specheat(fluid_name, T=t_eval, P=p_eval))
-            if cp == cp and cp > 0.0:
-                return cp * 1000.0 if cp < 100.0 else cp
-        except Exception:
-            pass
-        return 2200.0
-
-    def _rho_htf(self, fluid_id, temperature_k, pressure_pa):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        t_eval = max(temperature_k, 273.15)
-        p_eval = max(pressure_pa, 1.0)
-        try:
-            rho = float(self._props.density(fluid_name, t_eval, p_eval))
-            if rho == rho and rho > 0.0:
-                return rho
-        except Exception:
-            pass
-        try:
-            rho = float(fp.density(fluid_name, T=t_eval, P=p_eval))
-            if rho == rho and rho > 0.0:
-                return rho
-        except Exception:
-            pass
-        return 1000.0
-
-    def _rho_water_from_ph(self, pressure_pa, enthalpy_j_kg):
-        pressure_eval = max(pressure_pa, 1.0)
-        h_eval = enthalpy_j_kg
-
-        for kwargs in (
-            {"fluid": "water", "P": pressure_eval, "H": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "H": h_eval / 1000.0},
-            {"fluid": "water", "P": pressure_eval, "h": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "h": h_eval / 1000.0},
-        ):
-            try:
-                rho = float(fp.density(**kwargs))
-                if rho == rho and rho > 0.0:
-                    return rho
-            except Exception:
-                continue
-
-        t_sat, h_f, h_g, rho_f, rho_g = self._sat_props_from_pressure(pressure_eval)
-        if h_eval <= h_f:
-            t_est = max(273.15, min(t_sat, 273.15 + h_eval / 4200.0))
-            return max(600.0, 1000.0 - 0.35 * (t_est - 273.15))
-        if h_eval >= h_g:
-            t_est = t_sat + (h_eval - h_g) / 2100.0
-            return max(0.05, pressure_eval / (461.5 * max(t_est, 200.0)))
-
-        quality = (h_eval - h_f) / max(h_g - h_f, 1.0e-9)
-        return 1.0 / max((1.0 - quality) / rho_f + quality / rho_g, 1.0e-12)
-
     def _u_water_from_ph(self, pressure_pa, enthalpy_j_kg):
-        rho = self._rho_water_from_ph(pressure_pa, enthalpy_j_kg)
-        return enthalpy_j_kg - pressure_pa / max(rho, 1.0e-9)
+        p_prop = min(max(pressure_pa, self._P_MIN_WATER), self._P_MAX_PH_WATER)
+        h_prop = min(max(enthalpy_j_kg, 1.0), 5.0e6)
+        rho = float(fp.density("water", P=p_prop, h=h_prop))
+        return h_prop - p_prop / max(rho, 1.0e-9)
 
     def _state_derivatives(self, pressure_pa, enthalpy_j_kg, m_dot_in, m_dot_superheat, m_dot_blowdown, h_in, q_dot_actual, vol_tank):
-        pressure_eval = max(pressure_pa, 1.0)
+        pressure_eval = max(pressure_pa, self._P_MIN_WATER)
         enthalpy_eval = max(enthalpy_j_kg, 1.0)
+        p_prop = min(max(pressure_eval, self._P_MIN_WATER), self._P_MAX_PH_WATER)
+        p_sat = min(max(pressure_eval, self._P_MIN_WATER), self._P_MAX_SAT_WATER)
+        h_prop = min(max(enthalpy_eval, 1.0), 5.0e6)
 
         dp = 1000.0
         dh = 1000.0
 
-        rho = self._rho_water_from_ph(pressure_eval, enthalpy_eval)
-        u_tank = self._u_water_from_ph(pressure_eval, enthalpy_eval)
-        _, h_sat_f, h_sat_g, _, _ = self._sat_props_from_pressure(pressure_eval)
+        rho = float(fp.density("water", P=p_prop, h=h_prop))
+        u_tank = self._u_water_from_ph(p_prop, h_prop)
+        h_sat_f = float(fp.enthalpy("water", P=p_sat, Q=0.0))
+        h_sat_g = float(fp.enthalpy("water", P=p_sat, Q=1.0))
 
-        rho_h_plus = self._rho_water_from_ph(pressure_eval, enthalpy_eval + dh)
-        rho_h_minus = self._rho_water_from_ph(pressure_eval, max(enthalpy_eval - dh, 1.0))
+        rho_h_plus = float(fp.density("water", P=p_prop, h=min(max(h_prop + dh, 1.0), 5.0e6)))
+        rho_h_minus = float(fp.density("water", P=p_prop, h=min(max(h_prop - dh, 1.0), 5.0e6)))
         drhodhcp = (rho_h_plus - rho_h_minus) / max((2.0 * dh), 1.0e-9)
 
-        rho_p_plus = self._rho_water_from_ph(pressure_eval + dp, enthalpy_eval)
-        rho_p_minus = self._rho_water_from_ph(max(pressure_eval - dp, 1.0), enthalpy_eval)
+        rho_p_plus = float(fp.density("water", P=min(max(p_prop + dp, self._P_MIN_WATER), self._P_MAX_PH_WATER), h=h_prop))
+        rho_p_minus = float(fp.density("water", P=min(max(p_prop - dp, self._P_MIN_WATER), self._P_MAX_PH_WATER), h=h_prop))
         drhodpch = (rho_p_plus - rho_p_minus) / max((2.0 * dp), 1.0e-9)
 
         u_h_plus = self._u_water_from_ph(pressure_eval, enthalpy_eval + dh)
@@ -406,7 +291,7 @@ class SteamDrum(Component):
 
         m_dot_in = max(self._safe(self.m_dot_in.v), 0.0)
         h_in = self._safe(self.h_in.v)
-        p_in = max(self._safe(self.p_in.v, 101325.0), 1.0)
+        p_in = max(self._safe(self.p_in.v, 101325.0), 700.0)
         htf_mass_in = max(self._safe(self.htf_mass_in.v), 0.0)
         htf_temp_in = self._safe(self.htf_temp_in.v, 300.0)
         htf_p_in = self._safe(self.htf_p_in.v, p_in)
@@ -425,8 +310,12 @@ class SteamDrum(Component):
         # Do All of the First Timestep Manipulations Here - There Are No Iterations at the Intial Time
         if self.model.is_first_step:
             l_tank = max(min(self._safe(self.initial_l_tank.v, 0.5 * d_tank), d_tank), 0.0)
-            p_tank = max(self._safe(self.initial_p_tank.v, p_in), 1.0)
-            t_tank, h_sat_f, h_out, rho_tank_f, rho_tank_g = self._sat_props_from_pressure(p_tank)
+            p_tank = min(max(self._safe(self.initial_p_tank.v, p_in), self._P_MIN_WATER), self._P_MAX_SAT_WATER)
+            t_tank = float(fp.temperature("water", P=p_tank, Q=0.0))
+            h_sat_f = float(fp.enthalpy("water", P=p_tank, Q=0.0))
+            h_out = float(fp.enthalpy("water", P=p_tank, Q=1.0))
+            rho_tank_f = max(float(fp.density("water", P=p_tank, Q=0.0)), 1.0e-6)
+            rho_tank_g = max(float(fp.density("water", P=p_tank, Q=1.0)), 1.0e-6)
 
             vol_liquid = self._liquid_volume_from_level(l_tank, d_tank, length_tank)
             vol_vapor = max(vol_tank - vol_liquid, 0.0)
@@ -442,7 +331,8 @@ class SteamDrum(Component):
             vol_dot_fw = m_dot_superheat / max(rho_tank_g, 1.0e-9)
 
             # Volumetric flow rate for HTF
-            rho_htf = self._rho_htf(fluid_id, htf_temp_in, htf_p_in)
+            fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
+            rho_htf = max(float(self._props.density(fluid_name, htf_temp_in, htf_p_in)), 1.0e-9)
             vol_dot_htf = htf_mass_in / max(rho_htf, 1.0e-9)
 
             # Set the Initial Values of the Outputs (#,Value)
@@ -489,11 +379,14 @@ class SteamDrum(Component):
 
         # Read previous-step storage outputs
         m_tank_prev = max(self._safe(self.m_tank_begin.v, 1.0), 1.0)
-        p_tank_prev = max(self._safe(self.p_tank_begin.v, p_in), 1.0)
+        p_tank_prev = min(max(self._safe(self.p_tank_begin.v, p_in), self._P_MIN_WATER), self._P_MAX_SAT_WATER)
         l_tank_prev = max(self._safe(self.l_tank_begin.v, 0.0), 0.0)
         h_tank_prev = self._safe(self.h_tank_begin.v, h_in)
 
-        t_tank_prev, h_sat_f_prev, h_sat_g_prev, _, rho_g_prev = self._sat_props_from_pressure(p_tank_prev)
+        t_tank_prev = float(fp.temperature("water", P=p_tank_prev, Q=0.0))
+        h_sat_f_prev = float(fp.enthalpy("water", P=p_tank_prev, Q=0.0))
+        h_sat_g_prev = float(fp.enthalpy("water", P=p_tank_prev, Q=1.0))
+        rho_g_prev = max(float(fp.density("water", P=p_tank_prev, Q=1.0)), 1.0e-6)
 
         # Evaporator calculations
         htf_mass_eval = max(htf_mass_in, 1.0e-5)
@@ -501,8 +394,9 @@ class SteamDrum(Component):
         ua_rated = rated_heat_transfer * a_s
         ua_od = ua_rated * self._safe_pow(htf_mass_eval / rated_htf_flow, rated_exp)
 
-        cp_htf_max = self._cp_htf(fluid_id, htf_temp_in, htf_p_in)
-        cp_htf_min = self._cp_htf(fluid_id, t_tank_prev, htf_p_in)
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
+        cp_htf_max = max(float(self._props.specheat(fluid_name, htf_temp_in, htf_p_in)) * 1000.0, 1.0)
+        cp_htf_min = max(float(self._props.specheat(fluid_name, t_tank_prev, htf_p_in)) * 1000.0, 1.0)
         cp_htf_ave = max((cp_htf_max + cp_htf_min) / 2.0, 1.0)
 
         ntu_od = ua_od / max(htf_mass_eval * cp_htf_ave, 1.0e-9)
@@ -621,10 +515,14 @@ class SteamDrum(Component):
             p_tank_new = p_tank_fallback
             h_tank_new = h_tank_fallback
 
-        p_tank_new = max(p_tank_new, 1.0)
+        p_tank_new = min(max(p_tank_new, self._P_MIN_WATER), self._P_MAX_SAT_WATER)
         h_tank_new = max(h_tank_new, 1.0)
 
-        t_tank_new, h_sat_f_new, h_sat_g_new, rho_f_new, rho_g_new = self._sat_props_from_pressure(p_tank_new)
+        t_tank_new = float(fp.temperature("water", P=p_tank_new, Q=0.0))
+        h_sat_f_new = float(fp.enthalpy("water", P=p_tank_new, Q=0.0))
+        h_sat_g_new = float(fp.enthalpy("water", P=p_tank_new, Q=1.0))
+        rho_f_new = max(float(fp.density("water", P=p_tank_new, Q=0.0)), 1.0e-6)
+        rho_g_new = max(float(fp.density("water", P=p_tank_new, Q=1.0)), 1.0e-6)
         x_tank_new = max(min((h_tank_new - h_sat_f_new) / max(h_sat_g_new - h_sat_f_new, 1.0e-9), 1.0), 0.0)
         m_tank_g_new = m_tank_new * x_tank_new
         m_tank_f_new = m_tank_new - m_tank_g_new
@@ -634,7 +532,7 @@ class SteamDrum(Component):
 
         h_out = h_sat_g_new
         vol_dot_fw = m_dot_superheat / max(rho_g_new, 1.0e-9)
-        rho_htf = self._rho_htf(fluid_id, htf_temp_out, htf_p_out)
+        rho_htf = max(float(self._props.density(fluid_name, htf_temp_out, htf_p_out)), 1.0e-9)
         vol_dot_htf = htf_mass_out / max(rho_htf, 1.0e-9)
 
         # Set the Outputs from this Model (#,Value)
@@ -683,7 +581,7 @@ class SteamDrum(Component):
                 self.high_pressure_trip.v = 0.0 if p_tank_new < self._safe(self.high_pressure_trip_cond.v, 1.0e12) else 1.0
 
             # High Temp Diff between water entering drum and saturation temp.
-            t_in = self._temperature_from_ph(p_in, h_in)
+            t_in = float(fp.temperature("water", P=max(p_in, 700.0), h=max(h_in, 1.0)))
             delta_t_fw = abs(t_in - t_tank_new)
             self.high_delta_t_fw_alarm.v = 0.0 if delta_t_fw < self._safe(self.high_delta_t_fw_alarm_cond.v, 1.0e12) else 1.0
             if self.high_delta_t_fw_alarm.v == 0.0:

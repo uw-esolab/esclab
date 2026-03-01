@@ -3,7 +3,6 @@
 import math
 
 import numpy as np
-from eeslib import fluid_properties as fp
 from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
@@ -120,54 +119,6 @@ class HEX(Component):
         n_hex = max(int(round(self._safe(self.n_hex.v, 1.0))), 1)
         return n_baffles * shell_p * n_hex + 1
 
-    def _fluid_cp(self, fluid_id, temperature, pressure, fallback):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            cp = float(self._props.specheat(fluid_name, temperature, pressure)) * 1000.0
-            if cp == cp and np.isfinite(cp) and cp > 50.0:
-                return cp
-        except Exception:
-            pass
-        try:
-            cp = float(fp.specheat(fluid_name, T=temperature, P=pressure)) * 1000.0
-            if cp == cp and np.isfinite(cp) and cp > 50.0:
-                return cp
-        except Exception:
-            pass
-        return fallback
-
-    def _fluid_density(self, fluid_id, temperature, pressure, fallback):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            rho = float(self._props.density(fluid_name, temperature, pressure))
-            if rho == rho and np.isfinite(rho) and rho > 0.1:
-                return rho
-        except Exception:
-            pass
-        try:
-            rho = float(fp.density(fluid_name, T=temperature, P=pressure))
-            if rho == rho and np.isfinite(rho) and rho > 0.1:
-                return rho
-        except Exception:
-            pass
-        return fallback
-
-    def _fluid_viscosity(self, fluid_id, temperature, pressure, fallback):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            mu = float(self._props.viscosity(fluid_name, temperature, pressure))
-            if mu == mu and np.isfinite(mu) and mu > 0.0:
-                return mu
-        except Exception:
-            pass
-        try:
-            mu = float(fp.viscosity(fluid_name, T=temperature, P=pressure))
-            if mu == mu and np.isfinite(mu) and mu > 0.0:
-                return mu
-        except Exception:
-            pass
-        return fallback
-
     @staticmethod
     def _h_from_tube_temp_c(temp_c):
         return (
@@ -252,9 +203,10 @@ class HEX(Component):
         return mat
 
     def _gnielinski(self, t_fluid, m_tube, n_tube, d_tube, fluid_number, pressure):
-        rho_tube = self._fluid_density(fluid_number, t_fluid, pressure, 900.0)
-        visc_tube = self._fluid_viscosity(fluid_number, t_fluid, pressure, 2.5e-3)
-        cp_tube = self._fluid_cp(fluid_number, t_fluid, pressure, 2200.0)
+        fluid_name = str(fluid_number) if fluid_number == fluid_number else "Nitrate Salt"
+        rho_tube = max(float(self._props.density(fluid_name, t_fluid, pressure)), 0.1)
+        visc_tube = max(float(self._props.viscosity(fluid_name, t_fluid, pressure)), 1.0e-9)
+        cp_tube = max(float(self._props.specheat(fluid_name, t_fluid, pressure)) * 1000.0, 50.0)
         k_film = 0.1
         pr_tube = max(visc_tube * cp_tube / k_film, 1.0e-8)
 
@@ -275,9 +227,10 @@ class HEX(Component):
         return h_tube, vel_tube
 
     def _zukauskas(self, fluid_shell, config, d_shell, s_t, s_l, n_tube, d_tube, t_shell, m_shell, l_shell, n_baffles, pressure):
-        rho_shell = self._fluid_density(fluid_shell, t_shell, pressure, 1800.0)
-        visc_shell = self._fluid_viscosity(fluid_shell, t_shell, pressure, 3.0e-3)
-        cp_shell = self._fluid_cp(fluid_shell, t_shell, pressure, 1500.0)
+        fluid_name = str(fluid_shell) if fluid_shell == fluid_shell else "Nitrate Salt"
+        rho_shell = max(float(self._props.density(fluid_name, t_shell, pressure)), 0.1)
+        visc_shell = max(float(self._props.viscosity(fluid_name, t_shell, pressure)), 1.0e-9)
+        cp_shell = max(float(self._props.specheat(fluid_name, t_shell, pressure)) * 1000.0, 50.0)
 
         k_film = 0.5
         pr_shell = max(visc_shell * cp_shell / k_film, 1.0e-8)
@@ -372,9 +325,10 @@ class HEX(Component):
         tww = tw.copy()
 
         for idx in range(n_nodes):
-            cp_shell[idx] = self._fluid_cp(fluid_shell, t_shell[idx], p_in_shell, 1500.0)
-            rho_shell[idx] = self._fluid_density(fluid_shell, t_shell[idx], p_in_shell, 1800.0)
-            mu_shell[idx] = self._fluid_viscosity(fluid_shell, t_shell[idx], p_in_shell, 3.0e-3)
+            fluid_name = str(fluid_shell) if fluid_shell == fluid_shell else "Nitrate Salt"
+            cp_shell[idx] = max(float(self._props.specheat(fluid_name, t_shell[idx], p_in_shell)) * 1000.0, 50.0)
+            rho_shell[idx] = max(float(self._props.density(fluid_name, t_shell[idx], p_in_shell)), 0.1)
+            mu_shell[idx] = max(float(self._props.viscosity(fluid_name, t_shell[idx], p_in_shell)), 1.0e-9)
             pr_shell[idx] = cp_shell[idx] * mu_shell[idx] / max(k_shell[idx], 1.0e-12)
 
         vel_shell = 2.0 * m_shell / np.maximum(rho_shell * (d_shell * gap_baffle), 1.0e-12)
@@ -643,8 +597,8 @@ class HEX(Component):
 
         m_tube = max(self._safe(self.m_dot_tube_c.v, 0.0), 0.0)
         m_shell = max(self._safe(self.m_dot_shell_c.v, 0.0), 0.0)
-        cp_shell = self._fluid_cp(self.fluid_shell.v, t_shell_in, p_in_shell, 1500.0)
-        cp_tube = self._fluid_cp(self.fluid_tube.v, t_tube_in, p_in_tube, 2200.0)
+        cp_shell = max(float(self._props.specheat(str(self.fluid_shell.v), t_shell_in, p_in_shell)) * 1000.0, 50.0)
+        cp_tube = max(float(self._props.specheat(str(self.fluid_tube.v), t_tube_in, p_in_tube)) * 1000.0, 50.0)
 
         c_shell = max(m_shell * cp_shell, 1.0)
         c_tube = max(m_tube * cp_tube, 1.0)

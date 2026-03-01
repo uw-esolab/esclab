@@ -2,6 +2,7 @@
 
 import math
 
+from eeslib import fluid_properties as fp
 from esclab.components.flownetwork.SimplePipe import FricFactor_IC
 from esclab.simulate import Component
 
@@ -78,34 +79,6 @@ class Condenser(Component):
     def _safe(value, default=0.0):
         return value if value == value else default
 
-    @staticmethod
-    def _sat_temperature_from_pressure(pressure_pa):
-        return max(
-            273.15,
-            min(
-                650.0,
-                373.15 + 42.0 * math.log(max(pressure_pa, 1.0) / 101325.0 + 1.0),
-            ),
-        )
-
-    @staticmethod
-    def _sat_props_from_pressure(pressure_pa):
-        t_sat = Condenser._sat_temperature_from_pressure(pressure_pa)
-        h_f = 4200.0 * (t_sat - 273.15)
-        h_fg = max(2.5e6 - 1800.0 * (t_sat - 273.15), 5.0e5)
-        h_g = h_f + h_fg
-        rho_f = max(1000.0 - 0.35 * (t_sat - 273.15), 600.0)
-        rho_g = max(pressure_pa / (461.5 * max(t_sat, 200.0)), 0.05)
-        return t_sat, h_f, h_g, rho_f, rho_g
-
-    @staticmethod
-    def _water_temp_from_h(h):
-        return 273.15 + h / 4200.0
-
-    @staticmethod
-    def _water_h_from_t(t):
-        return 4200.0 * (t - 273.15)
-
     def _solve_pump_flow(
         self, p_tank, l_tank, p_da, sys_losses, pump_speed, q_prev, point_1x, point_1y
     ):
@@ -181,8 +154,13 @@ class Condenser(Component):
         th_tube = max(self._safe(self.hx_tube_thickness.v, 0.001), 0.0)
         od_tube = id_tube + 2.0 * th_tube
 
-        t_sat, h_sat_f, h_sat_g, rho_sat_f, rho_sat_g = self._sat_props_from_pressure(p_tank_prev)
-        t_cool_in = self._water_temp_from_h(h_cool_in)
+        p_sat = min(max(p_tank_prev, 1.0), 2.2e7)
+        t_sat = float(fp.temperature("water", P=p_sat, Q=0.0))
+        h_sat_f = float(fp.enthalpy("water", P=p_sat, Q=0.0))
+        h_sat_g = float(fp.enthalpy("water", P=p_sat, Q=1.0))
+        rho_sat_f = max(float(fp.density("water", P=p_sat, Q=0.0)), 1.0e-6)
+        rho_sat_g = max(float(fp.density("water", P=p_sat, Q=1.0)), 1.0e-6)
+        t_cool_in = float(fp.temperature("water", P=max(p_cool_in, 1.0), h=max(h_cool_in, 1.0)))
 
         if m_dot_cool_in <= 1.0:
             return (
@@ -196,7 +174,7 @@ class Condenser(Component):
             )
 
         t_cool_out_ttd = min(max(t_sat - ttd, t_cool_in), 342.0)
-        h_cool_out_ttd = self._water_h_from_t(t_cool_out_ttd)
+        h_cool_out_ttd = float(fp.enthalpy("water", P=max(p_cool_in, 1.0), T=max(t_cool_out_ttd, 273.15)))
 
         # Inside convection (cooling water side)
         a_s_inner = math.pi * id_tube * length_tubes * no_tubes
@@ -243,7 +221,7 @@ class Condenser(Component):
         q_dot = max(min(q_dot_r, q_dot_cw), 0.0)
 
         h_cool_out = h_cool_in + q_dot / max(m_dot_cool_in, 1.0e-12)
-        t_cool_out = self._water_temp_from_h(h_cool_out)
+        t_cool_out = float(fp.temperature("water", P=max(p_cool_in, 1.0), h=max(h_cool_out, 1.0)))
         p_cool_out = p_cool_in
         vol_cool_out = m_dot_cool_in / 1000.0
         return m_dot_cool_in, vol_cool_out, t_cool_out, p_cool_out, h_cool_out, q_dot, max(ff, 1.0e-6)
@@ -262,7 +240,8 @@ class Condenser(Component):
         ts,
         area_tank,
     ):
-        _, h_sat_f_prev, _, _, _ = self._sat_props_from_pressure(p_tank_prev)
+        p_sat_prev = min(max(p_tank_prev, 1.0), 2.2e7)
+        h_sat_f_prev = float(fp.enthalpy("water", P=p_sat_prev, Q=0.0))
         e_prev = m_tank_prev * h_tank_prev
         e_in = (m_dot_in * h_in + m_dot_res * h_sat_f_prev) * ts
         e_out = (m_dot_pump * h_pump + q_dot) * ts
@@ -274,7 +253,7 @@ class Condenser(Component):
         mass_ratio = m_tank_new / max(m_tank_prev, 1.0e-9)
         enth_ratio = h_tank_new / max(h_tank_prev, 1.0e-9)
         p_tank_new = max(p_tank_prev * (0.72 + 0.20 * mass_ratio + 0.08 * enth_ratio), 1.0)
-        t_tank_new = self._water_temp_from_h(h_tank_new)
+        t_tank_new = float(fp.temperature("water", P=max(p_tank_new, 1.0), h=max(h_tank_new, 1.0)))
         l_tank_new = max(m_tank_new / (area_tank * 1000.0), 0.0)
         return m_tank_new, p_tank_new, h_tank_new, t_tank_new, l_tank_new
 
@@ -376,8 +355,9 @@ class Condenser(Component):
         vol_tank = height_tank * area_tank
 
         if self.model.is_first_step:
-            t_tank = self._sat_temperature_from_pressure(p_tank_ini)
-            h_tank = self._water_h_from_t(t_tank)
+            p_sat_ini = min(max(p_tank_ini, 1.0), 2.2e7)
+            t_tank = float(fp.temperature("water", P=p_sat_ini, Q=0.0))
+            h_tank = float(fp.enthalpy("water", P=p_sat_ini, Q=0.0))
             m_tank = max(area_tank * max(l_tank_ini, 0.0) * rho_f, 1.0)
 
             p_pump_out = (
@@ -425,7 +405,7 @@ class Condenser(Component):
         l_tank_prev = max(self._safe(self.out_state_level_prev.v, l_tank_ini), 0.0)
         h_tank_prev = self._safe(
             self.out_state_h_prev.v,
-            self._water_h_from_t(self._sat_temperature_from_pressure(p_tank_prev)),
+            float(fp.enthalpy("water", P=min(max(p_tank_prev, 1.0), 2.2e7), Q=0.0)),
         )
         m_tank_prev = max(
             self._safe(self.out_state_m_prev.v, area_tank * l_tank_prev * rho_f),
@@ -449,9 +429,9 @@ class Condenser(Component):
             point_1y,
         )
         m_dot_pump = q_new * rho_f
-        h_pump_in = self._water_h_from_t(self._sat_temperature_from_pressure(p_tank_prev))
+        h_pump_in = float(fp.enthalpy("water", P=min(max(p_tank_prev, 1.0), 2.2e7), Q=0.0))
         h_pump_out = h_pump_in + w_dot_pump / max(m_dot_pump, 1.0e-9)
-        t_pump_out = self._water_temp_from_h(h_pump_out)
+        t_pump_out = float(fp.temperature("water", P=max(p_pump_out, 1.0), h=max(h_pump_out, 1.0)))
 
         # STEP 2: Condenser HX calculations
         ff_guess = self._safe(self.out_ff.v, 0.1)
@@ -489,7 +469,7 @@ class Condenser(Component):
             m_res_accum = 0.0
             m_curr, p_curr, h_curr = m_tank_prev, p_tank_prev, h_tank_prev
             l_curr = l_tank_prev
-            t_curr = self._water_temp_from_h(h_curr)
+            t_curr = float(fp.temperature("water", P=max(p_curr, 1.0), h=max(h_curr, 1.0)))
             for _ in range(ts_sub_n):
                 m_dot_res_sub, tank_state = self._solve_reservoir_flow(
                     l_tank_ini,

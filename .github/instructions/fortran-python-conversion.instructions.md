@@ -90,17 +90,15 @@ We are focusing on converting the following types first:
 Here is a summary of where the conversion process stands:
 
 Still Need Full Conversion (placeholder/surrogate level)
+  * BoilerFeedwaterHeater.py — baseline delta-T model, not full heater physics.
   * SolanaHydraulicModel.py — very high reserved I/O count, reduced split-ratio logic only.
   * ParallelFlowSolver.py — simplified fraction solver, many reserved inputs.
   * PBHydraulicModel.py — simplified pressure-ratio split, many reserved inputs.
-  * BoilerFeedwaterHeater.py — baseline delta-T model, not full heater physics.
   * SCWaterPumps.py — dynamic-array scaffold with surrogate per-pump behavior.
   * HTFTank2TankPump.py — reduced pump model with multiple reserved params/inputs.
-  * FITTPtoH.py — explicit surrogate with TODO replacing FIT calls.
   * Weather.py — weather reader works, but solar-tracking physics still TODO.
   * PBValve.py — simplified Cv correlation with TODO for PB_CV_data.
   * PBPiping.py — functional but reduced hydraulic/thermo fidelity.
-  * Pipe.py — simplified fluid/thermal assumptions versus likely richer source behavior.
 
 Nearly Fully Translated (or close)
   * TurbinesBypassNetwork.py
@@ -119,6 +117,8 @@ Nearly Fully Translated (or close)
 Borderline / Usable but not fully parity-verified
   * HEXDisplay.py
   * SolarFieldSector.py — large and advanced, but still includes multiple surrogate/TODO blocks.
+  * FITTPtoH.py — explicit surrogate with TODO replacing FIT calls.
+  * Pipe.py — simplified fluid/thermal assumptions versus likely richer source behavior.
 
 Conversions can be complex and could be completed in multiple stages. 
 1. Focus on mapping of the parameters, inputs, outputs, and the if/then blocks for iteration and time step conditions. 
@@ -154,6 +154,8 @@ Output data types do not take initial values, but the array can be assigned in t
 * Include a docstring at the beginning of the component class that states the Type number of the TRNSYS source, and describes the component, its parameters, inputs, and outputs. 
 * Docstrings should be configured for sphinx documentation generation. This means using the reStructuredText format and including sections for parameters, inputs, outputs, and any other relevant information.
 * Assume Fluid_id (int) from Fortran will be replaced with a string input for the fluid name, which can be used in calls to the esol_properties.Incompressible functions. Extra infrastructure beyond mapping the fluid_id to the function call is not normally needed.
+* Do not use surrogates for properties. Calls for HTF go to esol_properties.Incompressible. Calls for water go to eeslib.fluid_properties. Do not use "fallback" fluid names like "Nitrate salt". Assume the property functions check for validity.
+* DO NOT CLAMP VALUES that are not clamped in the original fortran code!!!! 
 
 ## Places where direct mapping is appropriate:
 1. Parameters or Inputs declared as DOUBLE PRECISION or INTEGER <varname> should map to Component members <varname> = Component.Parameter() or Component.Input() depending on the context.

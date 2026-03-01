@@ -1,7 +1,6 @@
 """Simple pipe component model (Type 4001)."""
 
 import numpy as np
-from eeslib import fluid_properties as fp
 from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
@@ -100,14 +99,10 @@ class SimplePipe(Component):
 
             # Calculating Pressure Drop
             fluid_name = str(self.fluid.v) if self.fluid.v == self.fluid.v else "Nitrate Salt"
-            try:
-                rho = self._props.density(fluid_name, self.T_in.v, self.P_in.v)
-            except Exception:
-                rho = fp.density(fluid_name, T=self.T_in.v, P=self.P_in.v)
-            try:
-                visc = self._props.viscosity(fluid_name, self.T_in.v, self.P_in.v)
-            except Exception:
-                visc = fp.viscosity(fluid_name, T=self.T_in.v, P=self.P_in.v)
+            t_in_eval = max(self.T_in.v, 1.0)
+            p_in_eval = max(self.P_in.v, 0.0)
+            rho = max(float(self._props.density(fluid_name, t_in_eval, p_in_eval)), 1.0e-9)
+            visc = max(float(self._props.viscosity(fluid_name, t_in_eval, p_in_eval)), 1.0e-12)
             vel = self.m_dot_in.v/rho/(3.14/4. *self.Pipe_ID.v**2.)
             Re = rho* vel * self.Pipe_ID.v/visc
 

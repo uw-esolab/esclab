@@ -2,6 +2,7 @@
 
 import math
 
+from esclab.components.esol_properties import Incompressible as Inc
 from esclab.simulate import Component
 from .Valve import CV_data
 
@@ -100,6 +101,7 @@ class ExpansionSystem(Component):
     _m1_guess = (40.0, 20.0, 20.0)
     _m2_guess = (32.0, 100.0, 132.0)
     _m3_guess = (100.0, 50.0, 50.0, 100.0)
+    _props = Inc()
 
     @staticmethod
     def _safe(value, default=0.0):
@@ -108,18 +110,6 @@ class ExpansionSystem(Component):
     @staticmethod
     def _clamp01(value):
         return max(0.0, min(1.0, value))
-
-    def _density_sf(self, _fluid_id, t_c, _p_pa):
-        t_k = t_c + 273.15
-        return max(1074.0 - 0.6367 * (t_k - 273.15) - 0.0007762 * (t_k - 273.15) ** 2, 450.0)
-
-    def _cp_sf(self, _fluid_id, t_c):
-        t_k = t_c + 273.15
-        cp_kj = 1.47524 + 0.00368606 * ((t_k - 273.15) - 273.0) - 0.00000516458 * ((t_k - 273.15) - 273.0) ** 2
-        return max(cp_kj * 1000.0, 1200.0)
-
-    def _h_dowtherm_a(self, t_c):
-        return self._cp_sf(self.fluid_id.v, t_c) * (t_c + 273.15)
 
     def _valve_slew(self, target, previous, valve_speed, timestep_s):
         target = self._clamp01(target)
@@ -157,8 +147,9 @@ class ExpansionSystem(Component):
         return q * rho
 
     def _initialize_state(self):
-        rho_of = self._density_sf(self.fluid_id.v, self.t_of_init.v, self.p_of.v)
-        rho_ev = self._density_sf(self.fluid_id.v, self.t_ev_init.v, self.p_ev.v)
+        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+        rho_of = max(float(self._props.density(fluid_name, self.t_of_init.v + 273.15, self.p_of.v)), 1.0)
+        rho_ev = max(float(self._props.density(fluid_name, self.t_ev_init.v + 273.15, self.p_ev.v)), 1.0)
 
         total_mass = self.total_mass.v
         only_exp = self.only_exp.v
@@ -221,12 +212,14 @@ class ExpansionSystem(Component):
         self.t_of.v = t_of
         self.t_ev.v = t_ev
         self.alarm_high_high_pressure.v = alarm
-        for idx in range(13, 16):
-            getattr(self, f"output_{idx}").v = 0.0
+        self.alarm_reserved_1.v = 0.0
+        self.alarm_reserved_2.v = 0.0
+        self.alarm_reserved_3.v = 0.0
 
     def calculate(self):
         timestep_s = max(self.model.settings.timestep * 3600.0, 1.0e-6)
         fluid_id = self.fluid_id.v
+        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
         p_ev = self.p_ev.v
         p_of = self.p_of.v
         pc_a = self.pc_a.v
@@ -256,8 +249,8 @@ class ExpansionSystem(Component):
         if self.model.is_first_step or self._t_of != self._t_of or self._t_ev != self._t_ev:
             self._initialize_state()
 
-        rho_of = self._density_sf(fluid_id, self._t_of, p_of)
-        rho_ev = self._density_sf(fluid_id, self._t_ev, p_ev)
+        rho_of = max(float(self._props.density(fluid_name, self._t_of + 273.15, p_of)), 1.0)
+        rho_ev = max(float(self._props.density(fluid_name, self._t_ev + 273.15, p_ev)), 1.0)
         p_bot_of = self._p_bot_of
         p_bot_ev = self._p_bot_ev
 
@@ -318,14 +311,16 @@ class ExpansionSystem(Component):
             mass_ev = max(total_mass - m_counter, 1.0e-6)
 
             if self.model.is_converged:
-                cp_ev = self._cp_sf(fluid_id, self._t_ev)
-                h_ev_val = self._h_dowtherm_a(self._t_ev)
-                h_plant = self._h_dowtherm_a(t_in if m_dot_sf_to_exp > 0.0 else self._t_ev)
+                cp_ev = max(float(self._props.specheat(fluid_name, self._t_ev + 273.15, p_ev)) * 1000.0, 1.0)
+                h_ev_val = cp_ev * (self._t_ev + 273.15)
+                t_plant = t_in if m_dot_sf_to_exp > 0.0 else self._t_ev
+                cp_plant = max(float(self._props.specheat(fluid_name, t_plant + 273.15, p_ev)) * 1000.0, 1.0)
+                h_plant = cp_plant * (t_plant + 273.15)
                 d_t_dt = (-h_ev_val * m_dot_sf_to_exp + m_dot_sf_to_exp * h_plant) / max(mass_ev * cp_ev, 1.0)
                 self._t_ev = self._t_ev + d_t_dt * timestep_s
                 self._m_count_prev = m_counter
 
-                rho_ev = self._density_sf(fluid_id, self._t_ev, p_ev)
+                rho_ev = max(float(self._props.density(fluid_name, self._t_ev + 273.15, p_ev)), 1.0)
                 self._level_ev = self._tank_level(mass_ev, d_ev, h_ev, n_ev, rho_ev)
                 self._p_bot_ev = p_ev + rho_ev * 9.81 * self._level_ev * max(h_ev, 0.0)
                 self._alarm_high_high_pressure = 1.0 if self._p_bot_ev > 1.172e6 else 0.0
@@ -397,33 +392,37 @@ class ExpansionSystem(Component):
 
             self._mass_of = max(self._mass_of + (m_in_of - m_out_of) * timestep_s, 1.0e-6)
 
-            rho_of_now = self._density_sf(fluid_id, self._t_of, p_of)
+            rho_of_now = max(float(self._props.density(fluid_name, self._t_of + 273.15, p_of)), 1.0)
             self._level_of = self._tank_level(self._mass_of, d_of, h_of, n_of, rho_of_now)
 
             mass_ev = max(total_mass - self._mass_of - m_counter, 1.0e-6)
-            rho_ev_now = self._density_sf(fluid_id, self._t_ev, p_ev)
+            rho_ev_now = max(float(self._props.density(fluid_name, self._t_ev + 273.15, p_ev)), 1.0)
             self._level_ev = self._tank_level(mass_ev, d_ev, h_ev, n_ev, rho_ev_now)
 
-            cp_of = self._cp_sf(fluid_id, self._t_of)
-            h_of_now = self._h_dowtherm_a(self._t_of)
-            h_in_of = self._h_dowtherm_a(t_to_of)
+            cp_of = max(float(self._props.specheat(fluid_name, self._t_of + 273.15, p_of)) * 1000.0, 1.0)
+            h_of_now = cp_of * (self._t_of + 273.15)
+            cp_in_of = max(float(self._props.specheat(fluid_name, t_to_of + 273.15, p_of)) * 1000.0, 1.0)
+            h_in_of = cp_in_of * (t_to_of + 273.15)
             d_t_of_dt = (m_in_of * (h_in_of - h_of_now)) / max(self._mass_of * cp_of, 1.0)
             self._t_of = self._t_of + d_t_of_dt * timestep_s
 
             if m_dot_exp > 0.0:
                 m_in_ev = m_dot_exp
                 m_out_ev = 0.0
-                h_in_ev = self._h_dowtherm_a(t_to_exp)
+                cp_in_ev = max(float(self._props.specheat(fluid_name, t_to_exp + 273.15, p_ev)) * 1000.0, 1.0)
+                h_in_ev = cp_in_ev * (t_to_exp + 273.15)
                 h_out_ev = 0.0
             else:
                 m_in_ev = 0.0
                 m_out_ev = -m_dot_exp
                 h_in_ev = 0.0
-                h_out_ev = self._h_dowtherm_a(self._t_ev)
+                cp_out_ev = max(float(self._props.specheat(fluid_name, self._t_ev + 273.15, p_ev)) * 1000.0, 1.0)
+                h_out_ev = cp_out_ev * (self._t_ev + 273.15)
 
-            cp_ev = self._cp_sf(fluid_id, self._t_ev)
-            h_plant = self._h_dowtherm_a(t_in)
-            h_ev_now = self._h_dowtherm_a(self._t_ev)
+            cp_ev = max(float(self._props.specheat(fluid_name, self._t_ev + 273.15, p_ev)) * 1000.0, 1.0)
+            cp_plant = max(float(self._props.specheat(fluid_name, t_in + 273.15, p_ev)) * 1000.0, 1.0)
+            h_plant = cp_plant * (t_in + 273.15)
+            h_ev_now = cp_ev * (self._t_ev + 273.15)
             d_t_ev_dt = (
                 -h_ev_now * (m_dot_sf_to_exp + m_in_ev - m_out_ev)
                 + m_dot_sf_to_exp * h_plant
@@ -432,8 +431,8 @@ class ExpansionSystem(Component):
             ) / max(mass_ev * cp_ev, 1.0)
             self._t_ev = self._t_ev + d_t_ev_dt * timestep_s
 
-            rho_of_new = self._density_sf(fluid_id, self._t_of, p_of)
-            rho_ev_new = self._density_sf(fluid_id, self._t_ev, p_ev)
+            rho_of_new = max(float(self._props.density(fluid_name, self._t_of + 273.15, p_of)), 1.0)
+            rho_ev_new = max(float(self._props.density(fluid_name, self._t_ev + 273.15, p_ev)), 1.0)
             self._p_bot_of = p_of + self._level_of * max(h_of, 0.0) * rho_of_new * 9.81
             self._p_bot_ev = p_ev + self._level_ev * max(h_ev, 0.0) * rho_ev_new * 9.81
             self._m_count_prev = m_counter

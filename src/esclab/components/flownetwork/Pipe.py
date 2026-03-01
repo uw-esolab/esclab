@@ -111,33 +111,6 @@ class Pipe(Component):
     def _safe(value, default):
         return value if value == value else default
 
-    def _density_sf(self, fluid_id, temperature_k, pressure_pa):
-        name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        p = max(self._safe(pressure_pa, 0.0), 0.0)
-        t = max(self._safe(temperature_k, 273.15), 1.0)
-        try:
-            return max(float(self._props.density(name, t, p)), 1.0)
-        except Exception:
-            return max(2090.0 - 0.636 * (t - 273.15), 1000.0)
-
-    def _viscosity_sf(self, fluid_id, temperature_k, pressure_pa):
-        name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        p = max(self._safe(pressure_pa, 0.0), 0.0)
-        t = max(self._safe(temperature_k, 273.15), 1.0)
-        try:
-            return max(float(self._props.viscosity(name, t, p)), 1.0e-9)
-        except Exception:
-            return 2.5e-3
-
-    def _cp_sf(self, fluid_id, temperature_k, pressure_pa):
-        name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        p = max(self._safe(pressure_pa, 0.0), 0.0)
-        t = max(self._safe(temperature_k, 273.15), 1.0)
-        try:
-            return max(float(self._props.specheat(name, t, p)) * 1000.0, 100.0)
-        except Exception:
-            return 1500.0
-
     def _pressure_drop(self, mass_flow, t_ref):
         # 1. PressureDrop  (Pa)
         m_dot = abs(self._safe(mass_flow, 0.0))
@@ -148,9 +121,11 @@ class Pipe(Component):
         d = max(self._safe(self.diameter.v, 0.0), 1.0e-6)
         rough = max(self._safe(self.roughness.v, 0.0), 1.0e-10)
         l_pipe = max(self._safe(self.l_tot.v, 0.0), 0.0)
+        fluid_name = str(fluid) if fluid == fluid else "Nitrate Salt"
+        t_ref_bounded = max(self._safe(t_ref, 273.15), 1.0)
 
-        rho = self._density_sf(fluid, t_ref, 1.0)
-        mu = self._viscosity_sf(fluid, t_ref, 1.0)
+        rho = max(float(self._props.density(fluid_name, t_ref_bounded, 1.0)), 1.0)
+        mu = max(float(self._props.viscosity(fluid_name, t_ref_bounded, 1.0)), 1.0e-9)
         nu = mu / max(rho, 1.0e-9)
         v_dot = m_dot / max(rho, 1.0e-9)
         u_fluid = v_dot / (math.pi * (d / 2.0) * (d / 2.0))
@@ -203,8 +178,10 @@ class Pipe(Component):
             q_out = heat_loss * l_cv
             # Compute CV average temp and properties
             t_ave = 0.5 * (t_nodes[n] + t_nodes[n + 1])
-            rho = self._density_sf(fluid_id, t_ave, 0.0)
-            c = self._cp_sf(fluid_id, t_ave, 0.0)
+            fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
+            t_ave_bounded = max(self._safe(t_ave, 273.15), 1.0)
+            rho = max(float(self._props.density(fluid_name, t_ave_bounded, 0.0)), 1.0)
+            c = max(float(self._props.specheat(fluid_name, t_ave_bounded, 0.0)) * 1000.0, 100.0)
             # Compute CV temperature rate
             dtdt_bar[n] = (mass_flow * c * (t_nodes[n] - t_nodes[n + 1]) - q_out) / max(vol * rho * c * mc_mult, 1.0e-12)
 
@@ -231,9 +208,11 @@ class Pipe(Component):
 
         mass_counter = 0.0
         fluid = self._safe(self.fluid_id.v, "Nitrate Salt")
+        fluid_name = str(fluid) if fluid == fluid else "Nitrate Salt"
         for _ in range(n_nodes - 1):
             t_cv = init_temp
-            mass_counter += vol * self._density_sf(fluid, t_cv, 0.0)
+            t_cv_bounded = max(self._safe(t_cv, 273.15), 1.0)
+            mass_counter += vol * max(float(self._props.density(fluid_name, t_cv_bounded, 0.0)), 1.0)
 
         d_p = self._pressure_drop(self._safe(self.mass_flow.v, 0.0), init_temp)
 
@@ -286,6 +265,7 @@ class Pipe(Component):
         l_cv = max(self._safe(self.l_tot.v, 0.0), 0.0) / max(float(n_nodes - 1), 1.0)
         vol = math.pi * (max(self._safe(self.diameter.v, 0.0), 1.0e-6) / 2.0) ** 2 * l_cv
         fluid = self._safe(self.fluid_id.v, "Nitrate Salt")
+        fluid_name = str(fluid) if fluid == fluid else "Nitrate Salt"
 
         # Loop through each control volume
         mass_counter = 0.0
@@ -293,7 +273,8 @@ class Pipe(Component):
             # Compute control volume average temperature
             t_cv = 0.5 * (self._t_nodes[n] + self._t_nodes[n + 1])
             # Compute mass in CV
-            mass_counter += vol * self._density_sf(fluid, t_cv, 0.0)
+            t_cv_bounded = max(self._safe(t_cv, 273.15), 1.0)
+            mass_counter += vol * max(float(self._props.density(fluid_name, t_cv_bounded, 0.0)), 1.0)
         return mass_counter
 
     def calculate(self):

@@ -1,7 +1,6 @@
 """Type 4008 tee-return mixer converted from Fortran."""
 
 import numpy as np
-from eeslib import fluid_properties as fp
 from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
@@ -53,19 +52,8 @@ class TeeReturnSimple(Component):
     mass_counter = Component.Output()
     _props = Inc()
 
-    def _cp(self, t, p):
-        t_eval = t if t > 273.0 else 300.0
-        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
-        try:
-            return float(self._props.specheat(fluid_name, t_eval, p))
-        except Exception:
-            pass
-        try:
-            return float(fp.specheat(fluid_name, T=t_eval, P=p))
-        except Exception:
-            return float(fp.specheat("Water", T=t_eval, P=max(p, 101325.0)))
-
     def calculate(self):
+        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
         m_dot_tot = self.m_dot_1.v + self.m_dot_2.v
         if self.model.is_first_step:
             self.m_dot.v = m_dot_tot
@@ -79,12 +67,12 @@ class TeeReturnSimple(Component):
         if abs(m_dot_tot) < 1.0e-12:
             t_out = self.temperature.v if np.isfinite(self.temperature.v) else 0.5 * (self.t_1.v + self.t_2.v)
         else:
-            cp1 = self._cp(self.t_1.v, self.p_1.v)
-            cp2 = self._cp(self.t_2.v, self.p_2.v)
+            cp1 = float(self._props.specheat(fluid_name, max(self.t_1.v, 273.0), self.p_1.v))
+            cp2 = float(self._props.specheat(fluid_name, max(self.t_2.v, 273.0), self.p_2.v))
             cp_t = (self.m_dot_1.v * cp1 * self.t_1.v + self.m_dot_2.v * cp2 * self.t_2.v) / m_dot_tot
             t_guess = float(np.clip(self.temperature.v if np.isfinite(self.temperature.v) else 500.0, 273.0, 1000.0))
             for _ in range(50):
-                cp_guess = self._cp(t_guess, self.p_1.v)
+                cp_guess = float(self._props.specheat(fluid_name, max(t_guess, 273.0), self.p_1.v))
                 err = cp_t - t_guess * cp_guess
                 if abs(err) < 100.0:
                     break

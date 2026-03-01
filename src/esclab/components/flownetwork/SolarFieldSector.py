@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 
 import numpy as np
-from eeslib import fluid_properties as fp
 
 from esclab.components.esol_properties import Incompressible
 from esclab.components.flownetwork.SimplePipe import FricFactor_IC
@@ -225,48 +224,11 @@ class SolarFieldSector(Component):
     def _clamp(value, low=0.0, high=1.0):
         return max(low, min(high, value))
 
-    def _fluid_density(self, fluid_name, temperature_k):
-        name = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
-        try:
-            return max(self._props.density(name, temperature_k), 1.0)
-        except Exception:
-            return max(self._props.density("Nitrate Salt", temperature_k), 1.0)
-
-    def _fluid_cp(self, fluid_name, temperature_k):
-        name = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
-        try:
-            return max(self._props.specheat(name, temperature_k) * 1000.0, 1000.0)
-        except Exception:
-            return max(self._props.specheat("Nitrate Salt", temperature_k) * 1000.0, 1000.0)
-
     @staticmethod
     def _h_dowtherm_a(temperature_k):
         td = temperature_k - 273.15
         return (-12.7078 + 1.481714 * td + 0.0014292857 * td**2) * 1000.0
 
-    def _fluid_viscosity(self, fluid_name, temperature_k, pressure_pa):
-        name = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
-        try:
-            mu = self._props.viscosity(name, temperature_k, pressure_pa)
-            return max(float(mu), 1.0e-6)
-        except Exception:
-            try:
-                mu = fp.viscosity(name, T=temperature_k, P=pressure_pa)
-                return max(float(mu), 1.0e-6)
-            except Exception:
-                return 2.5e-3
-
-    def _fluid_density_ees(self, fluid_name, temperature_k, pressure_pa):
-        name = str(fluid_name) if fluid_name == fluid_name else "Nitrate Salt"
-        try:
-            rho = self._props.density(name, temperature_k, pressure_pa)
-            return max(float(rho), 1.0)
-        except Exception:
-            try:
-                rho = fp.density(name, T=temperature_k, P=pressure_pa)
-                return max(float(rho), 1.0)
-            except Exception:
-                return self._fluid_density(name, temperature_k)
 
     def _dp_segment(
         self,
@@ -292,8 +254,9 @@ class SolarFieldSector(Component):
 
         d = max(diameter, 1.0e-5)
         l = max(length, 0.0)
-        rho = self._fluid_density_ees(self.fluid_id.v, temperature_k, pressure_pa)
-        mu = self._fluid_viscosity(self.fluid_id.v, temperature_k, pressure_pa)
+        fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+        rho = max(float(self._props.density(fluid_name, temperature_k, pressure_pa)), 1.0)
+        mu = max(float(self._props.viscosity(fluid_name, temperature_k, pressure_pa)), 1.0e-6)
         area = math.pi * d**2 / 4.0
         vel = mass_flow / max(rho * area, 1.0e-9)
         re = abs(rho * vel * d / max(mu, 1.0e-9))
@@ -694,8 +657,9 @@ class SolarFieldSector(Component):
         rho = np.zeros(n_cv, dtype=float)
         c_bar = np.zeros(n_cv, dtype=float)
         for n in range(n_cv):
-            rho[n] = self._fluid_density_ees(self.fluid_id.v, t_bar[n], 0.0)
-            c_bar[n] = self._fluid_cp(self.fluid_id.v, t_bar[n])
+            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+            rho[n] = max(float(self._props.density(fluid_name, t_bar[n], 0.0)), 1.0)
+            c_bar[n] = max(float(self._props.specheat(fluid_name, t_bar[n], 0.0)) * 1000.0, 1.0)
 
         dt_bar = (q_in + m_dot * c_bar * (t_nodes[:-1] - t_nodes[1:])) / (mc_sf * rho * vol * c_bar)
 
@@ -930,8 +894,9 @@ class SolarFieldSector(Component):
         rho = np.zeros(n_cv, dtype=float)
         c_bar = np.zeros(n_cv, dtype=float)
         for n in range(n_cv):
-            rho[n] = self._fluid_density_ees(self.fluid_id.v, t_bar[n], 0.0)
-            c_bar[n] = self._fluid_cp(self.fluid_id.v, t_bar[n])
+            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+            rho[n] = max(float(self._props.density(fluid_name, t_bar[n], 0.0)), 1.0)
+            c_bar[n] = max(float(self._props.specheat(fluid_name, t_bar[n], 0.0)) * 1000.0, 1.0)
 
         dt_bar = (q_in + m_dot * c_bar * (t_nodes[:-1] - t_nodes[1:])) / (mc_sf * rho * vol * c_bar)
 
@@ -955,8 +920,9 @@ class SolarFieldSector(Component):
             m_dot = max(self._m_dots_in[n], 0.0)
             vol = max(self._vol_inlet[n], 1.0e-9)
             t_bar = (t_nodes[n] + t_nodes[n + 1]) / 2.0
-            c = self._fluid_cp(self.fluid_id.v, t_bar)
-            rho = self._fluid_density_ees(self.fluid_id.v, t_bar, p_ref)
+            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+            c = max(float(self._props.specheat(fluid_name, t_bar, p_ref)) * 1000.0, 1.0)
+            rho = max(float(self._props.density(fluid_name, t_bar, p_ref)), 1.0)
             h1 = self._h_dowtherm_a(t_nodes[n])
             h2 = self._h_dowtherm_a(t_nodes[n + 1])
             d_t_bar[n] = (m_dot * (h1 - h2) - heat_loss * self._l_cv_inlet[n]) / max(mc_mult * vol * rho * c, 1.0e-9)
@@ -979,8 +945,9 @@ class SolarFieldSector(Component):
         # Fortran jj = 2 (1-based) -> zero-based index 1
         jj = 1
         for n in range(n_cv):
-            rho = self._fluid_density_ees(self.fluid_id.v, (t_nodes[n] + t_nodes[n + 1]) / 2.0, p_ref)
-            c = self._fluid_cp(self.fluid_id.v, (t_nodes[n] + t_nodes[n + 1]) / 2.0)
+            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+            rho = max(float(self._props.density(fluid_name, (t_nodes[n] + t_nodes[n + 1]) / 2.0, p_ref)), 1.0)
+            c = max(float(self._props.specheat(fluid_name, (t_nodes[n] + t_nodes[n + 1]) / 2.0, p_ref)) * 1000.0, 1.0)
             h1 = self._h_dowtherm_a(t_nodes[n])
             h2 = self._h_dowtherm_a(t_nodes[n + 1])
 
@@ -1120,7 +1087,7 @@ class SolarFieldSector(Component):
         self._features = np.zeros((self._n_nodes_i - 1, 7), dtype=float)
 
         fluid = self.fluid_id.v
-        rho_init = self._fluid_density(fluid, t_init_sf)
+        rho_init = max(float(self._props.density(str(fluid), t_init_sf, 0.0)), 1.0)
         self._mass_htf_hold = self._n_loop_i * (self._n_nodes_i - 1) * self._vol_loop_cv * rho_init
         self._t4_ave_hold = t_init_sf
         self._is_initialized = True
@@ -1324,7 +1291,7 @@ class SolarFieldSector(Component):
         ind_4 = max(min(ind_4, self._n_nodes_i - 1), 0)
         self._t4_ave_hold = float(np.mean(self._loop_t[ind_4, :]))
 
-        rho_cv = self._fluid_density(fluid, float(np.mean(self._loop_t)))
+        rho_cv = max(float(self._props.density(str(fluid), float(np.mean(self._loop_t)), 0.0)), 1.0)
         self._mass_htf_hold = self._n_loop_i * (self._n_nodes_i - 1) * self._vol_loop_cv * rho_cv
 
         # TODO(Type4034): Verify header derivative parity numerically against
@@ -1348,7 +1315,8 @@ class SolarFieldSector(Component):
         vol_header = max(self._vol_loop_cv, 1.0e-9)
         for n in range(n_cv_header):
             t_cv = (self._t_header_inlet[n] + self._t_header_inlet[n + 1]) / 2.0
-            self._mass_htf_hold += vol_header * self._fluid_density(self.fluid_id.v, t_cv)
+            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+            self._mass_htf_hold += vol_header * max(float(self._props.density(fluid_name, t_cv, 0.0)), 1.0)
 
         # Solar Field
         ind_4 = self._n_nodes_i - int(math.ceil((self._n_nodes_i - 1) / max(int(round(self._safe(self.n_sca.v, 1.0))), 1) / 2.0)) - 1
@@ -1382,7 +1350,8 @@ class SolarFieldSector(Component):
 
             t_bar = (self._loop_t[1:, loop] + self._loop_t[:-1, loop]) / 2.0
             for n in range(self._n_nodes_i - 1):
-                self._mass_htf_hold += self._vol_loop_cv * self._fluid_density(self.fluid_id.v, float(t_bar[n]))
+                fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+                self._mass_htf_hold += self._vol_loop_cv * max(float(self._props.density(fluid_name, float(t_bar[n]), 0.0)), 1.0)
 
             t4_accum += t_ind_4
 
@@ -1392,7 +1361,8 @@ class SolarFieldSector(Component):
         for n in range(n_cv_header + 1):
             n2 = min(n + 1, len(self._t_header_return) - 1)
             t_cv = (self._t_header_return[n] + self._t_header_return[n2]) / 2.0
-            self._mass_htf_hold += vol_header * self._fluid_density(self.fluid_id.v, t_cv)
+            fluid_name = str(self.fluid_id.v) if self.fluid_id.v == self.fluid_id.v else "Nitrate Salt"
+            self._mass_htf_hold += vol_header * max(float(self._props.density(fluid_name, t_cv, 0.0)), 1.0)
 
     def _pressure_drop_surrogate(self):
         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

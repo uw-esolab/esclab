@@ -2,7 +2,6 @@
 
 import math
 
-from eeslib import fluid_properties as fp
 from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
@@ -63,29 +62,6 @@ class TESTank(Component):
     def _safe(value, default):
         return value if value == value else default
 
-    def _density_salt(self, fluid_id, temperature, pressure):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            return max(float(self._props.density(fluid_name, temperature, pressure)), 1.0)
-        except Exception:
-            pass
-        try:
-            return max(float(fp.density(fluid_name, T=temperature, P=pressure)), 1.0)
-        except Exception:
-            return 1800.0
-
-    def _cp_salt(self, fluid_id, temperature, pressure):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            return max(float(self._props.specheat(fluid_name, temperature, pressure)) * 1000.0, 100.0)
-        except Exception:
-            pass
-        try:
-            # SF_props specific heat in Type4100 is used as kJ/kg-K and converted to J/kg-K.
-            return max(float(fp.specheat(fluid_name, T=temperature, P=pressure)) * 1000.0, 100.0)
-        except Exception:
-            return 1500.0
-
     def calculate(self):
         # Model Parameters
         d_in = max(self._safe(self.d_in.v, 1.0), 1.0e-6)
@@ -96,6 +72,7 @@ class TESTank(Component):
         t0 = self._safe(self.t0.v, 600.0)
         l0 = max(self._safe(self.l0.v, 0.0), 0.0)
         fluid_id = self._safe(self.id_fluid.v, "Nitrate Salt")
+        fluid_name = str(fluid_id)
 
         # Model Inputs
         t_in = self._safe(self.t_in.v, t0)
@@ -121,7 +98,7 @@ class TESTank(Component):
 
         # Do All of the First Timestep Manipulations Here - There Are No Iterations at the Initial Time
         if self.model.is_first_step:
-            rho_salt = self._density_salt(fluid_id, t0, p_salt)
+            rho_salt = max(float(self._props.density(fluid_name, t0, p_salt)), 1.0)
             area_cs = math.pi * d_in**2 / 4.0
             m_tank = rho_salt * (l0 * area_cs)
             tw = 305.0
@@ -167,12 +144,12 @@ class TESTank(Component):
         q_loss_total = 0.0
 
         # SALT Properties based on fluid temperature
-        cp_salt_in = self._cp_salt(fluid_id, t_in, p_salt)
+        cp_salt_in = max(float(self._props.specheat(fluid_name, t_in, p_salt)), 100.0)
 
         # Here starts a "for" loop to simulate each "subtime step"
         for _ in range(n_sub):
-            rho_salt = self._density_salt(fluid_id, t_tank, p_salt)
-            cp_salt = self._cp_salt(fluid_id, t_tank, p_salt)
+            rho_salt = max(float(self._props.density(fluid_name, t_tank, p_salt)), 1.0)
+            cp_salt = max(float(self._props.specheat(fluid_name, t_tank, p_salt)), 100.0)
             m_tank = rho_salt * (l_tank * area_cs)
 
             # Here starts the "while" loop to converge wall temperature
@@ -241,10 +218,10 @@ class TESTank(Component):
             m_tank = m_new
             q_loss_total += hl * sub_ts
 
-            rho_salt_next = self._density_salt(fluid_id, t_tank, p_salt)
+            rho_salt_next = max(float(self._props.density(fluid_name, t_tank, p_salt)), 1.0)
             l_tank = (m_tank / max(rho_salt_next, 1.0e-9)) / max(area_cs, 1.0e-12)
 
-        vol_dot_out = m_out / max(self._density_salt(fluid_id, t_tank, p_salt), 1.0e-9)
+        vol_dot_out = m_out / max(float(self._props.density(fluid_name, t_tank, p_salt)), 1.0e-9)
 
         self.m_outlet.v = m_out
         self.vol_dot_outlet.v = vol_dot_out

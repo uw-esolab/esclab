@@ -127,15 +127,6 @@ class STHX(Component):
         return value if value == value else default
 
     @staticmethod
-    def _sat_props_from_pressure(pressure_pa):
-        pressure_ratio = max(pressure_pa, 1.0) / 101325.0
-        t_sat = max(273.15, min(650.0, 373.15 + 42.0 * math.log(pressure_ratio + 1.0)))
-        h_f = 4200.0 * (t_sat - 273.15)
-        h_fg = max(2.5e6 - 1800.0 * (t_sat - 273.15), 5.0e5)
-        h_g = h_f + h_fg
-        return t_sat, h_f, h_g
-
-    @staticmethod
     def _alarm_trip(value, alarm_limit, trip_limit, high=True):
         if high:
             alarm = 1.0 if value >= alarm_limit else 0.0
@@ -162,122 +153,6 @@ class STHX(Component):
             hist[:-1] = hist[1:]
         if len(hist) > 0:
             hist[-1] = new_val
-
-    def _cp_htf(self, fluid_id, temperature, pressure):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            cp = float(self._props.specheat(fluid_name, temperature, pressure))
-            if cp == cp and cp > 0.0:
-                return cp * 1000.0 if cp < 100.0 else cp
-        except Exception:
-            pass
-        try:
-            cp = float(fp.specheat(fluid_name, T=temperature, P=pressure))
-            if cp == cp and cp > 0.0:
-                return cp * 1000.0 if cp < 100.0 else cp
-        except Exception:
-            pass
-        return 2200.0
-
-    def _cp_water(self, temperature, pressure):
-        try:
-            cp = float(fp.specheat("water", T=temperature, P=pressure))
-            if cp == cp and cp > 0.0:
-                return cp * 1000.0 if cp < 100.0 else cp
-        except Exception:
-            pass
-        return 4200.0
-
-    def _water_temp_from_ph(self, pressure_pa, enthalpy_j_kg):
-        pressure_eval = max(pressure_pa, 1.0)
-        h_eval = enthalpy_j_kg
-        tried = (
-            {"fluid": "water", "P": pressure_eval, "H": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "H": h_eval / 1000.0},
-            {"fluid": "water", "P": pressure_eval, "h": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "h": h_eval / 1000.0},
-        )
-        for kwargs in tried:
-            try:
-                t = float(fp.temperature(**kwargs))
-                if t == t and 200.0 <= t <= 2000.0:
-                    return t
-            except Exception:
-                continue
-
-        t_sat, h_f, h_g = self._sat_props_from_pressure(pressure_eval)
-        if h_eval <= h_f:
-            return max(273.15, min(t_sat - 0.5, 273.15 + h_eval / 4200.0))
-        if h_eval >= h_g:
-            cp_superheat = 2100.0
-            return min(1200.0, t_sat + (h_eval - h_g) / cp_superheat)
-        return t_sat
-
-    def _water_enthalpy_from_pt(self, pressure_pa, temperature_k):
-        pressure_eval = max(pressure_pa, 1.0)
-        t_eval = max(temperature_k, 273.15)
-        tried = (
-            {"fluid": "water", "P": pressure_eval, "T": t_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "T": t_eval},
-        )
-        for kwargs in tried:
-            try:
-                h = float(fp.enthalpy(**kwargs))
-                if h == h:
-                    return h * 1000.0 if abs(h) < 1.0e4 else h
-            except Exception:
-                continue
-
-        _, h_f, h_g = self._sat_props_from_pressure(pressure_eval)
-        t_sat, _, _ = self._sat_props_from_pressure(pressure_eval)
-        if t_eval <= t_sat:
-            return max(0.0, 4200.0 * (t_eval - 273.15))
-        return h_g + 2100.0 * (t_eval - t_sat)
-
-    def _water_density_from_ph(self, pressure_pa, enthalpy_j_kg):
-        pressure_eval = max(pressure_pa, 1.0)
-        h_eval = enthalpy_j_kg
-        tried = (
-            {"fluid": "water", "P": pressure_eval, "H": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "H": h_eval / 1000.0},
-            {"fluid": "water", "P": pressure_eval, "h": h_eval},
-            {"fluid": "water", "P": pressure_eval / 1000.0, "h": h_eval / 1000.0},
-        )
-        for kwargs in tried:
-            try:
-                rho = float(fp.density(**kwargs))
-                if rho == rho and rho > 0.0:
-                    return rho
-            except Exception:
-                continue
-
-        t_sat, h_f, h_g = self._sat_props_from_pressure(pressure_eval)
-        if h_eval < h_f:
-            t_est = max(273.15, min(t_sat, 273.15 + h_eval / 4200.0))
-            return max(600.0, 1000.0 - 0.35 * (t_est - 273.15))
-        if h_eval > h_g:
-            t_est = t_sat + (h_eval - h_g) / 2100.0
-            return max(0.05, pressure_eval / (461.5 * max(t_est, 200.0)))
-        x = (h_eval - h_f) / max(h_g - h_f, 1.0)
-        rho_l = max(600.0, 1000.0 - 0.35 * (t_sat - 273.15))
-        rho_v = max(0.05, pressure_eval / (461.5 * max(t_sat, 200.0)))
-        return 1.0 / max((1.0 - x) / rho_l + x / rho_v, 1.0e-12)
-
-    def _htf_density(self, fluid_id, temperature, pressure):
-        fluid_name = str(fluid_id) if fluid_id == fluid_id else "Nitrate Salt"
-        try:
-            rho = float(self._props.density(fluid_name, temperature, pressure))
-            if rho == rho and rho > 0.0:
-                return rho
-        except Exception:
-            pass
-        try:
-            rho = float(fp.density(fluid_name, T=temperature, P=pressure))
-            if rho == rho and rho > 0.0:
-                return rho
-        except Exception:
-            pass
-        return 1800.0
 
     def _set_outputs_1_to_11(self, m_dot_fw, vol_dot_fw, p_fw, h_fw_out, t_fw_out, m_dot_htf, vol_dot_htf, p_htf, t_htf_out, q_dot_hx, eta_od):
         self.m_dot_fw_out.v = m_dot_fw
@@ -318,8 +193,9 @@ class STHX(Component):
         n_int = max(int(math.ceil(60.0 / ts_sec)), 1)
 
         t_htf_out = self._safe(self.t_htf_out.v, t_htf)
-        t_fw_out = self._safe(self.t_fw_out.v, self._water_temp_from_ph(p_fw, h_fw))
-        t_fw = self._water_temp_from_ph(p_fw, h_fw)
+        t_fw_eval = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw, 1.0)))
+        t_fw_out = self._safe(self.t_fw_out.v, t_fw_eval)
+        t_fw = t_fw_eval
 
         if len(self._htf_in_hist) != n_int:
             # At beginning of simulation set initial temperature arrays for Heating Rates.
@@ -430,6 +306,7 @@ class STHX(Component):
         tube_th = max(self._safe(self.tube_th.v, 0.001), 0.0)
         no_tubes = max(self._safe(self.no_tubes.v, 1.0), 1.0)
         fluid_id = self._safe(self.fluid_id.v, "Nitrate Salt")
+        fluid_name = str(fluid_id)
 
         m_dot_fw = max(self._safe(self.m_dot_fw.v), 0.0)
         p_fw = self._safe(self.p_fw.v)
@@ -460,16 +337,18 @@ class STHX(Component):
             if m_dot_fw > 0.01:
                 if p_fw > 0.0:
                     # Hydraulic calculations are reasonable.
-                    t_sat, h_sat_f, h_sat_g = self._sat_props_from_pressure(p_fw)
-                    t_fw = self._water_temp_from_ph(p_fw, h_fw)
-                    cp_htf = self._cp_htf(fluid_id, t_htf, p_htf)
+                    t_sat = float(fp.temperature("water", P=max(p_fw, 1.0), Q=0.0))
+                    h_sat_f = float(fp.enthalpy("water", P=max(p_fw, 1.0), Q=0.0))
+                    h_sat_g = float(fp.enthalpy("water", P=max(p_fw, 1.0), Q=1.0))
+                    t_fw = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw, 1.0)))
+                    cp_htf = float(self._props.specheat(fluid_name, t_htf, p_htf))
 
                     # solve for specific heat values of fw and htf
                     if abs(t_fw - t_sat) > 1.0:
-                        cp_fw = self._cp_water(t_fw, p_fw)
+                        cp_fw = float(fp.specheat("water", T=max(t_fw, 273.15), P=max(p_fw, 1.0)))
                     else:
                         # T_fw is too close to saturation temperature to give accurate cp value
-                        cp_fw = self._cp_water(0.5 * (t_htf + t_fw), p_fw)
+                        cp_fw = float(fp.specheat("water", T=max(0.5 * (t_htf + t_fw), 273.15), P=max(p_fw, 1.0)))
 
                     # Find effectiveness of heat exchanger based on inlet conditions of HTF and FW.
                     # Surface area of the feedwater side of the heat exchanger.
@@ -494,7 +373,7 @@ class STHX(Component):
                     eta_od = (shell_pow - 1.0) / max(shell_pow - cr, 1.0e-9)
                     eta_od = max(min(eta_od, 1.0), 0.0)
 
-                    h_fw_out_s = self._water_enthalpy_from_pt(p_fw, t_htf)
+                    h_fw_out_s = float(fp.enthalpy("water", P=max(p_fw, 1.0), T=max(t_htf, 273.15)))
 
                     # Check that HTF temp is higher than FW temp.
                     if t_fw < t_htf:
@@ -508,7 +387,7 @@ class STHX(Component):
                         if h_fw < h_sat_f and h_fw_out > h_sat_f:
                             h_fw_out = h_sat_f
                             q_dot_hx = m_dot_fw * (h_fw_out - h_fw)
-                        t_fw_out = self._water_temp_from_ph(p_fw, h_fw_out)
+                        t_fw_out = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw_out, 1.0)))
                         # energy balance on HTF side of heat exchanger
                         t_htf_out = (m_dot_htf * cp_htf * t_htf - q_dot_hx) / max(m_dot_htf * cp_htf, 1.0e-9)
                     else:
@@ -528,15 +407,15 @@ class STHX(Component):
                             # if this type is the superheater, do not allow it to go below saturation
                             if h_fw >= h_sat_g:
                                 h_fw_out = max(h_fw_out, h_sat_g)
-                            t_fw_out = self._water_temp_from_ph(p_fw, h_fw_out)
+                            t_fw_out = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw_out, 1.0)))
                         # energy balance on HTF side of heat exchanger
                         t_htf_out = (m_dot_htf * cp_htf * t_htf + q_dot_hx) / max(m_dot_htf * cp_htf, 1.0e-9)
 
                     # calculating the volumetric flow rates
-                    rho_fw = self._water_density_from_ph(p_fw, h_fw_out)
+                    rho_fw = float(fp.density("water", P=max(p_fw, 1.0), h=max(h_fw_out, 1.0)))
                     vol_dot_fw = m_dot_fw / rho_fw if rho_fw > 0.0 else 0.0
 
-                    rho_htf = self._htf_density(fluid_id, t_htf_out, p_htf)
+                    rho_htf = float(self._props.density(fluid_name, t_htf_out, p_htf))
                     vol_dot_htf = m_dot_htf / max(rho_htf, 1.0e-9)
 
                     self._set_outputs_1_to_11(
@@ -555,7 +434,7 @@ class STHX(Component):
                 else:
                     # Pressure is not possible, need to wait for next iteration to compute temperatures.
                     # Keep values the same.
-                    t_fw = self._water_temp_from_ph(max(p_fw, 1.0), h_fw)
+                    t_fw = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw, 1.0)))
                     self._set_outputs_1_to_11(
                         m_dot_fw,
                         0.0,
@@ -572,10 +451,10 @@ class STHX(Component):
             else:
                 # no FW Flow entering the system: set HTF outputs as-through
                 t_htf_out = t_htf
-                rho_htf = self._htf_density(fluid_id, t_htf, p_htf)
+                rho_htf = float(self._props.density(fluid_name, t_htf, p_htf))
                 vol_dot_htf = m_dot_htf / max(rho_htf, 1.0e-9)
 
-                t_fw_out = self._water_temp_from_ph(max(p_fw, 1.0), h_fw)
+                t_fw_out = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw, 1.0)))
                 vol_dot_fw = m_dot_fw
                 h_fw_out = h_fw
 
@@ -597,9 +476,9 @@ class STHX(Component):
             t_htf_out = t_htf
             vol_dot_htf = 0.0
 
-            rho_fw = self._water_density_from_ph(max(p_fw, 1.0), h_fw)
+            rho_fw = float(fp.density("water", P=max(p_fw, 1.0), h=max(h_fw, 1.0)))
             vol_dot_fw = m_dot_fw / rho_fw if rho_fw > 0.0 else 0.0
-            t_fw_out = self._water_temp_from_ph(max(p_fw, 1.0), h_fw)
+            t_fw_out = float(fp.temperature("water", P=max(p_fw, 1.0), h=max(h_fw, 1.0)))
 
             self._set_outputs_1_to_11(
                 m_dot_fw,

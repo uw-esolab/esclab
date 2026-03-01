@@ -150,44 +150,6 @@ class LPBFWHTankPump(Component):
             return float(default)
         return value_f
 
-    @staticmethod
-    def _water_h_from_pt(pressure_pa, temperature_k):
-        pressure = max(float(pressure_pa), 1.0)
-        temperature = max(float(temperature_k), 273.15)
-        try:
-            return float(fp.enthalpy("water", P=pressure, T=temperature))
-        except Exception:
-            return 4180.0 * (temperature - 273.15)
-
-    @staticmethod
-    def _water_s_from_ph(pressure_pa, enthalpy_jkg):
-        pressure = max(float(pressure_pa), 1.0)
-        enthalpy = max(float(enthalpy_jkg), 1.0)
-        try:
-            return float(fp.entropy("water", P=pressure, h=enthalpy))
-        except Exception:
-            temperature = 273.15 + enthalpy / 4180.0
-            return 4180.0 * math.log(max(temperature, 273.15) / 273.15)
-
-    @staticmethod
-    def _water_h_from_ps(pressure_pa, entropy_jkgk):
-        pressure = max(float(pressure_pa), 1.0)
-        entropy = float(entropy_jkgk)
-        try:
-            return float(fp.enthalpy("water", P=pressure, s=entropy))
-        except Exception:
-            temperature = 273.15 * math.exp(entropy / 4180.0)
-            return 4180.0 * (temperature - 273.15)
-
-    @staticmethod
-    def _water_t_from_ph(pressure_pa, enthalpy_jkg):
-        pressure = max(float(pressure_pa), 1.0)
-        enthalpy = float(enthalpy_jkg)
-        try:
-            return float(fp.temperature("water", P=pressure, h=enthalpy))
-        except Exception:
-            return 273.15 + enthalpy / 4180.0
-
     def calculate(self):
         # Do Any "After Convergence" Manipulations That May Be Required at the End of Each Timestep
         if self.model.is_converged:
@@ -208,7 +170,7 @@ class LPBFWHTankPump(Component):
 
             # determine initial tank enthalpy
             p_tank = 101325.0  # Pressure of the tank is set at atmospheric pressure
-            h_tank_start = self._water_h_from_pt(p_tank, t_tank_ini)
+            h_tank_start = float(fp.enthalpy("water", P=max(p_tank, 1.0), T=max(t_tank_ini, 273.15)))
 
             # determine the amount of mass in the tank at the start of the timestep
             rho_water = 1000.0
@@ -393,8 +355,8 @@ class LPBFWHTankPump(Component):
             p_pump_in = p_tank
             flow = m_dot_pump / rho_water
             eta_pump = max(eta_coef_a * flow**4 + eta_coef_b * flow**3 + eta_coef_c * flow**2 + eta_coef_d * flow, 0.2)
-            s_pump_in = self._water_s_from_ph(p_pump_in, h_pump_in)
-            h_pump_out_s = self._water_h_from_ps(p_pump_out, s_pump_in)
+            s_pump_in = float(fp.entropy("water", P=max(p_pump_in, 1.0), h=max(h_pump_in, 1.0)))
+            h_pump_out_s = float(fp.enthalpy("water", P=max(p_pump_out, 1.0), s=s_pump_in))
             w_dot_pump_s = m_dot_pump * (h_pump_out_s - h_pump_in)
             w_dot_pump = w_dot_pump_s / max(eta_pump, 1.0e-9)
             h_pump_out = h_pump_in + w_dot_pump / max(m_dot_pump, 1.0e-9)
@@ -410,7 +372,7 @@ class LPBFWHTankPump(Component):
         l_tank_end = m_tank_end / rho_water / cross_section
         l_tank_end = min(max(l_tank_end, 0.0), h_tank)
         h_tank_end = (m_tank_start * h_tank_start + m_dot_bfwh * ts * h_bfwh - m_dot_pump * ts * h_tank_start) / m_tank_end
-        t_tank_end = self._water_t_from_ph(p_tank, h_tank_end)
+        t_tank_end = float(fp.temperature("water", P=max(p_tank, 1.0), h=max(h_tank_end, 1.0)))
 
         # !!!!COMPLETE FEEDWATER MIXING CALCS!!!!
         m_dot_fw_out = m_dot_fw_in + m_dot_pump

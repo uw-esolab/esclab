@@ -2,6 +2,7 @@
 
 import math
 
+from eeslib import fluid_properties as fp
 from esclab.simulate import Component
 
 
@@ -143,24 +144,6 @@ class DeaeratorPump(Component):
         return value if value == value else default
 
     @staticmethod
-    def _sat_temperature_from_pressure(pressure_pa):
-        return max(273.15, min(650.0, 373.15 + 42.0 * math.log(max(pressure_pa, 1.0) / 101325.0 + 1.0)))
-
-    @staticmethod
-    def _sat_props_from_pressure(pressure_pa):
-        t_sat = DeaeratorPump._sat_temperature_from_pressure(pressure_pa)
-        h_f = 4200.0 * (t_sat - 273.15)
-        h_fg = max(2.5e6 - 1800.0 * (t_sat - 273.15), 5.0e5)
-        h_g = h_f + h_fg
-        rho_f = max(1000.0 - 0.35 * (t_sat - 273.15), 600.0)
-        rho_g = max(pressure_pa / (461.5 * max(t_sat, 200.0)), 0.05)
-        return t_sat, h_f, h_g, rho_f, rho_g
-
-    @staticmethod
-    def _water_temp_from_h(h):
-        return 273.15 + h / 4200.0
-
-    @staticmethod
     def _cylinder_segment_area(radius, level):
         level = min(max(level, 0.0), 2.0 * radius)
         if level <= 0.0:
@@ -254,7 +237,7 @@ class DeaeratorPump(Component):
             return {
                 "m_dot": 0.0,
                 "p_out": p_tank,
-                "h_out": self._sat_props_from_pressure(p_tank)[1],
+                "h_out": float(fp.enthalpy("water", P=min(max(p_tank, 1.0), 2.2e7), Q=0.0)),
                 "w_dot": 0.0,
                 "eta": 0.0,
                 "q": 0.0,
@@ -353,7 +336,7 @@ class DeaeratorPump(Component):
             0.2 if p_idx == 1 else 0.01,
         )
 
-        _, h_f, _, _, _ = self._sat_props_from_pressure(p_tank)
+        h_f = float(fp.enthalpy("water", P=min(max(p_tank, 1.0), 2.2e7), Q=0.0))
         h_in = h_f
         w_dot = max(p_out - p_pump_in, 0.0) * q_new / max(eta, 1.0e-3)
         h_out = h_in + w_dot / max(m_dot, 1.0e-9)
@@ -419,7 +402,12 @@ class DeaeratorPump(Component):
         vol_tank = math.pi / 4.0 * d_tank**2 * max(length_tank - d_tank, 0.0) + 4.0 / 3.0 * math.pi * radius**3
 
         if self.model.is_first_step:
-            t_sat, h_f, h_g, rho_f, rho_g = self._sat_props_from_pressure(p_tank_ini)
+            p_sat_ini = min(max(p_tank_ini, 1.0), 2.2e7)
+            t_sat = float(fp.temperature("water", P=p_sat_ini, Q=0.0))
+            h_f = float(fp.enthalpy("water", P=p_sat_ini, Q=0.0))
+            h_g = float(fp.enthalpy("water", P=p_sat_ini, Q=1.0))
+            rho_f = max(float(fp.density("water", P=p_sat_ini, Q=0.0)), 1.0e-6)
+            rho_g = max(float(fp.density("water", P=p_sat_ini, Q=1.0)), 1.0e-6)
             m_tank_f = area_liq_ini * length_tank * rho_f
             m_tank_g = max(vol_tank - area_liq_ini * length_tank, 0.0) * rho_g
             m_tank = max(m_tank_f + m_tank_g, 1.0)
@@ -438,7 +426,7 @@ class DeaeratorPump(Component):
             self.out_pump_vol_dot.v = q_dot_pump
             self.out_pump_p.v = p_pump_out
             self.out_pump_h.v = h_pump_out
-            self.out_pump_t.v = self._water_temp_from_h(h_pump_out)
+            self.out_pump_t.v = float(fp.temperature("water", P=max(p_pump_out, 1.0), h=max(h_pump_out, 1.0)))
             self.out_lpb1_m_dot.v = m_dot_lpb1
             self.out_vent_m_dot.v = 0.0
             self.out_vent_h.v = 0.0
@@ -484,7 +472,10 @@ class DeaeratorPump(Component):
         p_tank = max(self._safe(self.out_state_p_start.v, p_tank_ini), 1.0)
         l_tank = max(self._safe(self.out_state_l_start.v, l_tank_ini), 0.0)
         h_tank = self._safe(self.out_state_h_start.v, h_fw_in)
-        _, h_sat_f, h_sat_g, rho_tank_f, _ = self._sat_props_from_pressure(p_tank)
+        p_sat = min(max(p_tank, 1.0), 2.2e7)
+        h_sat_f = float(fp.enthalpy("water", P=p_sat, Q=0.0))
+        h_sat_g = float(fp.enthalpy("water", P=p_sat, Q=1.0))
+        rho_tank_f = max(float(fp.density("water", P=p_sat, Q=0.0)), 1.0e-6)
 
         p_pump_prev = max(self._safe(self.out_pump_p.v, p_tank), 1.0)
 
@@ -504,7 +495,7 @@ class DeaeratorPump(Component):
             vol_dot_pump = 0.0
             h_pump_out = self._safe(self.out_pump_h.v, h_fw_in)
             p_pump_out = self._safe(self.out_pump_p.v, p_tank)
-        t_pump_out = self._water_temp_from_h(h_pump_out)
+        t_pump_out = float(fp.temperature("water", P=max(p_pump_out, 1.0), h=max(h_pump_out, 1.0)))
         w_dot_total = p1["w_dot"] + p2["w_dot"] + p3["w_dot"]
 
         # Step 5: LP bleed request
@@ -563,7 +554,9 @@ class DeaeratorPump(Component):
         enthalpy_ratio = h_tank_new / max(h_tank, 1.0e-9)
         p_tank_new = max(p_tank * (0.7 + 0.2 * mass_ratio + 0.1 * enthalpy_ratio), 1.0)
 
-        t_tank_new, _, _, rho_f_new, _ = self._sat_props_from_pressure(p_tank_new)
+        p_sat_new = min(max(p_tank_new, 1.0), 2.2e7)
+        t_tank_new = float(fp.temperature("water", P=p_sat_new, Q=0.0))
+        rho_f_new = max(float(fp.density("water", P=p_sat_new, Q=0.0)), 1.0e-6)
         # Invert level with bisection using cylinder-segment area model
         l_low, l_high = 0.0, d_tank
         m_liq = m_tank_new * max(1.0 - min(max((h_tank_new - h_sat_f) / max(h_sat_g - h_sat_f, 1.0), 0.0), 1.0), 0.0)

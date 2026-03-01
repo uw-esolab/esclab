@@ -1,7 +1,6 @@
 """Simple tee return mixing component model (Type 4016)."""
 
 import numpy as np
-from eeslib import fluid_properties as fp
 from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.simulate import Component
@@ -87,20 +86,6 @@ class TeeReturn(Component):
             return self.P_1.v
         return self.P_2.v
 
-    def _specific_heat(self, temperature, pressure):
-        # Fallback temperature when T was not reasonable.
-        t_eval = temperature if temperature > 273.0 else 300.0
-        fluid_name = str(self.Fluid_ID.v) if self.Fluid_ID.v == self.Fluid_ID.v else "Nitrate Salt"
-        try:
-            return float(self._props.specheat(fluid_name, t_eval, pressure))
-        except Exception:
-            pass
-        try:
-            return float(fp.specheat(fluid_name, T=t_eval, P=pressure))
-        except Exception:
-            # Conservative fallback to keep simulation running if Fluid_ID is not recognized.
-            return float(fp.specheat("Water", T=t_eval, P=pressure))
-
     def _solve_mixed_temperature(self):
         # -------------------------------------------------------------------------------------------------------
         # Mass Balance
@@ -116,8 +101,9 @@ class TeeReturn(Component):
         # Compute c_p(T1), c_p(T2), then solve for T_out such that c_p(T_out)*T_out
         # matches the mixed enthalpy term from both branches.
         # -------------------------------------------------------------------------------------------------------
-        cp_t1 = self._specific_heat(self.T_1.v, self.P_1.v)
-        cp_t2 = self._specific_heat(self.T_2.v, self.P_2.v)
+        fluid_name = str(self.Fluid_ID.v) if self.Fluid_ID.v == self.Fluid_ID.v else "Nitrate Salt"
+        cp_t1 = float(self._props.specheat(fluid_name, max(self.T_1.v, 273.0), self.P_1.v))
+        cp_t2 = float(self._props.specheat(fluid_name, max(self.T_2.v, 273.0), self.P_2.v))
         cp_times_t_out = (
             self.m_dot_1.v * cp_t1 * self.T_1.v
             + self.m_dot_2.v * cp_t2 * self.T_2.v
@@ -140,7 +126,7 @@ class TeeReturn(Component):
         # Iterative root solve with secant-like update and bounded guesses.
         while np.abs(error) > tol and n_iter < 1000:
             n_iter += 1
-            cp_guess = self._specific_heat(t_out_guess, self.P_1.v)
+            cp_guess = float(self._props.specheat(fluid_name, max(t_out_guess, 273.0), self.P_1.v))
             cp_times_t_out_guess = t_out_guess * cp_guess
             error = cp_times_t_out - cp_times_t_out_guess
 
