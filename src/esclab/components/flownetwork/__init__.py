@@ -48,6 +48,8 @@ from .PBHydraulicSolver import PBHydraulicSolver
 from .SolanaHydraulicSolver import SolanaHydraulicSolver
 # Type 6032
 from .HTFTank2TankPump import HTFTank2TankPump
+# Type 6011
+from .DeaeratorPump import DeaeratorPump
 # Type 6034
 from .TESModeSelector import TESModeSelector
 
@@ -62,6 +64,7 @@ __all__ = [
     "VarSpeedPump",
     # New components
     "BoilerFeedwaterHeater",
+    "DeaeratorPump",
     "ExpansionSystem",
     "Condenser",
     "HeatExchanger",
