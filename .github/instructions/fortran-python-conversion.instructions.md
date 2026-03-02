@@ -111,7 +111,7 @@ Do not proceed to Run Type 2 or 3 unless I explicitly ask you to do so.
 
 This step applies only to types that have already been converted and not to skipped (too complex) types.
 
-In this step, follow the same steps as in RUN TYPE 1, except do not pursue type conversion but instead focus on the missing helper functions called in solar_field_modules.f90 and in other fortran files. Note property calculations are implemented multiple times and should not be converted. Instead, revert to eeslib or esol_properties as appropriate. 
+In this step, follow the same steps as in RUN TYPE 1, except do not pursue type conversion but instead focus on the missing helper functions called in fortran-source/solar_field_modules.f90 and in other fortran files. Note property calculations are implemented multiple times and should not be converted. Instead, revert to eeslib or esol_properties as appropriate. 
 
 Do not change anything in the existing converted TYPE files EXCEPT to add calls to the new helper functions where appropriate. Be sure to go back to the original Fortran context to understand how to properly call the helper functions in the context of the existing code.
 

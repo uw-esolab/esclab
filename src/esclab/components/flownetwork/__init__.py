@@ -5,6 +5,24 @@ from .TeeOut import TeeOut
 from .TeeReturn import TeeReturn
 from .Valve import CV_data, Valve
 from .VarSpeedPump import VarSpeedPump
+from .sf_piping_helpers import (
+    FricFactor_piping,
+    PressureDrop,
+    pipe_dTdt,
+    Row_shadow,
+    H_Dowtherm_A,
+    diams_inlet,
+    vols_inlet,
+    diams_return,
+    vols_return,
+    dT_dt_inlet,
+    dT_dt_return,
+)
+from .nn_functions import (
+    load_NN,
+    forward_prop,
+    dt_dtime_NN,
+)
 
 # Type 4008
 from .TeeReturnHTF import TeeReturnHTF
@@ -66,6 +84,22 @@ __all__ = [
     "TeeReturn",
     "Valve",
     "VarSpeedPump",
+    # SF piping helpers
+    "FricFactor_piping",
+    "PressureDrop",
+    "pipe_dTdt",
+    "Row_shadow",
+    "H_Dowtherm_A",
+    "diams_inlet",
+    "vols_inlet",
+    "diams_return",
+    "vols_return",
+    "dT_dt_inlet",
+    "dT_dt_return",
+    # NN helper functions
+    "load_NN",
+    "forward_prop",
+    "dt_dtime_NN",
     # New components
     "BoilerFeedwaterHeater",
     "DeaeratorPump",

@@ -8,6 +8,20 @@ import numpy as np
 
 from esclab.simulate import Component
 from esclab.components.esol_properties import Incompressible
+from esclab.components.flownetwork.sf_piping_helpers import (
+    PressureDrop,
+    Row_shadow,
+    diams_inlet,
+    diams_return,
+    dT_dt_inlet,
+    dT_dt_return,
+    vols_inlet,
+    vols_return,
+)
+from esclab.components.flownetwork.nn_functions import (
+    load_NN,
+    dt_dtime_NN,
+)
 
 Inc = Incompressible()
 
@@ -404,6 +418,14 @@ class SolarFieldSector(Component):
                     (n_SCA, max_loop)
                 )
 
+            # Load neural network weights and populate minMax2 scaling arrays.
+            # Fortran: minMax2 = load_NN_toMod(NNbase) inside allocate_memory_sf.
+            # In Python, load_NN returns the (16,4) minMax matrix; store it in
+            # every sector's 'minMax2' entry (it is the same for all sectors).
+            minMax2 = load_NN(self.NNBase.v)
+            for s in range(1, n_sectors + 1):
+                SolarFieldSector._sectors[s]['minMax2'] = minMax2
+
         # Worker arrays stored per instance (no sf_label dimension in Fortran — used only within a timestep)
         self._curr_inds = np.zeros(n_nodes_per_loop - 1, dtype=int)
         self._t_sf_hold = np.zeros(n_nodes_per_loop)
@@ -429,14 +451,10 @@ class SolarFieldSector(Component):
         n_cv_header = cc - 1
         sec['num_cv_header'] = n_cv_header
 
-        # TODO-NEEDS LIBRARY: vols_inlet from Header_functions
-        # sec['Vol_inlet'][0:n_cv_header] = vols_inlet(n_cv_header, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
-        # TODO-NEEDS LIBRARY: vols_return from Header_functions
-        # sec['Vol_return'][0:n_cv_header+1] = vols_return(n_cv_header+1, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
-        # TODO-NEEDS LIBRARY: diams_inlet from Header_functions
-        # sec['D_inlet'][0:n_cv_header] = diams_inlet(n_cv_header, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
-        # TODO-NEEDS LIBRARY: diams_return from Header_functions
-        # sec['D_return'][0:n_cv_header+1] = diams_return(n_cv_header+1, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
+        sec['Vol_inlet'][0:n_cv_header] = vols_inlet(n_cv_header, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
+        sec['Vol_return'][0:n_cv_header+1] = vols_return(n_cv_header+1, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
+        sec['D_inlet'][0:n_cv_header] = diams_inlet(n_cv_header, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
+        sec['D_return'][0:n_cv_header+1] = diams_return(n_cv_header+1, n_loop, self.row_distance.v, self.L_exp_loop.v, self.GeomFile.v)
 
         # Compute control volume lengths of headers
         # TODO-NEEDS CONVERSION REVIEW: 0-based indexing — Fortran n from 1 to n_cv_header (1-based); Python uses n from 0 to n_cv_header-1
@@ -714,8 +732,7 @@ class SolarFieldSector(Component):
             ) / 2.0
 
             # K1
-            # TODO-NEEDS LIBRARY: dT_dt_return from Header_functions
-            sec['k1_rh'][:n_node_header + 1] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_return(m_left[:n_cv_header], m_right[:n_cv_header], sec['m_dots_return'][:n_node_header], t_hold_l[:n_cv_header], t_hold_r[:n_cv_header], t_hold[:n_node_header+1], sec['t_bar_return'][:n_node_header], vol_hold[:n_cv_header+1], L_cv_hold[:n_cv_header+1], self.mc_header_mult.v, n_node_header+1, n_loop, inds_hold[:n_loop//2], self.fluid_ID.v, self.return_header_heat_loss.v)
+            sec['k1_rh'][:n_node_header + 1] = dT_dt_return(m_left[:n_loop // 2], m_right[:n_loop // 2], sec['m_dots_return'][:n_node_header], t_hold_l[:n_loop // 2], t_hold_r[:n_loop // 2], t_hold[:n_node_header + 1], sec['t_bar_return'][:n_node_header], vol_hold[:n_cv_header + 1], L_cv_hold[:n_cv_header + 1], self.mc_header_mult.v, n_node_header + 1, n_loop, inds_hold[:n_loop // 2], self.fluid_ID.v, self.return_header_heat_loss.v)
             sec['t_hat_return'][:n_node_header + 1] = (
                 t_hold[:n_node_header + 1] + sec['k1_rh'][:n_node_header + 1] * DTheta / 2.0
             )
@@ -725,8 +742,7 @@ class SolarFieldSector(Component):
             ) / 2.0
 
             # K2
-            # TODO-NEEDS LIBRARY: dT_dt_return from Header_functions
-            sec['k2_rh'][:n_node_header + 1] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_return(m_left[:n_cv_header], m_right[:n_cv_header], sec['m_dots_return'][:n_node_header], t_hold_l[:n_cv_header], t_hold_r[:n_cv_header], sec['t_hat_return'][:n_node_header+1], sec['t_bar_hat_return'][:n_node_header], vol_hold[:n_cv_header+1], L_cv_hold[:n_cv_header+1], self.mc_header_mult.v, n_node_header+1, n_loop, inds_hold[:n_loop//2], self.fluid_ID.v, self.return_header_heat_loss.v)
+            sec['k2_rh'][:n_node_header + 1] = dT_dt_return(m_left[:n_loop // 2], m_right[:n_loop // 2], sec['m_dots_return'][:n_node_header], t_hold_l[:n_loop // 2], t_hold_r[:n_loop // 2], sec['t_hat_return'][:n_node_header + 1], sec['t_bar_hat_return'][:n_node_header], vol_hold[:n_cv_header + 1], L_cv_hold[:n_cv_header + 1], self.mc_header_mult.v, n_node_header + 1, n_loop, inds_hold[:n_loop // 2], self.fluid_ID.v, self.return_header_heat_loss.v)
             sec['t_hat_return'][:n_node_header + 1] = (
                 t_hold[:n_node_header + 1] + sec['k2_rh'][:n_node_header + 1] * DTheta / 2.0
             )
@@ -736,8 +752,7 @@ class SolarFieldSector(Component):
             ) / 2.0
 
             # K3
-            # TODO-NEEDS LIBRARY: dT_dt_return from Header_functions
-            sec['k3_rh'][:n_node_header + 1] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_return(m_left[:n_cv_header], m_right[:n_cv_header], sec['m_dots_return'][:n_node_header], t_hold_l[:n_cv_header], t_hold_r[:n_cv_header], sec['t_hat_return'][:n_node_header+1], sec['t_bar_hat_return'][:n_node_header], vol_hold[:n_cv_header+1], L_cv_hold[:n_cv_header+1], self.mc_header_mult.v, n_node_header+1, n_loop, inds_hold[:n_loop//2], self.fluid_ID.v, self.return_header_heat_loss.v)
+            sec['k3_rh'][:n_node_header + 1] = dT_dt_return(m_left[:n_loop // 2], m_right[:n_loop // 2], sec['m_dots_return'][:n_node_header], t_hold_l[:n_loop // 2], t_hold_r[:n_loop // 2], sec['t_hat_return'][:n_node_header + 1], sec['t_bar_hat_return'][:n_node_header], vol_hold[:n_cv_header + 1], L_cv_hold[:n_cv_header + 1], self.mc_header_mult.v, n_node_header + 1, n_loop, inds_hold[:n_loop // 2], self.fluid_ID.v, self.return_header_heat_loss.v)
             sec['t_hat_return'][:n_node_header + 1] = (
                 t_hold[:n_node_header + 1] + sec['k3_rh'][:n_node_header + 1] * DTheta
             )
@@ -747,8 +762,7 @@ class SolarFieldSector(Component):
             ) / 2.0
 
             # K4
-            # TODO-NEEDS LIBRARY: dT_dt_return from Header_functions
-            sec['k4_rh'][:n_node_header + 1] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_return(m_left[:n_cv_header], m_right[:n_cv_header], sec['m_dots_return'][:n_node_header], t_hold_l[:n_cv_header], t_hold_r[:n_cv_header], sec['t_hat_return'][:n_node_header+1], sec['t_bar_hat_return'][:n_node_header], vol_hold[:n_cv_header+1], L_cv_hold[:n_cv_header+1], self.mc_header_mult.v, n_node_header+1, n_loop, inds_hold[:n_loop//2], self.fluid_ID.v, self.return_header_heat_loss.v)
+            sec['k4_rh'][:n_node_header + 1] = dT_dt_return(m_left[:n_loop // 2], m_right[:n_loop // 2], sec['m_dots_return'][:n_node_header], t_hold_l[:n_loop // 2], t_hold_r[:n_loop // 2], sec['t_hat_return'][:n_node_header + 1], sec['t_bar_hat_return'][:n_node_header], vol_hold[:n_cv_header + 1], L_cv_hold[:n_cv_header + 1], self.mc_header_mult.v, n_node_header + 1, n_loop, inds_hold[:n_loop // 2], self.fluid_ID.v, self.return_header_heat_loss.v)
 
             sec['t_header_return'][:n_node_header + 1] = t_hold[:n_node_header + 1] + (
                 sec['k1_rh'][:n_node_header + 1] / 6.0
@@ -780,32 +794,28 @@ class SolarFieldSector(Component):
             ) / 2.0
 
             # K1
-            # TODO-NEEDS LIBRARY: dT_dt_inlet from Header_functions
-            sec['k1_ih'][:n_node_header] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_inlet(sec['m_dots_in'][:n_cv_header], t_hold[:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
+            sec['k1_ih'][:n_node_header] = dT_dt_inlet(sec['m_dots_in'][:n_cv_header], t_hold[:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
             sec['t_hat_inlet'][:n_node_header] = t_hold[:n_node_header] + sec['k1_ih'][:n_node_header] * DTheta / 2.0
             sec['t_bar_hat_inlet'][:n_cv_header] = (
                 sec['t_hat_inlet'][1:n_node_header] + sec['t_hat_inlet'][:n_node_header - 1]
             ) / 2.0
 
             # K2
-            # TODO-NEEDS LIBRARY: dT_dt_inlet from Header_functions
-            sec['k2_ih'][:n_node_header] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_inlet(sec['m_dots_in'][:n_cv_header], sec['t_hat_inlet'][:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_hat_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
+            sec['k2_ih'][:n_node_header] = dT_dt_inlet(sec['m_dots_in'][:n_cv_header], sec['t_hat_inlet'][:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_hat_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
             sec['t_hat_inlet'][:n_node_header] = t_hold[:n_node_header] + sec['k2_ih'][:n_node_header] * DTheta / 2.0
             sec['t_bar_hat_inlet'][:n_cv_header] = (
                 sec['t_hat_inlet'][1:n_node_header] + sec['t_hat_inlet'][:n_node_header - 1]
             ) / 2.0
 
             # K3
-            # TODO-NEEDS LIBRARY: dT_dt_inlet from Header_functions
-            sec['k3_ih'][:n_node_header] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_inlet(sec['m_dots_in'][:n_cv_header], sec['t_hat_inlet'][:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_hat_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
+            sec['k3_ih'][:n_node_header] = dT_dt_inlet(sec['m_dots_in'][:n_cv_header], sec['t_hat_inlet'][:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_hat_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
             sec['t_hat_inlet'][:n_node_header] = t_hold[:n_node_header] + sec['k3_ih'][:n_node_header] * DTheta
             sec['t_bar_hat_inlet'][:n_cv_header] = (
                 sec['t_hat_inlet'][1:n_node_header] + sec['t_hat_inlet'][:n_node_header - 1]
             ) / 2.0
 
             # K4
-            # TODO-NEEDS LIBRARY: dT_dt_inlet from Header_functions
-            sec['k4_ih'][:n_node_header] = 0.0  # TODO-NEEDS LIBRARY: dT_dt_inlet(sec['m_dots_in'][:n_cv_header], sec['t_hat_inlet'][:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_hat_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
+            sec['k4_ih'][:n_node_header] = dT_dt_inlet(sec['m_dots_in'][:n_cv_header], sec['t_hat_inlet'][:n_node_header], vol_hold[:n_cv_header], L_cv_hold[:n_cv_header], self.mc_header_mult.v, sec['t_bar_hat_inlet'][:n_cv_header], n_node_header, self.fluid_ID.v, self.inlet_header_heat_loss.v)
 
             sec['t_header_inlet'][:n_node_header] = t_hold[:n_node_header] + (
                 sec['k1_ih'][:n_node_header] / 6.0
@@ -848,8 +858,7 @@ class SolarFieldSector(Component):
 
                 # Solar irradiation normal to collector
                 sec['dni_array'][:] = self.ANI.v
-                # TODO-NEEDS LIBRARY: Row_shadow from solar_field_modules
-                eta_row = 1.0  # TODO-NEEDS LIBRARY: Row_shadow(phi, self.row_distance.v, self.W_ap.v)
+                eta_row = Row_shadow(phi, self.row_distance.v, self.W_ap.v)
 
                 # Defocusing Scheme
                 defocus_groups[group_index] = 10.0 * defocus_groups[group_index] + 1.0
@@ -1036,8 +1045,15 @@ class SolarFieldSector(Component):
                 nCV_state_hold = sec['nCV_state'][:, loop_idx].copy()
 
                 # K1
-                # TODO-NEEDS LIBRARY: dt_dtime_NN neural network function from SF_props
-                sec['k1'][:] = 0.0  # TODO-NEEDS LIBRARY: dt_dtime_NN(t_sf_hold, sec['t_bar'], sec['features'], m_dot*sec['m_dot_var'][loop_idx], self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'], n_nodes_per_loop, nCV_state_hold, inds_pristine_hold, inds_lVacuum_hold, inds_bGlass_hold, inds_H2_hold)
+                sec['k1'][:] = dt_dtime_NN(
+                    t_sf_hold, sec['t_bar'], sec['features'],
+                    m_dot * sec['m_dot_var'][loop_idx],
+                    self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'],
+                    n_nodes_per_loop, nCV_state_hold,
+                    inds_pristine_hold, inds_lVacuum_hold,
+                    inds_bGlass_hold, inds_H2_hold,
+                    self.fluid_ID.v,
+                )
                 t_hat = t_sf_hold + sec['k1'] * DTheta / 2.0
                 t_bar_hat = (t_hat[1:] + t_hat[:n_nodes_per_loop - 1]) / 2.0
                 for state in range(4):
@@ -1059,8 +1075,15 @@ class SolarFieldSector(Component):
                         ) / (minMax2[3, state] - minMax2[2, state]) + 0.1
 
                 # K2
-                # TODO-NEEDS LIBRARY: dt_dtime_NN neural network function from SF_props
-                sec['k2'][:] = 0.0  # TODO-NEEDS LIBRARY: dt_dtime_NN(t_hat, t_bar_hat, sec['features'], m_dot*sec['m_dot_var'][loop_idx], self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'], n_nodes_per_loop, nCV_state_hold, inds_pristine_hold, inds_lVacuum_hold, inds_bGlass_hold, inds_H2_hold)
+                sec['k2'][:] = dt_dtime_NN(
+                    t_hat, t_bar_hat, sec['features'],
+                    m_dot * sec['m_dot_var'][loop_idx],
+                    self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'],
+                    n_nodes_per_loop, nCV_state_hold,
+                    inds_pristine_hold, inds_lVacuum_hold,
+                    inds_bGlass_hold, inds_H2_hold,
+                    self.fluid_ID.v,
+                )
                 t_hat = t_sf_hold + sec['k2'] * DTheta / 2.0
                 t_bar_hat = (t_hat[1:] + t_hat[:n_nodes_per_loop - 1]) / 2.0
                 for state in range(4):
@@ -1082,8 +1105,15 @@ class SolarFieldSector(Component):
                         ) / (minMax2[3, state] - minMax2[2, state]) + 0.1
 
                 # K3
-                # TODO-NEEDS LIBRARY: dt_dtime_NN neural network function from SF_props
-                sec['k3'][:] = 0.0  # TODO-NEEDS LIBRARY: dt_dtime_NN(t_hat, t_bar_hat, sec['features'], m_dot*sec['m_dot_var'][loop_idx], self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'], n_nodes_per_loop, nCV_state_hold, inds_pristine_hold, inds_lVacuum_hold, inds_bGlass_hold, inds_H2_hold)
+                sec['k3'][:] = dt_dtime_NN(
+                    t_hat, t_bar_hat, sec['features'],
+                    m_dot * sec['m_dot_var'][loop_idx],
+                    self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'],
+                    n_nodes_per_loop, nCV_state_hold,
+                    inds_pristine_hold, inds_lVacuum_hold,
+                    inds_bGlass_hold, inds_H2_hold,
+                    self.fluid_ID.v,
+                )
                 t_hat = t_sf_hold + sec['k3'] * DTheta
                 t_bar_hat = (t_hat[1:] + t_hat[:n_nodes_per_loop - 1]) / 2.0
                 for state in range(4):
@@ -1105,8 +1135,15 @@ class SolarFieldSector(Component):
                         ) / (minMax2[3, state] - minMax2[2, state]) + 0.1
 
                 # K4
-                # TODO-NEEDS LIBRARY: dt_dtime_NN neural network function from SF_props
-                sec['k4'][:] = 0.0  # TODO-NEEDS LIBRARY: dt_dtime_NN(t_hat, t_bar_hat, sec['features'], m_dot*sec['m_dot_var'][loop_idx], self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'], n_nodes_per_loop, nCV_state_hold, inds_pristine_hold, inds_lVacuum_hold, inds_bGlass_hold, inds_H2_hold)
+                sec['k4'][:] = dt_dtime_NN(
+                    t_hat, t_bar_hat, sec['features'],
+                    m_dot * sec['m_dot_var'][loop_idx],
+                    self.mc_receiver_mult.v, sec['L_segment'], sec['Vol'],
+                    n_nodes_per_loop, nCV_state_hold,
+                    inds_pristine_hold, inds_lVacuum_hold,
+                    inds_bGlass_hold, inds_H2_hold,
+                    self.fluid_ID.v,
+                )
 
                 # Step Through Time
                 # TODO-NEEDS CONVERSION REVIEW: 0-based indexing — Fortran t_sf(2:, loop, sf) → Python t_sf[1:, loop_idx]
@@ -1221,8 +1258,7 @@ class SolarFieldSector(Component):
         m_dot_htf = self.MassFlow.v / n_loop
 
         # Pressure Drop accounting for Inlet, Outlet, and Cross-Over-Piping of solar field loop
-        # TODO-NEEDS LIBRARY: PressureDrop function from sf_piping_helpers
-        DP_IOCOP = 0.0  # TODO-NEEDS LIBRARY: PressureDrop(self.fluid_ID.v, m_dot_htf, (sec['t_bar_sf'][0] + sec['t_bar_sf'][n_nodes_per_loop-2]) / 2.0, 1.0, self.D_receiver.v, self.Roughness_pipe.v, (40.0 + self.row_distance.v), 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 0.0)
+        DP_IOCOP = PressureDrop(self.fluid_ID.v, m_dot_htf, (sec['t_bar_sf'][0] + sec['t_bar_sf'][n_nodes_per_loop - 2]) / 2.0, 1.0, self.D_receiver.v, self.Roughness_pipe.v, (40.0 + self.row_distance.v), 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 0.0)
 
         # Pressure Drop Across Solar Field Loop
         DP_loop = 0.0
@@ -1243,8 +1279,7 @@ class SolarFieldSector(Component):
             else:
                 x1 = 0.0
                 x2 = 0.0
-            # TODO-NEEDS LIBRARY: PressureDrop function from sf_piping_helpers
-            DP_loop += 0.0  # TODO-NEEDS LIBRARY: PressureDrop(self.fluid_ID.v, m_dot_htf, sec['t_bar_sf'][n], 1.0, self.D_receiver.v, self.Roughness_pipe.v, sec['L_segment'], 0.0, 0.0, x1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, x2)
+            DP_loop += PressureDrop(self.fluid_ID.v, m_dot_htf, sec['t_bar_sf'][n], 1.0, self.D_receiver.v, self.Roughness_pipe.v, sec['L_segment'], 0.0, 0.0, x1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, x2)
 
         # Pressure Drop Across Inlet Header
         DP_inlet_header = 0.0
@@ -1279,8 +1314,7 @@ class SolarFieldSector(Component):
                 loop_count += 1
                 m_dot_header -= 2.0 * m_dot_htf
 
-            # TODO-NEEDS LIBRARY: PressureDrop function from sf_piping_helpers
-            DP_inlet_header += 0.0  # TODO-NEEDS LIBRARY: PressureDrop(self.fluid_ID.v, m_dot_header, (sec['t_header_inlet'][n] + sec['t_header_inlet'][n+1]) / 2.0, 1.0, sec['D_inlet'][n], self.Roughness_pipe.v, sec['L_cv_inlet'][n], 0.0, x1, 0.0, 0.0, x2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            DP_inlet_header += PressureDrop(self.fluid_ID.v, m_dot_header, (sec['t_header_inlet'][n] + sec['t_header_inlet'][n + 1]) / 2.0, 1.0, sec['D_inlet'][n], self.Roughness_pipe.v, sec['L_cv_inlet'][n], 0.0, x1, 0.0, 0.0, x2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
         # Pressure Drop Across Return Header
         DP_return_header = 0.0
@@ -1315,8 +1349,7 @@ class SolarFieldSector(Component):
                 loop_count += 1
                 m_dot_header += 2.0 * m_dot_htf
 
-            # TODO-NEEDS LIBRARY: PressureDrop function from sf_piping_helpers
-            DP_return_header += 0.0  # TODO-NEEDS LIBRARY: PressureDrop(self.fluid_ID.v, m_dot_header, (sec['t_header_inlet'][n] + sec['t_header_inlet'][n+1]) / 2.0, 1.0, sec['D_return'][n], self.Roughness_pipe.v, sec['L_cv_return'][n], x1, 0.0, 0.0, 0.0, x2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            DP_return_header += PressureDrop(self.fluid_ID.v, m_dot_header, (sec['t_header_inlet'][n] + sec['t_header_inlet'][n + 1]) / 2.0, 1.0, sec['D_return'][n], self.Roughness_pipe.v, sec['L_cv_return'][n], x1, 0.0, 0.0, 0.0, x2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
         # Pressure Drop Across Entire Solar Field
         DP_tot = DP_return_header + DP_inlet_header + DP_loop + DP_IOCOP
