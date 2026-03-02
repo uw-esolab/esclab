@@ -120,15 +120,11 @@ Do not proceed to Run Type 3 unless I explicitly ask you to do so. Do not run te
 
 ## RUN TYPE 3
 
-4012, 6011, 6028 done
-
-Skipped (too complex): Types 4034.
-
 Common TODO flags across files to review:
 
 Resolve the following todo's:
 * TODO-NEEDS UNITS CHECK — kPa↔Pa and kJ/kg↔J/kg at eeslib call sites
-* TODO-NEEDS LIBRARY — PB_CV_data, CV_data (ESOL6015), solar_tracking, PressureDrop not yet mapped to Python
+* TODO-NEEDS LIBRARY — Not sure which of these remain
 * TODO-NEEDS CONVERSION REVIEW — dynamic array storage patterns, variable input/output count (Types 4050, 6027)
 
 Review units noting that esclab will always use base SI (K, Pa, J, kg, s). Where clues exist that original fortran units may have been different, correct the units with an appropriate convert() call:
