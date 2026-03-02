@@ -17,13 +17,15 @@ eeslib property calls require:
   P in kPa  (divide Pa by 1000)
   h in kJ/kg (divide J/kg by 1000)
   Returned h/s in kJ/kg (multiply by 1000 to get J/kg)
-
-NOTE: specheat, Viscosity, and Density are NOT implemented here;
-      use esclab.components.esol_properties.Incompressible instead.
 """
 
+import math
 import numpy as np
 from eeslib import fluid_properties as fp
+from esclab.components.esol_properties import Incompressible
+
+# Module-level Incompressible instance for HTF property lookups (specheat, density)
+_incompressible = Incompressible()
 
 # ---------------------------------------------------------------------------
 # Module-level lookup tables for PB_CV_data
@@ -765,3 +767,702 @@ def StodolaStage(
     phi_a   = min(m_dot_in / np.sqrt(P_in / v_in), phi_max)
     PR_a    = np.sqrt(1.0 - (phi_a / phi_D)**2.0 * (1.0 - PR_d**2.0))
     return PR_a * P_in
+
+
+# ---------------------------------------------------------------------------
+# LPT stage enthalpy solver (expansion line + steam tables intersection)
+# ---------------------------------------------------------------------------
+
+def h_lpt_stage(
+    h_guess: float,
+    h_min: float,
+    h_max: float,
+    P_stage: float,
+    DELTA_S: float,
+    A0: float,
+    A1: float,
+    A2: float,
+    tol: float,
+) -> float:
+    """
+    Find actual specific enthalpy at a LPT stage exit by matching the expansion
+    line entropy to the (P, h) entropy from steam tables using a secant solver.
+
+    Inputs (all SI)
+    ------
+    h_guess  : float  Initial guess enthalpy [J/kg]
+    h_min    : float  Minimum bound (exhaust enthalpy) [J/kg]
+    h_max    : float  Maximum bound (inlet enthalpy) [J/kg]
+    P_stage  : float  Stage outlet pressure from Stodola's ellipse [Pa]
+    DELTA_S  : float  Offset applied to expansion line entropy [J/(kg·K)]
+    A0, A1, A2 : float  Expansion line polynomial coefficients
+    tol      : float  Convergence tolerance on entropy residual [J/(kg·K)]
+
+    Returns
+    -------
+    float
+        Solved stage exit enthalpy [J/kg]
+    """
+    if h_guess < h_min:
+        h_guess = (h_min + h_max) / 2.0  # using enthalpy between max and min
+    if h_guess > h_max:
+        h_guess = (h_min + h_max) / 2.0  # using enthalpy between max and min
+
+    error = tol + 10.0    # making error greater than tolerance for the first iteration
+    whileiterations = 0.0  # reset to zero
+    alpha = 0.5            # learning rate used for while iterations
+    maxiterations = 50.0
+    h_prev = h_guess
+    error_prev = 0.0
+    h_new = h_guess        # initialise h_new before the loop
+
+    while abs(error) > tol:
+        whileiterations += 1.0
+        s_elep = DELTA_S + A0 + A1 * h_guess + A2 * h_guess ** 2.0
+        # Converting from kJ/kg-K to J/kg-K
+        s_fit = fp.entropy("water", P=P_stage / 1000.0, h=h_guess / 1000.0) * 1000.0
+        error = s_elep - s_fit
+
+        if abs(error) < tol:
+            break
+
+        elif whileiterations > 1.0:
+            if h_guess != h_prev:  # check to make sure that the slope is not undefined
+                m = (error - error_prev) / (h_guess - h_prev)  # slope of error line
+                b = error - m * h_guess                          # y-intercept of error line
+                if m != 0.0:   # make sure slope does not equal zero
+                    h_new = -b / m   # new guess value
+                    h_new = min(h_max, h_new)  # check that it's lower than the maximum guess
+                    h_new = max(h_min, h_new)  # check that it's greater than the minimum guess
+                else:
+                    if error > 0.0:  # left of convergence point, decrease enthalpy guess
+                        # TODO-NEEDS CONVERSION REVIEW: Fortran uses max(h_guess+10, h_max) here;
+                        # this may step outside bounds — ported faithfully
+                        h_new = max(h_guess + 10.0, h_max)
+                    else:  # right of convergence point, increase enthalpy guess
+                        h_new = min(h_guess - 10.0, h_min)
+            else:
+                if error > 0.0:  # left of convergence point, decrease enthalpy guess
+                    # TODO-NEEDS CONVERSION REVIEW: see note above
+                    h_new = max(h_guess + 10.0, h_max)
+                else:
+                    h_new = min(h_guess - 10.0, h_min)
+
+        else:  # first iteration
+            if error > 0.0:  # left of convergence point, decrease enthalpy guess
+                h_new = (h_guess + h_max) / 2.0
+            else:  # right of the convergence point, increase enthalpy guess
+                h_new = (h_guess + h_min) / 2.0
+
+        error_prev = error  # set new error to previous error
+        h_prev = h_guess    # set current guess to previous guess
+        h_guess = h_guess + (h_new - h_guess) * alpha
+
+        if maxiterations == whileiterations:
+            break  # force exit with current alpha-blended h_guess (mirrors Fortran do-while exit)
+
+    return h_guess
+
+
+# ---------------------------------------------------------------------------
+# Spencer-Cotton-Cannon turbine efficiency models
+# ---------------------------------------------------------------------------
+
+def eta_SCC_hpt(
+    m_dot_in: float,
+    m_dot_rated: float,
+    N_parallel: float,
+    PD: float,
+    P_in: float,
+    v_in: float,
+    v_design_in: float,
+    Design_EP: float,
+    N_CV: float,
+    N_row: float,
+) -> float:
+    """
+    Spencer-Cotton-Cannon efficiency model for the High Pressure Turbine.
+
+    Inputs (SI units)
+    -----------------
+    m_dot_in     : float  Actual mass flow entering the turbine [kg/s]
+    m_dot_rated  : float  Design mass flow for the turbine [kg/s]
+    N_parallel   : float  Number of parallel sections in the turbine [-]
+    PD           : float  Pitch diameter of the governing stage [m]
+    P_in         : float  Inlet pressure (actual conditions) [Pa]
+    v_in         : float  Inlet specific volume (actual conditions) [m^3/kg]
+    v_design_in  : float  Inlet specific volume (design conditions) [m^3/kg]
+    Design_EP    : float  Design exhaust pressure [Pa]
+    N_CV         : float  Number of control valves ahead of the turbine [-]
+    N_row        : float  Number of governing stages (1 or 2) [-]
+
+    Returns
+    -------
+    float
+        Isentropic efficiency [-]
+    """
+    # AUTO UNITS CONVERSION IMPLEMENTED: SI → English units for SCC correlation
+    m_dot_in_eng    = m_dot_in     * 7936.64   # kg/s → lb/hr
+    m_dot_rated_eng = m_dot_rated  * 7936.64   # kg/s → lb/hr
+    PD_eng          = PD           * 39.3701   # m → in
+    P_in_eng        = P_in         / 6894.76   # Pa → psia
+    Design_EP_eng   = Design_EP    / 6894.76   # Pa → psia
+    v_in_eng        = v_in         * 16.0185   # m^3/kg → ft^3/lb
+    v_design_in_eng = v_design_in  * 16.0185   # m^3/kg → ft^3/lb
+    Vol_dot_rated_eng = m_dot_rated_eng * v_design_in_eng
+
+    if N_row == 1.0:
+        # Find Throttle Flow Ratio (TFR)
+        TFR = m_dot_in_eng / m_dot_rated_eng
+
+        # Start from Base Efficiency (From Table 1)
+        eta_base = 87.00
+
+        # Efficiency Correction for Volume Flow - Poorer (From Table 1)
+        delta_eta = 1005200.0 * N_parallel / Vol_dot_rated_eng / 100.0
+        eta_base = eta_base - delta_eta * eta_base
+
+        # Efficiency Correction for Governing Stage (From Fig 7)
+        delta_eta = (-0.115 * PD_eng + 4.37) / 100.0  # Found in Fig 7. of SCC paper
+        eta_base = eta_base + delta_eta * eta_base
+
+        # Correction for Pressure Ratio (From Fig 6)
+        x = Design_EP_eng / P_in_eng
+        y = math.log(Vol_dot_rated_eng)
+        delta_eta = (11.151 - 63.0 * x - 0.50091 * y + 2.83 * x * y) / 100.0
+        eta_base = eta_base + delta_eta * eta_base
+
+        # Correction for Governing Stage at Partial Load (From Fig 8)
+        delta_eta = (-21.8085 + 21.8085 * TFR + 0.573908 * PD_eng - 0.573908 * TFR * PD_eng) / 100.0
+        eta_base = eta_base + delta_eta * eta_base
+
+        # Correction for Partial Load Operation (From Fig 9)
+        x = TFR
+        y = math.log(P_in_eng / Design_EP_eng)
+        delta_eta = (
+            -60.75 + 66.85 * x + 29.75 * x**2.0 - 35.85 * x**3.0
+            + 17.50 * y - 20.02 * y * x - 0.525 * y * x**2.0 + 3.045 * y * x**3.0
+        ) / 100.0
+        eta_base = eta_base + delta_eta * eta_base
+
+        # Correction for Mean of Loops (From Fig 12)
+        x = TFR
+        y = N_CV
+        delta_eta = (-5.4 + 4.395 * x + 0.45 * N_CV - 0.36625 * x * y) / 100.0
+        eta_base = eta_base + delta_eta * eta_base
+        # end of 1 row governing stage efficiency calculations
+
+    else:  # 2 row governing stage
+        # Find Throttle Flow Ratio (TFR)
+        m_dot_in_eng    = m_dot_in   * 7936.64  # converting from kg/s to lb/hr
+        m_dot_rated_eng = m_dot_rated * 7936.64  # converting from kg/s to lb/hr
+        TFR = m_dot_in_eng / m_dot_rated_eng
+
+        # Start from Base Efficiency (From Table 1)
+        eta_base = 84.00
+
+        # Efficiency Correction for Volume Flow - Poorer (From Table 1)
+        delta_eta = (1350000.0 * N_parallel / (m_dot_in_eng * v_in_eng)) / 100.0
+        eta_base = eta_base - delta_eta * eta_base
+
+        # Efficiency Correction for pressure ratio (From Fig 10)
+        x = Design_EP_eng / P_in_eng
+        y = math.log(Vol_dot_rated_eng)
+        delta_eta = (25.665 - 145.0 * x - 1.33281 * y + 7.53 * x * y) / 100.0
+        eta_base = eta_base + delta_eta * eta_base
+
+        # Efficiency Correction for partial load (From Fig 11)
+        x = 1.0 - TFR
+        y = P_in_eng / Design_EP_eng
+        delta_eta = (
+            42.676909 * x - 89.391147 * x**2.0 + 9.0376638 * x**3.0
+            - 26.221836 * x * y + 25.549385 * y * x**2.0 + 8.8283868 * y * x**3.0
+            + 4.0479550 * y**2.0 * x - 1.4725197 * x**2.0 * y**2.0
+            - 4.0183332 * y**2.0 * x**3.0 - 0.14502211 * y**3.0 * x
+            - 0.18580363 * y**3.0 * x**2.0 + 0.42657518 * x**3.0 * y**3.0
+        ) / 100.0
+        eta_base = eta_base + delta_eta * eta_base
+
+        # Efficiency Correction for mean of loops (Fig 12)
+        x = TFR
+        y = N_CV
+        delta_eta = (-5.4 + 4.395 * x + 0.45 * N_CV - 0.36625 * x * y) / 100.0
+        eta_base = eta_base + delta_eta * eta_base
+        # end of 2 row governing stage efficiency calculations
+
+    return eta_base / 100.0
+
+
+# Alias for call sites that use the Fortran convention (case-insensitive name)
+eta_SCC_HPT = eta_SCC_hpt
+
+
+def eta_SCC_lpt(
+    m_dot_in: float,
+    m_dot_rated: float,
+    N_parallel: float,
+    P_in: float,
+    T_in: float,
+    v_in: float,
+    v_design_in: float,
+    Design_EP: float,
+) -> float:
+    """
+    Spencer-Cotton-Cannon efficiency model for the Low Pressure Turbine.
+
+    Inputs (SI units)
+    -----------------
+    m_dot_in     : float  Actual mass flow entering the turbine [kg/s]
+    m_dot_rated  : float  Design mass flow for the turbine [kg/s]
+    N_parallel   : float  Number of parallel sections in the turbine [-]
+    P_in         : float  Inlet pressure (actual conditions) [Pa]
+    T_in         : float  Inlet temperature (actual conditions) [K]
+    v_in         : float  Inlet specific volume (actual conditions) [m^3/kg]
+    v_design_in  : float  Inlet specific volume (design conditions) [m^3/kg]
+    Design_EP    : float  Design exhaust pressure [Pa]
+
+    Returns
+    -------
+    float
+        Isentropic efficiency [-]
+    """
+    # AUTO UNITS CONVERSION IMPLEMENTED: SI → English units for SCC correlation
+    m_dot_in_eng    = m_dot_in   * 7936.64   # Converting from kg/s to lb/hr
+    m_dot_rated_eng = m_dot_rated * 7936.64  # Converting from kg/s to lb/hr
+    P_in_eng        = P_in       / 6894.76   # Converting from Pa to psia
+    v_in_eng        = v_in       * 16.0185   # Converting from m^3/kg to ft^3/lb
+    v_design_in_eng = v_design_in * 16.0185  # Converting from m^3/kg to ft^3/lb
+    T_in_eng        = (T_in - 273.15) * 9.0 / 5.0 + 32.0  # Converting from Kelvin to Fahrenheit
+    Vol_dot_rated_eng = m_dot_rated_eng * v_design_in_eng  # Finding rated volumetric flow rate
+
+    # Start with SCC base efficiency
+    eta_base = 91.93  # reheat section, 3600 rpm without governing stage baseline efficiency
+
+    # Efficiency correction for governing stage
+    delta_eta = 1270000 * N_parallel / Vol_dot_rated_eng
+    delta_eta = delta_eta / 100.0
+    eta_base = eta_base - delta_eta * eta_base
+
+    # Efficiency correction for initial pressure and temperature (FIG 14)
+    # Converting from kJ/kg-K to J/kg-K
+    s_in = fp.entropy("water", P=P_in / 1000.0, T=T_in) * 1000.0
+    # Converting from kJ/kg to J/kg
+    h_in = fp.enthalpy("water", P=P_in / 1000.0, T=T_in) * 1000.0
+    s_in_eng = 0.0002388459 * s_in   # Convert from J/kg-K to BTU/lbm-R
+    h_in_eng = h_in * 0.0004299226   # Convert from J/kg to BTU/lbm
+
+    Fig14Values = np.array([
+        [ 28.232252,    -92.390491,   -625.79590,   207.2301,    70.251642,  -22.516388  ],
+        [ -0.047796308,   1.2844571,    0.38556961,  -0.039652999,-0.27180357,  0.064869467],
+        [ -0.69791427e-3,-0.17037268e-2, 0.86563845e-3,-0.59510660e-3, 0.39705804e-3,-0.73533255e-4],
+        [  0.12050837e-5,  0.26826382e-6,-0.67887771e-6, 0.52886157e-6,-0.24106229e-6,  0.37881801e-7],
+        [ -0.50719109e-9,  0.26393497e-9, 0.38021911e-10,-0.10149993e-9, 0.47757232e-10,-0.70989561e-11],
+    ])
+
+    delta_eta = 0.0  # Reset DELTA_ETA to 0
+    x = math.log10(P_in_eng)
+
+    if s_in_eng > 2.0041:
+        y = min(h_in_eng, 1154.0 + 80.0 * x + 88.0 * x**2.0)
+    else:
+        y = h_in_eng
+
+    for j in range(5):
+        for i in range(6):
+            delta_eta = delta_eta + Fig14Values[j, i] * (x**i) * (y**j)
+
+    delta_eta = delta_eta / 100.0  # Convert to a percentage
+    eta_base = eta_base + delta_eta * eta_base
+
+    return eta_base / 100.0  # Converting from percentage to decimal
+
+
+# Alias for call sites that use the Fortran convention (case-insensitive name)
+eta_SCC_LPT = eta_SCC_lpt
+
+
+# ---------------------------------------------------------------------------
+# Viscosity of steam (empirical exponential correlation)
+# ---------------------------------------------------------------------------
+
+def viscosity_steam(T: float) -> float:
+    """
+    Dynamic viscosity of steam using an empirical exponential correlation.
+
+    Inputs
+    ------
+    T : float  Temperature [K]
+
+    Returns
+    -------
+    float
+        Dynamic viscosity [Pa·s]
+    """
+    A = 0.00000000001856
+    B = 4209.0
+    C = 0.04527
+    D = -0.00003376
+    return A * math.exp(B / T + C * T + D * T**2.0)
+
+
+# ---------------------------------------------------------------------------
+# Specific heat at constant volume for water/steam
+# ---------------------------------------------------------------------------
+
+def f_cv_water(P: float, T: float) -> float:
+    """
+    Specific heat at constant volume for water/steam.
+    Uses a numerical enthalpy derivative with special logic to avoid
+    crossing the saturation boundary (vapor dome).
+
+    Inputs
+    ------
+    P : float  Pressure [Pa]
+    T : float  Temperature [K]
+
+    Returns
+    -------
+    float
+        Specific heat at constant volume  [J/(kg·K)]
+
+    Notes
+    -----
+    The Fortran uses FIT_TD (T, density) to differentiate u at constant density.
+    Here we approximate using u = h - P/rho evaluated at (T ± 1K, P), which
+    is exact for ideal gases and a close approximation for real steam above the
+    saturation boundary.
+    """
+    P_kPa = P / 1000.0
+    h      = fp.enthalpy("water", P=P_kPa, T=T) * 1000.0  # J/kg
+    rho    = fp.density("water",  P=P_kPa, T=T)
+    T_sat  = fp.temperature("water", P=P_kPa, Q=0.0)
+    h_sat_f = fp.enthalpy("water", P=P_kPa, Q=0.0) * 1000.0  # J/kg
+
+    # Helper: internal energy approximation at constant P via u = h - P/rho
+    def u_at_T(T_eval: float) -> float:
+        h_e   = fp.enthalpy("water", T=T_eval, P=P_kPa) * 1000.0  # J/kg
+        rho_e = fp.density("water",  T=T_eval, P=P_kPa)
+        return h_e - P / rho_e  # J/kg
+
+    if abs(T - T_sat) > 1.0:  # No worries about running into vapor dome
+        dT = 1.0
+        return (u_at_T(T + dT) - u_at_T(T - dT)) / (2.0 * dT)
+    else:
+        h_sat_g = fp.enthalpy("water", P=P_kPa, Q=1.0) * 1000.0  # J/kg
+        if h <= h_sat_f:   # Flow is subcooled but very close to vapor dome
+            T_high = T_sat
+            T_low  = T - 1.0
+        else:              # Flow is superheated but very close to the vapor dome
+            T_low  = T_sat
+            T_high = T + 1.0
+        return (u_at_T(T_high) - u_at_T(T_low)) / (T_high - T_low)
+
+
+# ---------------------------------------------------------------------------
+# Darcy–Weisbach friction factor (implicit Colebrook equation)
+# ---------------------------------------------------------------------------
+
+def FricFactor_IC(Rough: float, Reynold: float, guess: float) -> float:
+    """
+    Solve the implicit Colebrook equation for the Darcy friction factor using
+    the Newton–Raphson / secant method.
+
+    Inputs
+    ------
+    Rough   : float  Relative roughness (ε/D) [-]
+    Reynold : float  Reynolds number [-]
+    guess   : float  Initial guess for the friction factor [-]
+
+    Returns
+    -------
+    float
+        Darcy friction factor [-]
+    """
+    # Rough is relative roughness [--]
+    if Reynold < 2750.0:
+        return 64.0 / max(Reynold, 1.0)
+
+    Acc = 0.00001
+    X = 1.0 / math.sqrt(max(guess, 1.0e-10))
+    TestOld = X + 2.0 * math.log10(Rough / 3.7 + 2.51 * X / Reynold)
+    Xold = X
+    X = X * 0.7
+    NumTries = 0
+
+    while True:
+        NumTries += 1
+        Test = X + 2.0 * math.log10(Rough / 3.7 + 2.51 * X / Reynold)
+        if abs(Test - TestOld) <= Acc:
+            return 1.0 / (X * X)
+        if NumTries > 20:
+            # Could not find friction factor solution — return best current estimate
+            return 1.0 / (X * X)
+        Slope = (Test - TestOld) / (X - Xold)
+        Xold = X
+        TestOld = Test
+        X = max((Slope * X - Test) / Slope, 1.0e-5)
+
+
+# ---------------------------------------------------------------------------
+# Pipe convection coefficient (dynamic pipe, single-phase and two-phase)
+# ---------------------------------------------------------------------------
+
+def convection_dynamicpipe(
+    P_steam: float,
+    h_steam: float,
+    D_pipe: float,
+    m_dot: float,
+    ff_guess: float,
+    T_metal: float,
+) -> float:
+    """
+    Convection heat transfer coefficient between steam and pipe wall.
+
+    Uses the Gnielinski correlation for turbulent single-phase superheated steam,
+    and the Shah (2016) / Chato (1962) correlations for two-phase condensing conditions.
+
+    Inputs
+    ------
+    P_steam  : float  Steam pressure [Pa]
+    h_steam  : float  Steam specific enthalpy [J/kg]
+    D_pipe   : float  Pipe inner diameter [m]
+    m_dot    : float  Mass flow rate [kg/s]
+    ff_guess : float  Previous iteration friction factor guess [-]
+    T_metal  : float  Pipe wall (metal) temperature [K]
+
+    Returns
+    -------
+    float
+        Convection coefficient between steam and pipe wall [W/(m^2·K)]
+    """
+    P_kPa = P_steam / 1000.0
+    T_steam   = fp.temperature("water", P=P_kPa, h=h_steam / 1000.0)
+    rho_steam = fp.density("water",     P=P_kPa, h=h_steam / 1000.0)
+    x         = fp.quality("water",     P=P_kPa, h=h_steam / 1000.0)
+    mu_steam  = fp.viscosity("water",   P=P_kPa, h=h_steam / 1000.0) / 1000000.0   # converting from microPa-s to Pa-s
+    k_steam   = fp.conductivity("water",P=P_kPa, h=h_steam / 1000.0)
+
+    T_sat     = fp.temperature("water", P=P_kPa, Q=1.0)
+    h_sat_g   = fp.enthalpy("water",    P=P_kPa, Q=1.0) * 1000.0
+    rho_sat_g = fp.density("water",     P=P_kPa, Q=1.0)
+    mu_G      = fp.viscosity("water",   P=P_kPa, Q=1.0) / 1000000.0   # converting from microPa-s to Pa-s
+    k_G       = fp.conductivity("water",P=P_kPa, Q=1.0)
+
+    h_sat_f   = fp.enthalpy("water",    P=P_kPa, Q=0.0) * 1000.0
+    rho_sat_f = fp.density("water",     P=P_kPa, Q=0.0)
+    mu_L      = fp.viscosity("water",   P=P_kPa, Q=0.0) / 1000000.0   # converting from microPa-s to Pa-s
+    k_L       = fp.conductivity("water",P=P_kPa, Q=0.0)
+
+    Area   = 3.14 / 4.0 * D_pipe**2.0
+    cp_L   = 4200.0
+    P_crit = 22064000.0  # Pa
+
+    if h_steam >= h_sat_g:  # steam in pipe is superheated
+        vel = m_dot / (rho_steam * Area)
+        # use single phase vapor coefficient (Gnielinski Correlation)
+        Re = rho_steam * vel * D_pipe / mu_steam
+        if Re > 2300.0:  # The flow is turbulent
+            cp = f_cp_water(P=P_steam, T=T_steam)
+            Pr = mu_steam * cp / k_steam
+            ff = FricFactor_IC(0.0, Re, ff_guess)
+            Nu = ((ff / 8.0) * (Re - 1000.0) * Pr) / (1.0 + 12.7 * (ff / 8.0)**0.5 * (Pr**(2.0 / 3.0) - 1.0))
+            h_bar = Nu * k_steam / D_pipe
+        else:
+            Nu    = 3.66  # Fully-developed Nusselt Number for laminar flow with a uniform wall temperature
+            h_bar = Nu * k_steam / D_pipe
+    else:  # steam in pipe is saturated, need two phase coefficient
+        vel = m_dot / (rho_sat_g * Area)
+        Re  = rho_sat_g * vel * D_pipe / mu_G
+        if Re >= 35000.0:
+            Z      = (1.0 / x - 1.0)**0.8 * (P_steam / P_crit)**0.4
+            G_tot  = m_dot / Area
+            J_g    = x * G_tot / math.sqrt(9.81 * D_pipe * rho_sat_g * (rho_sat_f - rho_sat_g))
+            J_g_I  = 0.98 * (Z + 0.263)**(-0.62)
+            if J_g >= J_g_I:  # First Heat Transfer Region
+                Re_L  = rho_sat_f * vel * D_pipe / mu_L
+                Pr_L  = mu_L * cp_L / k_L
+                h_L   = 0.23 * Re_L**0.8 * Pr_L**0.4 * k_L / D_pipe
+                h_bar = h_L * (1.0 + 3.8 / (Z**0.95)) * (mu_L / (14.0 * mu_G))**(0.0058 + 0.557 * P_steam / P_crit)
+            else:
+                J_g_III = 0.95 * (1.254 + 2.27 * Z**1.249)**(-1.0)
+                if J_g <= J_g_III:  # Third Heat Transfer Region
+                    Re_L  = rho_sat_f * vel * D_pipe / mu_L
+                    h_NU  = 1.32 * Re_L**(1.0 / 3.0) * ((rho_sat_f * (rho_sat_f - rho_sat_g) * 9.81 * k_L**3.0) / mu_L**2.0)**(1.0 / 3.0)
+                    h_bar = h_NU
+                else:
+                    Re_L       = rho_sat_f * vel * D_pipe / mu_L
+                    Pr_L       = mu_L * cp_L / k_L
+                    mu_g_steam = viscosity_steam(T_steam)
+                    h_L   = 0.23 * Re_L**0.8 * Pr_L**0.4 * k_L / D_pipe
+                    h_I   = h_L * (1.0 + 3.8 / (Z**0.95)) * (mu_L / (14.0 * mu_G))**(0.0058 + 0.557 * P_steam / P_crit)
+                    h_NU  = 1.32 * Re_L**(1.0 / 3.0) * ((rho_sat_f * (rho_sat_f - rho_sat_g) * 9.81 * k_L**3.0) / mu_L**2.0)**(1.0 / 3.0)
+                    h_bar = h_I + h_NU
+        else:
+            # Reynolds number too low for Shah 2016 Correlation
+            # Using Chate 1962 Correlation for film condensation in a horizontal pipe
+            if abs(T_sat - T_metal) > 0.01:
+                h_fg  = (h_sat_g - h_sat_f) + 3.0 / 8.0 * cp_L * (T_sat - T_metal)
+                h_bar = 0.555 * ((9.81 * rho_sat_f * (rho_sat_f - rho_sat_g) * k_L**3.0 * h_fg) / (mu_L * abs(T_sat - T_metal) * D_pipe))**0.25
+            else:
+                h_bar = 0.0
+
+    return h_bar
+
+
+# ---------------------------------------------------------------------------
+# Butterfly valve mass flow (ISA 75.01 liquid/gas/two-phase formulation)
+# ---------------------------------------------------------------------------
+
+def valve_massflow(CV: float, P_in: float, h_in: float, P_out: float) -> float:
+    """
+    Mass flow rate through a butterfly valve based on inlet/outlet pressures.
+
+    Supports incompressible (subcooled liquid), compressible (superheated steam),
+    and two-phase flow using the ISA 75.01 / Masoneilan formulation.
+
+    Inputs
+    ------
+    CV    : float  Flow coefficient [gpm / sqrt(psi)]
+    P_in  : float  Inlet pressure [Pa]
+    h_in  : float  Inlet specific enthalpy [J/kg]
+    P_out : float  Outlet pressure [Pa]
+
+    Returns
+    -------
+    float
+        Mass flow rate [kg/s]
+    """
+    P_kPa  = P_in / 1000.0
+    T_in   = fp.temperature("water", P=P_kPa, h=h_in / 1000.0)
+    rho_in = fp.density("water",     P=P_kPa, h=h_in / 1000.0)
+    h_sat_f = fp.enthalpy("water", P=P_kPa, Q=0.0) * 1000.0
+    T_sat   = fp.temperature("water", P=P_kPa, Q=0.0)
+    h_sat_g = fp.enthalpy("water", P=P_kPa, Q=1.0) * 1000.0
+
+    KV      = CV / 1.156  # converting english flow coefficient to metric flow coefficient
+    DELTA_P = P_in - P_out
+
+    if DELTA_P > 0.0:
+        if h_in <= h_sat_f:  # flow is incompressible
+            P_crit  = 22064000.0  # Critical Pressure of Water [Pa]
+            P_ref   = 87726.1     # vapor pressure of steam at 100 degrees C [Pa]
+            T_ref   = 373.0       # [K]
+            # check if flow is choked or not choked
+            lnP1P2 = 8.314 * (1.0 / T_ref - 1.0 / T_in)  # Clausius-Clapeyron Equation to find vapor pressure of water
+            P_v    = P_ref * math.exp(lnP1P2)
+            F_L    = 0.62
+            F_F    = 0.96 - 0.28 * math.sqrt(P_v / P_crit)
+            N1     = 0.1
+            rho_ref = 1000.0  # reference density of water at room temp and pressure [kg/m^3]
+            if DELTA_P < (F_L**2.0 * (P_in - F_F * P_v)):  # Flow is not choked
+                Q_dot = KV * N1 / math.sqrt(rho_in / rho_ref / (DELTA_P / 1000.0))
+                m_dot = Q_dot * rho_in / 3600.0
+            else:  # Flow is choked
+                Q_dot = KV * N1 * F_L / math.sqrt(rho_in / rho_ref / (P_in / 1000.0 - F_F * P_v / 1000.0))
+                m_dot = Q_dot / rho_in / 3600.0
+
+        elif h_in > h_sat_g:  # flow is compressible
+            x_T = 0.35
+            N6  = 3.16
+            x   = DELTA_P / P_in
+            if T_in > T_sat + 2.0:
+                specheat_p = f_cp_water(P_in, T_in)
+                specheat_v = f_cv_water(P_in, T_in)
+            else:
+                specheat_p = f_cp_water(P_in, T_sat + 2.0)
+                specheat_v = f_cv_water(P_in, T_sat + 2.0)
+            F_y = specheat_p / specheat_v / 1.4
+            if x < F_y * x_T:  # Flow is not choked
+                Y     = 1.0 - x / (3 * F_y * x_T)
+                m_dot = KV * N6 * Y * math.sqrt(x * P_in / 1000.0 * rho_in) / 3600.0  # compressible flow equation, Pressure in kPa, mass flow in kg/hr
+            else:  # Flow is choked
+                Y     = 0.667
+                m_dot = KV * N6 * math.sqrt(F_y * x_T * P_in / 1000.0 * rho_in) / 3600.0
+
+        else:  # flow is two phase
+            qual   = fp.quality("water", P=P_kPa, h=h_in / 1000.0)
+            rho_in = fp.density("water", P=P_kPa, Q=1.0)  # use vapor density for compressible part
+            # Solve for flow as if compressible
+            x_T = 0.35
+            N6  = 3.16
+            x   = DELTA_P / P_in
+            specheat_p = f_cp_water(P_in, T_in + 2.0)
+            specheat_v = f_cv_water(P_in, T_in + 2.0)
+            F_y = specheat_p / specheat_v / 1.4
+            if x < F_y * x_T:  # Flow is not choked
+                Y       = 1.0 - x / (3 * F_y * x_T)
+                m_dot_c = KV * N6 * Y * math.sqrt(x * P_in / 1000.0 * rho_in) / 3600.0
+            else:  # Flow is choked
+                Y       = 0.667
+                m_dot_c = KV * N6 * math.sqrt(F_y * x_T * P_in / 1000.0 * rho_in) / 3600.0
+            # Solve for flow as if incompressible
+            rho_in  = 1000.0
+            P_crit  = 22064000.0  # Critical Pressure of Water [Pa]
+            P_ref   = 87726.1     # vapor pressure of steam at 100 degrees C [Pa]
+            T_ref   = 373.0
+            # check if flow is choked or not choked
+            lnP1P2  = 8.314 * (1.0 / T_ref - 1.0 / T_in)  # Clausius-Clapeyron Equation to find vapor pressure of water
+            P_v     = P_ref * math.exp(lnP1P2)
+            F_L     = 0.62
+            F_F     = 0.96 - 0.28 * math.sqrt(P_v / P_crit)
+            N1      = 0.1
+            rho_ref = 1000.0  # reference density of water at room temp and pressure
+            if DELTA_P < (F_L**2.0 * (P_in - F_F * P_v)):  # Flow is not choked
+                Q_dot     = KV * N1 / math.sqrt(rho_in / rho_ref / (DELTA_P / 1000.0))
+                m_dot_inc = Q_dot * rho_in / 3600.0
+            else:  # Flow is choked
+                Q_dot     = KV * N1 * F_L / math.sqrt(rho_in / rho_ref / (P_in / 1000.0 - F_F * P_v / 1000.0))
+                m_dot_inc = Q_dot / rho_in / 3600.0
+            # use quality to estimate flow through valve
+            m_dot = m_dot_c * qual + m_dot_inc * (1.0 - qual)
+
+    else:  # Pressure Gradient going backwards
+        m_dot = 0.0
+
+    return m_dot
+
+
+# ---------------------------------------------------------------------------
+# HTF property wrappers (delegate to Incompressible database)
+# ---------------------------------------------------------------------------
+
+def specheat(fnumd: str, T: float, P: float = 0.0) -> float:
+    """
+    Specific heat of an HTF identified by a fluid string.
+    Delegates to the Incompressible property database.
+
+    Inputs
+    ------
+    fnumd : str    Fluid identifier string (e.g., "Salt (60 NaNO3, 40 KNO3)")
+    T     : float  Temperature [K]
+    P     : float  Pressure [Pa] (unused for most HTF fluids)
+
+    Returns
+    -------
+    float
+        Specific heat [J/(kg·K)]
+
+    Notes
+    -----
+    Incompressible.specheat returns kJ/(kg·K); multiplied by 1000 here for SI.
+    """
+    return _incompressible.specheat(fnumd, T, P) * 1000.0
+
+
+def density(fnumd: str, T: float, P: float = 0.0) -> float:
+    """
+    Density of an HTF identified by a fluid string.
+    Delegates to the Incompressible property database.
+
+    Inputs
+    ------
+    fnumd : str    Fluid identifier string
+    T     : float  Temperature [K]
+    P     : float  Pressure [Pa] (required for Argon and Hydrogen)
+
+    Returns
+    -------
+    float
+        Density [kg/m^3]
+    """
+    return _incompressible.density(fnumd, T, P)

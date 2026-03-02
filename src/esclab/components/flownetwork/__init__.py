@@ -52,6 +52,8 @@ from .HTFTank2TankPump import HTFTank2TankPump
 from .DeaeratorPump import DeaeratorPump
 # Type 6034
 from .TESModeSelector import TESModeSelector
+# Type 6028
+from .TurbinesAndBypassNetwork import TurbinesAndBypassNetwork
 
 __all__ = [
     # Original components
@@ -84,6 +86,7 @@ __all__ = [
     "TeeReturnHTF",
     "TESModeSelector",
     "TESTank",
+    "TurbinesAndBypassNetwork",
     "WaterEnthalpyLookup",
     "WeatherReader",
 ]
