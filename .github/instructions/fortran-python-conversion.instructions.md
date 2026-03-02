@@ -120,9 +120,9 @@ Do not proceed to Run Type 3 unless I explicitly ask you to do so. Do not run te
 
 ## RUN TYPE 3
 
-4012, 6011 done
+4012, 6011, 6028 done
 
-Skipped (too complex): Types 4034, 6028.
+Skipped (too complex): Types 4034.
 
 Common TODO flags across files to review:
 

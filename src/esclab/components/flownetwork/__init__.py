@@ -12,6 +12,8 @@ from .TeeReturnHTF import TeeReturnHTF
 from .ExpansionSystem import ExpansionSystem
 # Type 4015
 from .TeeOutSimple import TeeOutSimple
+# Type 4034
+from .SolarFieldSector import SolarFieldSector
 # Type 4035
 from .Pipe import Pipe
 # Type 4050
@@ -78,6 +80,7 @@ __all__ = [
     "Pipe",
     "PowerBlockPiping",
     "PowerBlockValve",
+    "SolarFieldSector",
     "SolanaHydraulicSolver",
     "SteamDrum",
     "SteamToHTFHX",
