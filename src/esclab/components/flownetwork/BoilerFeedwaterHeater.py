@@ -4,9 +4,6 @@ from eeslib import fluid_properties as fp
 
 from esclab.simulate import Component
 
-# TODO-NEEDS LIBRARY: ESOL6015_myfunctions – used via Fortran `Use ESOL6015_myfunctions`
-
-
 class BoilerFeedwaterHeater(Component):
     """
     TRNSYS Type 6019: ESOL6019-BFWH.
@@ -129,6 +126,8 @@ class BoilerFeedwaterHeater(Component):
     m_dot_b_guess = Component.Parameter()
     # DELTA_T_guess: Guess Feedwater Temperature Increase during first iteration
     DELTA_T_guess = Component.Parameter()
+    # FWH_sequence_number: Parameter to identify the sequence from low to high pressure of the FWH's. 
+    FWH_sequence_number = Component.Parameter()
 
     # *** Model Inputs ***
     Turbine_On = Component.Input()
@@ -212,12 +211,20 @@ class BoilerFeedwaterHeater(Component):
                 elif self.P_SD.v >= self.P_SD_design.v:
                     DELTA_T_new = self.DELTA_T_design.v
                 else:
-                    # TODO-NEEDS CONVERSION REVIEW: CurrentUnit is a TRNSYS global (unit number in the deck).
-                    # There is no direct equivalent in esclab. The branching on CurrentUnit==13/12/11 selects
-                    # unit-specific polynomial curve fits; the else branch uses the general OD_Coef log scaling.
-                    # Using the general (else) branch here as the default.
-                    T_ratio = self.OD_Coef.v * __import__("math").log(P_ratio) + 1.0
-                    DELTA_T_new = T_ratio * self.DELTA_T_design.v
+                    # (MJW) The source fortran checks the the FWH correction curve based on deck file unit number,
+                    # which is almost guaranteed to have caused problems. The most recent deck file 'predawn_solana' 
+                    # has unit numbers that differ from the expected range. 
+                    # The correlations were verified as being mapped to 5-3 using the BFWH Ramping.xlsx sheet in 
+                    # Anna's folder.
+                    if self.FWH_sequence_number.v == 5:  #BFWH5, lowest pressure 
+                        T_ratio = max(min(-10.752*P_ratio**4.+30.139*P_ratio**3. -31.579*P_ratio**2. +15.49*P_ratio-2.2949, 1.),0.)
+                    elif self.FWH_sequence_number.v == 4: #BFWH4, second lowest pressure
+                        T_ratio = -18.391*P_ratio**4. +50.51*P_ratio**3.-50.34*P_ratio**2.+21.902*P_ratio-2.7355
+                    elif self.FWH_sequence_number.v == 3: #BFWH3, third lowest pressure
+                        T_ratio = -8.1877*P_ratio**4. +23.805*P_ratio**3.-24.809*P_ratio**2.+11.266*P_ratio-1.0745
+                    else:  #other BFWHs
+                        T_ratio = self.OD_Coef.v * __import__("math").log(P_ratio) + 1.0
+                        DELTA_T_new = T_ratio * self.DELTA_T_design.v
 
                 LR = 0.2
                 if abs(DELTA_T_new - DELTA_T_old) <= self.DELTA_T_tol.v:
