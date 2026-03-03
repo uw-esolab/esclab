@@ -342,8 +342,7 @@ def dt_dtime_NN(
     # ------------------------------------------------------------------
     rho = np.array([Inc.density(fluid=fluid, T=t_bar[n], P=0.0) for n in range(n_cv)])
     # AUTO UNITS CONVERSION IMPLEMENTED: spec_NN (Fortran surrogate) returns kJ/kg-K;
-    # Inc.specheat returns kJ/kg-K — multiply by 1000 to get J/kg-K
-    c_bar = np.array([1000.0 * Inc.specheat(fluid=fluid, T=t_bar[n], P=0.0) for n in range(n_cv)])
+    c_bar = np.array([ Inc.specheat(fluid=fluid, T=t_bar[n], P=0.0) for n in range(n_cv)])
 
     h = np.array([H_Dowtherm_A(t[n]) for n in range(n_nodes)])
 

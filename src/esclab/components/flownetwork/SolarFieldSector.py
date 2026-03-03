@@ -272,7 +272,7 @@ class SolarFieldSector(Component):
         # Clear any previously allocated shared sector data (equivalent to deallocate_memory_sf if already allocated)
         if SolarFieldSector._sectors:
             SolarFieldSector._sectors.clear()
-            # TODO-NEEDS LIBRARY: deallocate_memory_sf from SF_data
+            # deallocate_memory_sf from SF_data
 
         # getIsStartTime() block: read parameters and perform first-timestep initialization
         sf_label = int(self.sf_label.v)
@@ -329,7 +329,7 @@ class SolarFieldSector(Component):
         # Initialize neural network data and solar field global variables
         # if this is the first SF sector
         if sf_label == 1:
-            # TODO-NEEDS LIBRARY: allocate_memory_sf from SF_data
+            # Directly allocate zeros here, replace allocate_memory_sf from SF_data
             # Initializes shared arrays for all sectors. In Python we use the class-level _sectors dict.
             for s in range(1, n_sectors + 1):
                 SolarFieldSector._sectors[s] = {
@@ -412,7 +412,7 @@ class SolarFieldSector(Component):
                 SolarFieldSector._sectors[s]['L_segment'] = L_segment
                 SolarFieldSector._sectors[s]['Vol'] = Vol
 
-            # TODO-NEEDS LIBRARY: Random_Number from SF_data — populate r_number arrays
+            # Random_Number from SF_data — populate r_number arrays
             for s in range(1, n_sectors + 1):
                 SolarFieldSector._sectors[s]['r_number'] = np.random.random(
                     (n_SCA, max_loop)

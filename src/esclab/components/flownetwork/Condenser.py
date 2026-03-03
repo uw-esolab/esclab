@@ -6,7 +6,7 @@ import numpy as np
 from eeslib import fluid_properties as fp
 
 from esclab.simulate import Component
-from esclab.components.flownetwork.simple_pipe import FricFactor_IC
+from esclab.components.flownetwork.SimplePipe import FricFactor_IC
 from esclab.components.flownetwork.esol6015_helpers import f_cp_water, drhodhcp, drhodpch, dudhcp, dudpch
 
 

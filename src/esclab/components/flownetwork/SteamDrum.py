@@ -328,7 +328,7 @@ class SteamDrum(Component):
             # High Temp Diff between water entering drum and saturation temp
             T_tank_val = self.T_tank_new.v
             # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
-            T_in_fw = fp.temperature("water", P=self.P_in.v, H=self.h_in.v)  # TODO-NEEDS LIBRARY: eeslib call for T from P,H for water
+            T_in_fw = fp.temperature("water", P=self.P_in.v, H=self.h_in.v)  # eeslib call for T from P,H for water
             Delta_T = abs(T_in_fw - T_tank_val)
             if Delta_T < self.HighDeltaT_Alarm_cond.v:
                 Alarm = 0.0
@@ -429,9 +429,9 @@ class SteamDrum(Component):
 
             # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
             T_tank, h_out, rho_tank_g = (
-                fp.temperature("water", P=self.P_tank_init.v, Q=1.0),   # TODO-NEEDS LIBRARY: eeslib call for T_sat from P,Q
-                fp.enthalpy("water", P=self.P_tank_init.v, Q=1.0),       # TODO-NEEDS LIBRARY: eeslib call for h from P,Q
-                fp.density("water", P=self.P_tank_init.v, Q=1.0),        # TODO-NEEDS LIBRARY: eeslib call for rho from P,Q
+                fp.t_sat("water", P=self.P_tank_init.v),   # eeslib call for T_sat from P,Q
+                fp.enthalpy("water", P=self.P_tank_init.v, Q=1.0),       # eeslib call for h from P,Q
+                fp.density("water", P=self.P_tank_init.v, Q=1.0),        # eeslib call for rho from P,Q
             )
 
             # Calculate current quality in the tank based on level
@@ -457,7 +457,7 @@ class SteamDrum(Component):
             # mass of liquid in the tank
             # density of saturated liquid water at this pressure
             # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses SI
-            rho_tank_f = fp.density("water", P=self.P_tank_init.v, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib call for rho_f from P,Q
+            rho_tank_f = fp.density("water", P=self.P_tank_init.v, Q=0.0)  # eeslib call for rho_f from P,Q
             m_tank_f = Vol_liquid * rho_tank_f  # total mass of liquid in the tank
 
             # mass of vapor in the tank
@@ -472,7 +472,7 @@ class SteamDrum(Component):
 
             # enthalpy of the tank based on initial conditions
             # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-            h_tank = fp.enthalpy("water", P=self.P_tank_init.v, Q=x_tank)  # TODO-NEEDS LIBRARY: eeslib call for h from P,Q
+            h_tank = fp.enthalpy("water", P=self.P_tank_init.v, Q=x_tank)  # eeslib call for h from P,Q
 
             # initial guess for steam flow leaving
             m_dot_superheat_init = 60.0
@@ -515,8 +515,8 @@ class SteamDrum(Component):
 
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses SI
         T_tank_prev, h_evap_out = (
-            fp.temperature("water", P=self.P_tank_prev.v, Q=1.0),  # TODO-NEEDS LIBRARY: eeslib T from P,Q
-            fp.enthalpy("water", P=self.P_tank_prev.v, Q=1.0),     # TODO-NEEDS LIBRARY: eeslib h from P,Q
+            fp.temperature("water", P=self.P_tank_prev.v, Q=1.0),  # eeslib T from P,Q
+            fp.enthalpy("water", P=self.P_tank_prev.v, Q=1.0),     # eeslib h from P,Q
         )
         # Surface area of the feedwater side of the heat exchanger
         A_s = (
@@ -549,7 +549,7 @@ class SteamDrum(Component):
         )
 
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-        h_evap_out = fp.enthalpy("water", P=self.P_tank_prev.v, Q=1.0)  # TODO-NEEDS LIBRARY: eeslib h from P,Q
+        h_evap_out = fp.enthalpy("water", P=self.P_tank_prev.v, Q=1.0)  # eeslib h from P,Q
         Q_dot_max = HTF_mass_in_val * cp_htf_ave * (self.HTF_Temp_in.v - T_tank_prev)
         Q_dot_actual = eta_od * Q_dot_max
 
@@ -560,7 +560,7 @@ class SteamDrum(Component):
         ) / (HTF_mass_in_val * cp_htf_ave)
         HTF_P_out = self.HTF_P_in.v  # No pressure drop across HX
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-        h_evap_in = fp.enthalpy("water", P=self.P_tank_prev.v, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib h from P,Q
+        h_evap_in = fp.enthalpy("water", P=self.P_tank_prev.v, Q=0.0)  # eeslib h from P,Q
         # Energy Balance on Water through evaporator
         m_dot_evap_val = Q_dot_actual / (h_evap_out - h_evap_in)
 
@@ -588,11 +588,11 @@ class SteamDrum(Component):
         dudhcp_a = dudhcp(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dh=dh)
         dudpch_a = dudpch(P_tank=P_tank_prev_val, h_tank=h_tank_prev_val, dP=dP)
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa, /1000 J/kg->kJ/kg, and *1000 kJ/kg->J/kg; eeslib uses SI
-        rho_tank = fp.density("water", P=P_tank_prev_val, H=h_tank_prev_val)  # TODO-NEEDS LIBRARY: eeslib rho from P,H
-        u_tank = fp.internalenergy("water", P=P_tank_prev_val, H=h_tank_prev_val)  # TODO-NEEDS LIBRARY: eeslib u from P,H
+        rho_tank = fp.density("water", P=P_tank_prev_val, H=h_tank_prev_val)  # eeslib rho from P,H
+        u_tank = fp.internalenergy("water", P=P_tank_prev_val, H=h_tank_prev_val)  # eeslib u from P,H
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-        h_sat_f = fp.enthalpy("water", P=P_tank_prev_val, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib h_f from P,Q
-        h_sat_g = fp.enthalpy("water", P=P_tank_prev_val, Q=1.0)  # TODO-NEEDS LIBRARY: eeslib h_g from P,Q
+        h_sat_f = fp.enthalpy("water", P=P_tank_prev_val, Q=0.0)  # eeslib h_f from P,Q
+        h_sat_g = fp.enthalpy("water", P=P_tank_prev_val, Q=1.0)  # eeslib h_g from P,Q
         h_sat_fg = h_sat_g - h_sat_f
         h_out = h_sat_g
 
@@ -630,11 +630,11 @@ class SteamDrum(Component):
         dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
         dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa, /1000 J/kg->kJ/kg, and *1000 kJ/kg->J/kg; eeslib uses SI
-        rho_tank = fp.density("water", P=P_aa, H=h_aa)         # TODO-NEEDS LIBRARY: eeslib rho from P,H
-        u_tank = fp.internalenergy("water", P=P_aa, H=h_aa)    # TODO-NEEDS LIBRARY: eeslib u from P,H
+        rho_tank = fp.density("water", P=P_aa, H=h_aa)         # eeslib rho from P,H
+        u_tank = fp.internalenergy("water", P=P_aa, H=h_aa)    # eeslib u from P,H
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-        h_sat_f = fp.enthalpy("water", P=P_aa, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib h_f from P,Q
-        h_sat_g = fp.enthalpy("water", P=P_aa, Q=1.0)  # TODO-NEEDS LIBRARY: eeslib h_g from P,Q
+        h_sat_f = fp.enthalpy("water", P=P_aa, Q=0.0)  # eeslib h_f from P,Q
+        h_sat_g = fp.enthalpy("water", P=P_aa, Q=1.0)  # eeslib h_g from P,Q
         h_sat_fg = h_sat_g - h_sat_f
         h_out = h_sat_g
         dpdt_bb = (
@@ -670,11 +670,11 @@ class SteamDrum(Component):
         dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
         dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa, /1000 J/kg->kJ/kg, and *1000 kJ/kg->J/kg; eeslib uses SI
-        rho_tank = fp.density("water", P=P_bb, H=h_bb)         # TODO-NEEDS LIBRARY: eeslib rho from P,H
-        u_tank = fp.internalenergy("water", P=P_bb, H=h_bb)    # TODO-NEEDS LIBRARY: eeslib u from P,H
+        rho_tank = fp.density("water", P=P_bb, H=h_bb)         # eeslib rho from P,H
+        u_tank = fp.internalenergy("water", P=P_bb, H=h_bb)    # eeslib u from P,H
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-        h_sat_f = fp.enthalpy("water", P=P_bb, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib h_f from P,Q
-        h_sat_g = fp.enthalpy("water", P=P_bb, Q=1.0)  # TODO-NEEDS LIBRARY: eeslib h_g from P,Q
+        h_sat_f = fp.enthalpy("water", P=P_bb, Q=0.0)  # eeslib h_f from P,Q
+        h_sat_g = fp.enthalpy("water", P=P_bb, Q=1.0)  # eeslib h_g from P,Q
         h_sat_fg = h_sat_g - h_sat_f
         h_out = h_sat_g
         dpdt_cc = (
@@ -710,11 +710,11 @@ class SteamDrum(Component):
         dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
         dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa, /1000 J/kg->kJ/kg, and *1000 kJ/kg->J/kg; eeslib uses SI
-        rho_tank = fp.density("water", P=P_cc, H=h_cc)         # TODO-NEEDS LIBRARY: eeslib rho from P,H
-        u_tank = fp.internalenergy("water", P=P_cc, H=h_cc)    # TODO-NEEDS LIBRARY: eeslib u from P,H
+        rho_tank = fp.density("water", P=P_cc, H=h_cc)         # eeslib rho from P,H
+        u_tank = fp.internalenergy("water", P=P_cc, H=h_cc)    # eeslib u from P,H
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-        h_sat_f = fp.enthalpy("water", P=P_cc, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib h_f from P,Q
-        h_sat_g = fp.enthalpy("water", P=P_cc, Q=1.0)  # TODO-NEEDS LIBRARY: eeslib h_g from P,Q
+        h_sat_f = fp.enthalpy("water", P=P_cc, Q=0.0)  # eeslib h_f from P,Q
+        h_sat_g = fp.enthalpy("water", P=P_cc, Q=1.0)  # eeslib h_g from P,Q
         h_sat_fg = h_sat_g - h_sat_f
         h_out = h_sat_g
 
@@ -747,9 +747,9 @@ class SteamDrum(Component):
         h_tank_new_val = h_tank_prev_val + (dhdt_aa + 2.0 * dhdt_bb + 2.0 * dhdt_cc + dhdt_dd) * ts / 6.0
         rho_tank_new = (m_tank_prev_val + (self.m_dot_in.v - self.m_dot_superheat.v) * ts) / Vol_tank
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
-        x_tank_new = fp.quality("water", P=P_tank_new_val, H=h_tank_new_val)   # TODO-NEEDS LIBRARY: eeslib quality from P,H
-        rho_tank_new = fp.density("water", P=P_tank_new_val, H=h_tank_new_val) # TODO-NEEDS LIBRARY: eeslib rho from P,H
-        T_tank_new_val = fp.temperature("water", P=P_tank_new_val, H=h_tank_new_val)  # TODO-NEEDS LIBRARY: eeslib T from P,H
+        x_tank_new = fp.quality("water", P=P_tank_new_val, H=h_tank_new_val)   # eeslib quality from P,H
+        rho_tank_new = fp.density("water", P=P_tank_new_val, H=h_tank_new_val) # eeslib rho from P,H
+        T_tank_new_val = fp.temperature("water", P=P_tank_new_val, H=h_tank_new_val)  # eeslib T from P,H
 
         # Solve for new level in the tank
         # total mass of water in the tank
@@ -757,15 +757,15 @@ class SteamDrum(Component):
         m_tank_g_new = m_tank_new_val * x_tank_new     # total mass of vapor in the tank
         m_tank_f_new = m_tank_new_val - m_tank_g_new   # total mass of liquid in the tank
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses SI
-        rho_f_new = fp.density("water", P=P_tank_new_val, Q=0.0)  # TODO-NEEDS LIBRARY: eeslib rho_f from P,Q
+        rho_f_new = fp.density("water", P=P_tank_new_val, Q=0.0)  # eeslib rho_f from P,Q
         Vol_liquid = m_tank_f_new / rho_f_new
         level_tol = 0.000001  # [m]
         L_tank_new_val = tank_level(Vol_liquid, self.D_tank.v, self.Length_tank.v, L_tank_prev_val, level_tol)
 
         # enthalpy of steam leaving the steam drum
         # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
-        h_out = fp.enthalpy("water", P=P_tank_new_val, Q=1.0)    # TODO-NEEDS LIBRARY: eeslib h_g from P,Q
-        rho_g_new = fp.density("water", P=P_tank_new_val, Q=1.0) # TODO-NEEDS LIBRARY: eeslib rho_g from P,Q
+        h_out = fp.enthalpy("water", P=P_tank_new_val, Q=1.0)    # eeslib h_g from P,Q
+        rho_g_new = fp.density("water", P=P_tank_new_val, Q=1.0) # eeslib rho_g from P,Q
 
         # calculating volumetric flow rates
         Vol_dot_fw = self.m_dot_superheat.v / rho_g_new

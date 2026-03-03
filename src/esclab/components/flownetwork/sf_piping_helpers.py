@@ -226,7 +226,7 @@ def pipe_dTdt(
         # Compute CV average temperature and properties
         T_ave = (T[n] + T[n + 1]) / 2.0
         rho = Inc.density(Fluid_ID, T=T_ave, P=0.0)
-        c = Inc.specheat(Fluid_ID, T=T_ave, P=0.0) * 1000.0  # [J/kg-K], spec_SF returns kJ/kg-K
+        c = Inc.specheat(Fluid_ID, T=T_ave, P=0.0)  # [J/kg-K]
         # Compute CV temperature rate
         dtdt_bar[n] = 1.0 / Vol / rho / c / mc_mult * (mass_flow * c * (T[n] - T[n + 1]) - q_out)
 
@@ -567,8 +567,7 @@ def dT_dt_inlet(
 
     # Compute control volume temperature rate of change
     for n in range(n_nodes - 1):
-        c = 1000.0 * Inc.specheat(fluid=fluid, T=t_bar[n], P=0.0)  # [J/kg-K]
-        # AUTO UNITS CONVERSION IMPLEMENTED: spec_NN returns kJ/kg-K; multiplied by 1000 to get J/kg-K
+        c = Inc.specheat(fluid=fluid, T=t_bar[n], P=0.0)  # [J/kg-K]
         rho = Inc.density(fluid=fluid, T=t_bar[n], P=0.0)
         h1 = H_Dowtherm_A(t[n])
         h2 = H_Dowtherm_A(t[n + 1])
@@ -652,8 +651,7 @@ def dT_dt_return(
     jj = 1
     for n in range(n_nodes - 1):
         rho = Inc.density(fluid=fluid, T=T_bar[n], P=0.0)
-        c = 1000.0 * Inc.specheat(fluid=fluid, T=T_bar[n], P=0.0)  # [J/kg-K]
-        # AUTO UNITS CONVERSION IMPLEMENTED: spec_NN returns kJ/kg-K; multiplied by 1000 to get J/kg-K
+        c = Inc.specheat(fluid=fluid, T=T_bar[n], P=0.0)  # [J/kg-K]
         h1 = H_Dowtherm_A(T[n])
         h2 = H_Dowtherm_A(T[n + 1])
         if n == 0:

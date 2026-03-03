@@ -17,7 +17,7 @@ from esclab.components.esol_properties import Incompressible as Inc
 # CORRELATIONS
 # ---------------------------------------------------------------------------
 
-def gnielinski(T_fluid, m_tube, n_tube, D_tube, fluid_number, pressure):
+def gnielinski(T_fluid, m_tube, n_tube, D_tube, fluid, pressure):
     """Gnielinski correlation for internal pipe flow heat-transfer coefficient.
 
     Parameters
@@ -26,7 +26,7 @@ def gnielinski(T_fluid, m_tube, n_tube, D_tube, fluid_number, pressure):
     m_tube      : float   - total mass-flow rate through all tubes [kg/s]
     n_tube      : float   - number of tubes in the bundle [-]
     D_tube      : float   - tube inner diameter [m]
-    fluid_number: str     - fluid identifier passed to Incompressible properties
+    fluid       : str     - fluid identifier passed to Incompressible properties
     pressure    : float   - fluid pressure [Pa]
 
     Returns
@@ -34,11 +34,10 @@ def gnielinski(T_fluid, m_tube, n_tube, D_tube, fluid_number, pressure):
     h_tube  : float   - convection coefficient [W/m²·K]
     vel_tube: float   - mean fluid velocity [m/s]
     """
-    rho_tube = Inc.density(fluid=fluid_number, T=T_fluid, P=pressure)
-    visc_tube = Inc.viscosity(fluid=fluid_number, T=T_fluid, P=pressure)
-    cp_tube = Inc.specheat(fluid=fluid_number, T=T_fluid, P=pressure)
-    # TODO-NEEDS UNITS CHECK: Inc.specheat returns kJ/kg·K; *1000 converts to J/kg·K as used in Fortran
-    cp_tube = cp_tube * 1000.0
+    rho_tube = Inc.density(fluid=fluid, T=T_fluid, P=pressure)
+    visc_tube = Inc.viscosity(fluid=fluid, T=T_fluid, P=pressure)
+    cp_tube = Inc.specheat(fluid=fluid, T=T_fluid, P=pressure)
+    # TODO-NEEDS REVIEW: (MJW) the value k=.1 is too low if the fluid is salt. If therminol (or oil), should probably be 0.07
     k_film = 0.1  # Constant in the whole code
     Pr_tube = visc_tube * cp_tube / k_film
 
@@ -87,9 +86,7 @@ def zukauskas(fluid_shell, config, D_shell, S_T, S_L, n_tube, D_tube,
     rho_shell = Inc.density(fluid=fluid_shell, T=T_shell, P=pressure)
     visc_shell = Inc.viscosity(fluid=fluid_shell, T=T_shell, P=pressure)
     cp_shell = Inc.specheat(fluid=fluid_shell, T=T_shell, P=pressure)
-    # TODO-NEEDS UNITS CHECK: Inc.specheat returns kJ/kg·K; *1000 converts to J/kg·K as used in Fortran
-    cp_shell = cp_shell * 1000.0
-    k_film = 0.5
+    k_film = 0.5  # W/m-K
     Pr_shell = visc_shell * cp_shell / k_film
     Pr_film = Pr_shell
 
@@ -167,8 +164,6 @@ def taborek(fluid_shell, D_shell, D_tube, T_shell, m_shell, Lp, pressure):
     rho_U = Inc.density(fluid=fluid_shell, T=T_shell, P=pressure)
     visc_U = Inc.viscosity(fluid=fluid_shell, T=T_shell, P=pressure)
     cp_U = Inc.specheat(fluid=fluid_shell, T=T_shell, P=pressure)
-    # TODO-NEEDS UNITS CHECK: Inc.specheat returns kJ/kg·K; *1000 converts to J/kg·K as used in Fortran
-    cp_U = cp_U * 1000.0
     k_film = 0.5
     Pr_shell = visc_U * cp_U / k_film
 
@@ -280,11 +275,7 @@ def eNTU(p_in_shell, p_in_tube, n_nodes, shell_p, n_tube, r_out, r_in,
     """
     # Specific heat at a representative temperature
     cp_tube_st = Inc.specheat(fluid=fluid_tube, T=T_tube_in, P=p_in_tube)
-    # TODO-NEEDS UNITS CHECK: Inc.specheat returns kJ/kg·K; *1000 converts to J/kg·K as used in Fortran
-    cp_tube_st = cp_tube_st * 1000.0
     cp_shell_st = Inc.specheat(fluid=fluid_shell, T=T_shell_in, P=p_in_shell)
-    # TODO-NEEDS UNITS CHECK: Inc.specheat returns kJ/kg·K; *1000 converts to J/kg·K as used in Fortran
-    cp_shell_st = cp_shell_st * 1000.0
 
     if cp_tube_st < cp_shell_st:
         c_r = cp_tube_st / cp_shell_st
@@ -453,8 +444,6 @@ def shell(config, shell_p, Tenv, P_in_shell, gap_baffle, n_nodes,
 
     for i in range(1, n_nodes + 1):
         cp_shell[i - 1] = Inc.specheat(fluid=fluid_shell, T=T_shell[i - 1], P=P_in_shell)
-        # TODO-NEEDS UNITS CHECK: Inc.specheat returns kJ/kg·K; *1000 converts to J/kg·K
-        cp_shell[i - 1] = cp_shell[i - 1] * 1000.0
         rho_shell[i - 1] = Inc.density(fluid=fluid_shell, T=T_shell[i - 1], P=P_in_shell)
         mu_shell[i - 1] = Inc.viscosity(fluid=fluid_shell, T=T_shell[i - 1], P=P_in_shell)
         k_shell[i - 1] = 0.5  # Here I impose constant conductivity since we don't have correlations for this fluid

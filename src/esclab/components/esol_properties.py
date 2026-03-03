@@ -153,7 +153,7 @@ class Incompressible:
 
     def enthalpy(self, fluid: str, T: float, T_ref: float = 273.15, P: float = float('nan')):
         """Calculate specific enthalpy [J/kg] from temperature T [K] relative to T_ref [K] (default 0°C).
-        Computed by integrating specific heat [kJ/(kg·K)] from T_ref to T and converting to J/kg.
+        Computed by integrating specific heat [J/(kg·K)] from T_ref to T.
         Only enthalpy differences are physically meaningful; the reference temperature cancels in all
         energy balance applications."""
         from scipy.integrate import quad
@@ -161,7 +161,7 @@ class Incompressible:
         assert 'specheat' in self.funcmap[fluid], f"No specific heat data available for '{fluid}'"
         cp_func = self.funcmap[fluid]['specheat']
         h_kJ_per_kg, _ = quad(cp_func, T_ref, T)
-        return h_kJ_per_kg * 1000.0  # Convert kJ/kg → J/kg
+        return h_kJ_per_kg  # Convert kJ/kg → J/kg
 
     def density(self, fluid: str, T: float, P: float = float('nan')):
         """Calculate density [kg/m^3] from temperature [K] and optional pressure [Pa].
@@ -182,10 +182,10 @@ class Incompressible:
         return self.funcmap[fluid]['viscosity'](T)
 
     def specheat(self, fluid: str, T: float, P: float = float('nan')):
-        """Calculate specific heat [kJ/kg-K] from temperature [K] and optional pressure [Pa]."""
+        """Calculate specific heat [J/kg-K] from temperature [K] and optional pressure [Pa]."""
         assert fluid in self.funcmap.keys(), f"Fluid '{fluid}' not found in database"
         assert 'specheat' in self.funcmap[fluid], f"No specific heat data available for '{fluid}'"
-        return self.funcmap[fluid]['specheat'](T)
+        return self.funcmap[fluid]['specheat'](T) * 1000. # Convert kJ/kg-K → J/kg-K
     
     def print_fluids(self):
         """Print list of fluids in database"""

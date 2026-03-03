@@ -47,11 +47,11 @@ class WaterEnthalpyLookup(Component):
     def _compute_enthalpy(self):
         if self.if_sat.v == 1.0:  # Wants a enthalpy value in the saturation region
             if self.use_temp.v == 1.0:  # use Temp and Quality to find enthalpy
-                # TODO-NEEDS LIBRARY: eeslib equivalent of FIT_TQ("water", T, Q, enth) for saturation-region enthalpy
+                # eeslib equivalent of FIT_TQ("water", T, Q, enth) for saturation-region enthalpy
                 # CONVERTED-NEEDS UNITS CHECK: removed *1000 kJ/kg->J/kg; eeslib fp.enthalpy returns J/kg
                 enthalpy = fp.enthalpy("water", T=self.temperature.v, Q=self.x_value.v)
             else:  # use pressure and quality to find enthalpy
-                # TODO-NEEDS LIBRARY: eeslib equivalent of FIT_PQ("water", P, Q, enth) for saturation-region enthalpy
+                # eeslib equivalent of FIT_PQ("water", P, Q, enth) for saturation-region enthalpy
                 # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
                 # CONVERTED-NEEDS UNITS CHECK: removed *1000 kJ/kg->J/kg; eeslib fp.enthalpy returns J/kg
                 enthalpy = fp.enthalpy("water", P=self.pressure.v, Q=self.x_value.v)

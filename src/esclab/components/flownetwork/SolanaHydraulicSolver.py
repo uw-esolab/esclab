@@ -152,7 +152,7 @@ class SolanaHydraulicSolver(Component):
         T_1 = self.T_1.v
         if T_1 <= 0.0:
             T_1 = 400.0
-        # TODO-NEEDS LIBRARY: density from ESOL6015_myfunctions; mapped to Incompressible.density
+        # Density from ESOL6015_myfunctions; mapped to Incompressible.density
         rho = Inc.density(self.Fluid_ID.v, T_1, self.P_pump_in.v)
 
         # learning rate assignment

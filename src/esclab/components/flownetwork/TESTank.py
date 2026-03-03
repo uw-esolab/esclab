@@ -191,7 +191,6 @@ class TESTank(Component):
         #################### SALT Properties based on Fluid Temperature ####################
         rho_salt = Inc.density(self.ID_Fluid.v, T=T_tank)
         m_tank = rho_salt * (L_tank * 3.1415 * self.D_in.v**2.0) / 4.0
-        # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
         cp_salt_in = Inc.specheat(self.ID_Fluid.v, T=self.T_in.v)
 
         ################# TANK PROPERTIES #################
@@ -207,7 +206,6 @@ class TESTank(Component):
         for i in range(1, N + 1):
             # Properties of the molten salt at previous time step
             rho_salt = Inc.density(self.ID_Fluid.v, T=T_tank)
-            # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
             cp_salt = Inc.specheat(self.ID_Fluid.v, T=T_tank)  # Specific heat evaluated at T_tank (initial temperature at each subtime step)
 
             # Here starts the "while" loop

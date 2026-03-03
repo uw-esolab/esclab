@@ -312,7 +312,6 @@ class ExpansionSystem(Component):
                 else:
                     h_plant = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
                 h = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
-                # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
                 c = Inc.specheat(self.Fluid_ID.v, T=T_ev, P=0.0)
                 # TODO-NEEDS CONVERSION REVIEW: mass_ev is a local variable not yet computed at this point;
                 # it is computed below, but the temperature update uses the previous mass_ev.
@@ -809,7 +808,6 @@ class ExpansionSystem(Component):
                 ############################################################################
                 ######  2) Update tank temperatures  #######################################
                 # Overflow tank (Eulers Method)
-                # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
                 c = Inc.specheat(self.Fluid_ID.v, T=T_of, P=0.0)
                 h = Inc.enthalpy(self.Fluid_ID.v, T=T_of)
                 h_in = Inc.enthalpy(self.Fluid_ID.v, T=T_to_of)
@@ -828,7 +826,6 @@ class ExpansionSystem(Component):
                     h_out = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
                     m_in_ev = 0.0
                     h_in = 0.0
-                # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
                 c = Inc.specheat(self.Fluid_ID.v, T=T_ev, P=0.0)
                 h_plant = Inc.enthalpy(self.Fluid_ID.v, T=self.T_in.v)
                 h = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
