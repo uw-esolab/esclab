@@ -312,8 +312,8 @@ class ExpansionSystem(Component):
                 else:
                     h_plant = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
                 h = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
-                # TODO-NEEDS UNITS CHECK: spec_SF (Incompressible.specheat) returns kJ/(kg·K); multiplied by 1000 for J/(kg·K)
-                c = Inc.specheat(self.Fluid_ID.v, T=T_ev, P=0.0) * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
+                c = Inc.specheat(self.Fluid_ID.v, T=T_ev, P=0.0)
                 # TODO-NEEDS CONVERSION REVIEW: mass_ev is a local variable not yet computed at this point;
                 # it is computed below, but the temperature update uses the previous mass_ev.
                 mass_ev = self.total_mass.v - self.m_counter.v
@@ -809,8 +809,8 @@ class ExpansionSystem(Component):
                 ############################################################################
                 ######  2) Update tank temperatures  #######################################
                 # Overflow tank (Eulers Method)
-                # TODO-NEEDS UNITS CHECK: spec_SF (Incompressible.specheat) returns kJ/(kg·K); multiplied by 1000 for J/(kg·K)
-                c = Inc.specheat(self.Fluid_ID.v, T=T_of, P=0.0) * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
+                c = Inc.specheat(self.Fluid_ID.v, T=T_of, P=0.0)
                 h = Inc.enthalpy(self.Fluid_ID.v, T=T_of)
                 h_in = Inc.enthalpy(self.Fluid_ID.v, T=T_to_of)
                 h_out = Inc.enthalpy(self.Fluid_ID.v, T=T_of)
@@ -828,8 +828,8 @@ class ExpansionSystem(Component):
                     h_out = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
                     m_in_ev = 0.0
                     h_in = 0.0
-                # TODO-NEEDS UNITS CHECK: spec_SF (Incompressible.specheat) returns kJ/(kg·K); multiplied by 1000 for J/(kg·K)
-                c = Inc.specheat(self.Fluid_ID.v, T=T_ev, P=0.0) * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
+                c = Inc.specheat(self.Fluid_ID.v, T=T_ev, P=0.0)
                 h_plant = Inc.enthalpy(self.Fluid_ID.v, T=self.T_in.v)
                 h = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
                 dT_dt = 1 / (mass_ev * c) * (-h * (m_dot_SF_to_exp + m_in_ev - m_out_ev) + m_dot_SF_to_exp * h_plant + m_in_ev * h_in - m_out_ev * h_out)

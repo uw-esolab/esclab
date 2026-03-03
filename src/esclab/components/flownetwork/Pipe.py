@@ -143,8 +143,8 @@ class Pipe(Component):
                 # Compute control volume average temperature
                 T_cv = self.init_temp.v
                 # Compute mass in CV
-                # TODO-NEEDS UNITS CHECK: verify T is in K and P in Pa as expected by Incompressible.density;
-                # original Fortran passes 0.0 for pressure to Density_SF.
+                # CONVERTED-NEEDS UNITS CHECK: T in K and P in Pa confirmed; inputs are SI
+                # (T_cv derives from init_temp [K]; original Fortran passes 0.0 for pressure).
                 mass_counter = mass_counter + Vol * Inc.density(self.Fluid_ID.v, T=T_cv, P=0.0)
 
             # Compute pressure drop
@@ -210,7 +210,8 @@ class Pipe(Component):
             # this appears to be a bug in the original source (both indices are n rather than n and n+1).
             T_cv = (self.T_nodes[n] + self.T_nodes[n]) / 2.0
             # Compute mass in CV
-            # TODO-NEEDS UNITS CHECK: verify T is in K and P in Pa as expected by Incompressible.density
+            # CONVERTED-NEEDS UNITS CHECK: T in K and P in Pa confirmed; inputs are SI
+            # (T_cv derives from T_nodes which are maintained in K).
             mass_counter = mass_counter + Vol * Inc.density(self.Fluid_ID.v, T=T_cv, P=0.0)
 
         # COMPUTE PRESSURE DROP

@@ -163,9 +163,9 @@ class BoilerFeedwaterHeater(Component):
         # Do All of the First Timestep Manipulations Here - There Are No Iterations at the Initial Time
         if self.model.is_first_step:
 
-            # TODO-NEEDS UNITS CHECK: FIT_PH P argument expects kPa (Pa/1000); h argument expects kJ/kg (J/kg/1000)
-            T_fw_in = fp.temperature("water", P=self.P_fw_in.v / 1000.0, h=self.h_fw_in.v / 1000.0)
-            rho_fw = fp.density("water", P=self.P_fw_in.v / 1000.0, h=self.h_fw_in.v / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_fw_in = fp.temperature("water", P=self.P_fw_in.v, h=self.h_fw_in.v)
+            rho_fw = fp.density("water", P=self.P_fw_in.v, h=self.h_fw_in.v)
 
             if rho_fw > 0.0:
                 Vol_dot_fw = self.m_dot_fw.v / rho_fw
@@ -228,10 +228,10 @@ class BoilerFeedwaterHeater(Component):
 
                 DELTA_T_act = DELTA_T_OD
 
-                # TODO-NEEDS UNITS CHECK: FIT_PH P argument expects kPa (Pa/1000); h argument expects kJ/kg (J/kg/1000)
-                T_fw_in = fp.temperature("water", P=self.P_fw_in.v / 1000.0, h=self.h_fw_in.v / 1000.0)
-                # TODO-NEEDS UNITS CHECK: FIT_PQ P argument expects kPa (Pa/1000)
-                T_sat_fw = fp.temperature("water", P=self.P_fw_in.v / 1000.0, quality=0.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                T_fw_in = fp.temperature("water", P=self.P_fw_in.v, h=self.h_fw_in.v)
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                T_sat_fw = fp.temperature("water", P=self.P_fw_in.v, quality=0.0)
 
                 if T_sat_fw < T_fw_in + DELTA_T_OD:
                     # Decrease DELTA_T to avoid entering the saturation region
@@ -240,37 +240,31 @@ class BoilerFeedwaterHeater(Component):
                 T_fw_out = T_fw_in + DELTA_T_act
                 T_sat_b = T_fw_out + self.TTD_BFWH.v
                 # Solve for shell pressure based on saturated temperature of steam extraction
-                # TODO-NEEDS UNITS CHECK: FIT_TQ returns pressure in kPa → multiply by 1000 to get Pa
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
                 P_shell = fp.pressure("water", T=T_sat_b, quality=1.0)
-                # TODO-NEEDS UNITS CHECK: FIT_TQ returns enthalpy in kJ/kg → multiply by 1000 to get J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
                 h_b_sat_g = fp.enthalpy("water", T=T_sat_b, quality=1.0)
-                P_shell = P_shell * 1000.0
-                h_b_sat_g = h_b_sat_g * 1000.0
 
                 if T_fw_out < T_sat_fw:
-                    # TODO-NEEDS UNITS CHECK: FIT_TP P argument expects kPa (Pa/1000); returns enthalpy in kJ/kg → multiply by 1000
-                    h_fw_out = fp.enthalpy("water", T=T_fw_out, P=self.P_fw_in.v / 1000.0)
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_fw_out = fp.enthalpy("water", T=T_fw_out, P=self.P_fw_in.v)
                 else:
-                    # TODO-NEEDS UNITS CHECK: FIT_PQ P argument expects kPa (Pa/1000); returns enthalpy in kJ/kg → multiply by 1000
-                    h_fw_out = fp.enthalpy("water", P=self.P_fw_in.v / 1000.0, quality=0.0)
-                h_fw_out = h_fw_out * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_fw_out = fp.enthalpy("water", P=self.P_fw_in.v, quality=0.0)
                 Q_dot_fw = self.m_dot_fw.v * (h_fw_out - self.h_fw_in.v)  # total amount of heat transfer needed by the feedwater
 
                 # Solve for heat from drain to fw
-                # TODO-NEEDS UNITS CHECK: FIT_PQ P argument expects kPa (Pa/1000); returns enthalpy in kJ/kg → multiply by 1000
-                h_b_sat_f = fp.enthalpy("water", P=P_shell / 1000.0, quality=0.0)
-                # TODO-NEEDS UNITS CHECK: FIT_PQ P argument expects kPa (Pa/1000); returns temperature
-                T_sat_b = fp.temperature("water", P=P_shell / 1000.0, quality=0.0)
-                h_b_sat_f = h_b_sat_f * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                h_b_sat_f = fp.enthalpy("water", P=P_shell, quality=0.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                T_sat_b = fp.temperature("water", P=P_shell, quality=0.0)
 
                 if abs(T_sat_b - T_fw_in) >= 0.1:
-                    # TODO-NEEDS UNITS CHECK: FIT_TP P argument expects kPa (Pa/1000); returns enthalpy in kJ/kg → multiply by 1000
-                    h_b_min = fp.enthalpy("water", P=P_shell / 1000.0, T=T_fw_in)
-                    h_b_min = h_b_min * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_b_min = fp.enthalpy("water", P=P_shell, T=T_fw_in)
                 else:
-                    # TODO-NEEDS UNITS CHECK: FIT_TP P argument expects kPa (Pa/1000); returns enthalpy in kJ/kg → multiply by 1000
-                    h_b_min = fp.enthalpy("water", P=P_shell / 1000.0, T=T_fw_in - 0.1)
-                    h_b_min = h_b_min * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_b_min = fp.enthalpy("water", P=P_shell, T=T_fw_in - 0.1)
 
                 # Find heat added from draining steam extraction to FW
                 Q_dot_drain = (
@@ -307,8 +301,8 @@ class BoilerFeedwaterHeater(Component):
                         )
                         Q_dot_act = Q_dot_drain + Q_dot_b
                         h_fw_out = (self.h_fw_in.v * self.m_dot_fw.v + Q_dot_act) / self.m_dot_fw.v
-                        # TODO-NEEDS UNITS CHECK: FIT_PH P argument expects kPa (Pa/1000); h argument expects kJ/kg (J/kg/1000)
-                        T_fw_out = fp.temperature("water", P=self.P_fw_in.v / 1000.0, h=h_fw_out / 1000.0)
+                        # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                        T_fw_out = fp.temperature("water", P=self.P_fw_in.v, h=h_fw_out)
                         DELTA_T_act = T_fw_out - T_fw_in
 
                 else:
@@ -318,8 +312,8 @@ class BoilerFeedwaterHeater(Component):
                     Q_dot_b = 0.0
                     Q_dot_act = Q_dot_drain
                     h_fw_out = (self.h_fw_in.v * self.m_dot_fw.v + Q_dot_drain) / self.m_dot_fw.v
-                    # TODO-NEEDS UNITS CHECK: FIT_PH P argument expects kPa (Pa/1000); h argument expects kJ/kg (J/kg/1000)
-                    T_fw_out = fp.temperature("water", P=self.P_fw_in.v / 1000.0, h=h_fw_out / 1000.0)
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    T_fw_out = fp.temperature("water", P=self.P_fw_in.v, h=h_fw_out)
                     DELTA_T_act = T_fw_out - T_fw_in
 
                 m_dot_total = self.m_dot_drain.v + m_dot_b
@@ -329,9 +323,9 @@ class BoilerFeedwaterHeater(Component):
                         + self.m_dot_drain.v * self.h_drain_in.v
                         - Q_dot_act
                     ) / m_dot_total
-                    # TODO-NEEDS UNITS CHECK: FIT_PH P argument expects kPa (Pa/1000); h argument expects kJ/kg (J/kg/1000)
-                    T_b_out = fp.temperature("water", P=P_shell / 1000.0, h=h_b_out / 1000.0)
-                    rho_b = fp.density("water", P=P_shell / 1000.0, h=h_b_out / 1000.0)
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    T_b_out = fp.temperature("water", P=P_shell, h=h_b_out)
+                    rho_b = fp.density("water", P=P_shell, h=h_b_out)
                     if rho_b > 0.0:
                         Vol_dot_total = m_dot_total / rho_b
                     else:
@@ -368,8 +362,8 @@ class BoilerFeedwaterHeater(Component):
             DELTA_T_act = self.DELTA_T_act.v
 
         # Calculating Feedwater Volumetric Flow Rate
-        # TODO-NEEDS UNITS CHECK: FIT_PH P argument expects kPa (Pa/1000); h argument expects kJ/kg (J/kg/1000)
-        rho_fw = fp.density("water", P=self.P_fw_in.v / 1000.0, h=h_fw_out / 1000.0)
+        # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+        rho_fw = fp.density("water", P=self.P_fw_in.v, h=h_fw_out)
 
         if rho_fw > 0.0:
             Vol_dot_fw = self.m_dot_fw.v / rho_fw

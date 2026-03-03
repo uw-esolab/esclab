@@ -299,28 +299,25 @@ class Condenser(Component):
             # Pump Speed the condenser pump is running at [MAX == 1]
 
             # !!!!!!!SOLVE FOR INITIAL TANK ENTHALPY AND MASS!!!!!!!!!!
-            # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa (P/1000); eeslib fp may use Pa
-            T_tank = fp.temperature("water", P=P_tank / 1000.0, x=1.0)
-            rho_tank_g = fp.density("water", P=P_tank / 1000.0, x=1.0)
-            # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000 to J/kg
-            h_pump_in = fp.enthalpy("water", P=P_tank / 1000.0, x=0.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_tank = fp.temperature("water", P=P_tank, x=1.0)
+            rho_tank_g = fp.density("water", P=P_tank, x=1.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_pump_in = fp.enthalpy("water", P=P_tank, x=0.0)
             rho_f = 1000.0  # assumed incompressible
-            h_pump_in = h_pump_in * 1000.0  # converting from kJ/kg to J/kg
             m_tank_f = self.Area_tank.v * self.L_tank_ini.v * rho_f
             m_tank_g = (self.Height_tank.v - self.L_tank_ini.v) * self.Area_tank.v * rho_tank_g
             m_tank = m_tank_f + m_tank_g
             x_tank = m_tank_g / m_tank
-            # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000 to J/kg
-            h_tank = fp.enthalpy("water", P=P_tank / 1000.0, x=x_tank)
-            h_tank = h_tank * 1000.0  # converting from KJ/kg to J/kg
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_tank = fp.enthalpy("water", P=P_tank, x=x_tank)
 
             # !!!!!!!!!!!!!!SEND OUT PUMP FLOW !!!!!!!!!!!!!!!!!!!!!
             # Pump pressure assuming no flow
             P_pump_out = self.Coef_c.v * self.pump_speed.v ** 2 * rho_f * 9.81 + P_tank + self.L_tank_ini.v * rho_f * 9.81
             T_pump_out = T_tank
-            # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000 to J/kg
-            h_pump_out = fp.enthalpy("water", P=P_pump_out / 1000.0, T=T_tank)
-            h_pump_out = h_pump_out * 1000.0  # converting from kJ/kg to J/kg
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_pump_out = fp.enthalpy("water", P=P_pump_out, T=T_tank)
 
             # Calculating Volumetric flows
             Vol_pump_out = 0.0
@@ -410,8 +407,8 @@ class Condenser(Component):
             # TODO-NEEDS CONVERSION REVIEW: getOutputValue(4) is h_pump_out slot but used as P_pump_prev
 
             # Find error for previous flow rate
-            # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa
-            T_tank = fp.temperature("water", P=P_tank / 1000.0, x=0.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_tank = fp.temperature("water", P=P_tank, x=0.0)
 
             Point_1x = m_dot_pump / rho_f
             Pump_head = P_pump_prev / rho_f / 9.81 - P_tank / rho_f / 9.81 - L_tank
@@ -434,11 +431,9 @@ class Condenser(Component):
                 Q_new = Point_1x  # Keep Q at same point
 
             P_pump_in = P_tank + rho_f * 9.81 * L_tank
-            # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy in kJ/kg then *1000; entropy in kJ/kg-K then *1000
-            h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-            s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank)
-            h_pump_in = h_pump_in * 1000.0  # converting from kJ/kg to J/kg
-            s_pump_in = s_pump_in * 1000.0  # converting from KJ/kg-K to J/kg-K
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)
+            s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)
             m_dot_pump = Q_new * rho_f
             P_pump_out = (A * Q_new ** 2.0 + B * Q_new + C) * rho_f * 9.81 + P_pump_in
 
@@ -452,15 +447,14 @@ class Condenser(Component):
             )
 
             s_pump_out_s = s_pump_in
-            # TODO-NEEDS UNITS CHECK: FIT_PS passes P in kPa, S in kJ/kg-K; enthalpy returned in kJ/kg then *1000
-            h_pump_out_s = fp.enthalpy("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0)
-            h_pump_out_s = h_pump_out_s * 1000.0  # converting from kJ/kg to J/kg
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_pump_out_s = fp.enthalpy("water", P=P_pump_out, s=s_pump_out_s)
             W_dot_pump_s = m_dot_pump * (h_pump_out_s - h_pump_in)  # Isentropic energy balance to find ideal work required
             W_dot_pump = W_dot_pump_s / Eta_pump
             h_pump_out = (m_dot_pump * h_pump_in + W_dot_pump) / m_dot_pump  # Actual Energy balance to find actual pump enthalpy out
-            # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; specific volume returned
-            T_pump_out = fp.temperature("water", P=P_pump_out / 1000.0, h=h_pump_out / 1000.0)
-            v_pump_out = fp.volume("water", P=P_pump_out / 1000.0, h=h_pump_out / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_pump_out = fp.temperature("water", P=P_pump_out, h=h_pump_out)
+            v_pump_out = fp.volume("water", P=P_pump_out, h=h_pump_out)
 
             Vol_pump_out = m_dot_pump * v_pump_out
 
@@ -485,8 +479,8 @@ class Condenser(Component):
             P_pump_prev = self.P_pump_out.v     # Pump outlet pressure computed at last iteration
 
             # Compute head loss in system
-            # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa
-            T_tank = fp.temperature("water", P=P_tank / 1000.0, x=0.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_tank = fp.temperature("water", P=P_tank, x=0.0)
             Pump_head = P_pump_prev / rho_f / 9.81 - P_tank / rho_f / 9.81 - L_tank
             System_headloss = (P_pump_prev - self.Sys_losses.v) / rho_f / 9.81
             Point_2y = Pump_head - self.P_DA.v / rho_f / 9.81 - System_headloss + P_tank / rho_f / 9.81 + L_tank
@@ -520,11 +514,9 @@ class Condenser(Component):
                     Q_new = max(Point_2x - 0.001, 0.000000001)
 
             P_pump_in = P_tank + rho_f * 9.81 * L_tank  # Pressure into the pump is the pressure at the bottom of the condenser tank
-            # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy in kJ/kg then *1000; entropy in kJ/kg-K then *1000
-            h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-            s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank)
-            h_pump_in = h_pump_in * 1000.0  # converting from kJ/kg to J/kg
-            s_pump_in = s_pump_in * 1000.0  # converting from KJ/kg-K to J/kg-K
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)
+            s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)
             m_dot_pump = Q_new * rho_f
             P_pump_out = (A * Q_new ** 2.0 + B * Q_new + C) * rho_f * 9.81 + P_pump_in
 
@@ -538,15 +530,14 @@ class Condenser(Component):
             )
 
             s_pump_out_s = s_pump_in
-            # TODO-NEEDS UNITS CHECK: FIT_PS passes P in kPa, S in kJ/kg-K; enthalpy returned in kJ/kg then *1000
-            h_pump_out_s = fp.enthalpy("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0)
-            h_pump_out_s = h_pump_out_s * 1000.0  # converting from kJ/kg to J/kg
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_pump_out_s = fp.enthalpy("water", P=P_pump_out, s=s_pump_out_s)
             W_dot_pump_s = m_dot_pump * (h_pump_out_s - h_pump_in)  # Isentropic energy balance to find ideal work required
             W_dot_pump = W_dot_pump_s / Eta_pump
             h_pump_out = (m_dot_pump * h_pump_in + W_dot_pump) / m_dot_pump  # Actual Energy balance to find actual pump enthalpy out
-            # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; specific volume returned
-            T_pump_out = fp.temperature("water", P=P_pump_out / 1000.0, h=h_pump_out / 1000.0)
-            v_pump_out = fp.volume("water", P=P_pump_out / 1000.0, h=h_pump_out / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_pump_out = fp.temperature("water", P=P_pump_out, h=h_pump_out)
+            v_pump_out = fp.volume("water", P=P_pump_out, h=h_pump_out)
 
             Point_1x = Point_2x  # Saving 2nd point as 1st point for next iteration
             Point_1y = Point_2y  # Saving 2nd point as 1st point for next iteration
@@ -583,19 +574,18 @@ class Condenser(Component):
 
         if self.m_dot_cool_in.v > 1.0:
             # Calculate the temperature of the cooling water out based on the TTD
-            # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg
-            T_cool_in = fp.temperature("water", P=self.P_cool_in.v / 1000.0, h=self.h_cool_in.v / 1000.0)
-            # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa
-            T_sat = fp.temperature("water", P=P_tank_prev / 1000.0, x=1.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_cool_in = fp.temperature("water", P=self.P_cool_in.v, h=self.h_cool_in.v)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_sat = fp.temperature("water", P=P_tank_prev, x=1.0)
             T_cool_out = max(T_sat - self.TTD.v, T_cool_in)
             T_cool_out = min(T_cool_out, 342.0)  # Cooling water temperature can not be higher than 70 [C] otherwise Cooling Tower Type will Fail
 
             # Calculate the Resistance on inside of the condenser tubes from cooling water
             vel = self.m_dot_cool_in.v / self.No_tubes.v / (3.14 / 4.0 * self.ID.v ** 2.0) / 1000.0
-            # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; viscosity in microPa-s, conductivity returned
-            mu_water = fp.viscosity("water", P=self.P_cool_in.v / 1000.0, h=self.h_cool_in.v / 1000.0)
-            k_water = fp.conductivity("water", P=self.P_cool_in.v / 1000.0, h=self.h_cool_in.v / 1000.0)
-            mu_water = mu_water / 1000000.0  # converting from microPa-s to Pa-s
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            mu_water = fp.viscosity("water", P=self.P_cool_in.v, h=self.h_cool_in.v)
+            k_water = fp.conductivity("water", P=self.P_cool_in.v, h=self.h_cool_in.v)
             if mu_water == 0.0:
                 mu_water = 0.001  # set as default
             Re_CW = 1000.0 * vel * self.ID.v / mu_water
@@ -618,17 +608,14 @@ class Condenser(Component):
             # Find condensation coefficient on the outside of the tubes
             # -> Incropera and DeWitt Condensation on horizontal pipes
             T_cw = (T_cool_out + T_cool_in) / 2.0
-            # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; densities returned; enthalpy returned in kJ/kg then *1000
-            rho_sat_g = fp.density("water", P=P_tank_prev / 1000.0, x=1.0)
-            h_sat_g = fp.enthalpy("water", P=P_tank_prev / 1000.0, x=1.0)
-            rho_sat_f = fp.density("water", P=P_tank_prev / 1000.0, x=0.0)
-            k_L = fp.conductivity("water", P=P_tank_prev / 1000.0, x=0.0)
-            h_sat_f = fp.enthalpy("water", P=P_tank_prev / 1000.0, x=0.0)
-            # TODO-NEEDS UNITS CHECK: viscosity returned in microPa-s then /1000000 to Pa-s
-            mu_L = fp.viscosity("water", P=P_tank_prev / 1000.0, x=0.0)
-            mu_L = mu_L / 1000000.0  # converting from microPa-s to Pa-s
-            h_sat_g = h_sat_g * 1000.0
-            h_sat_f = h_sat_f * 1000.0
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            rho_sat_g = fp.density("water", P=P_tank_prev, x=1.0)
+            h_sat_g = fp.enthalpy("water", P=P_tank_prev, x=1.0)
+            rho_sat_f = fp.density("water", P=P_tank_prev, x=0.0)
+            k_L = fp.conductivity("water", P=P_tank_prev, x=0.0)
+            h_sat_f = fp.enthalpy("water", P=P_tank_prev, x=0.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            mu_L = fp.viscosity("water", P=P_tank_prev, x=0.0)
             cp_L = f_cp_water(P_tank_prev, T_sat - 2.0)
             # Modified latent heat as recommended by Rosenhow (near EQ.27 of Incropera and DeWitt 2002)
             h_fg_mod = (h_sat_g - h_sat_f) + 0.68 * cp_L * (T_sat - T_cw)
@@ -646,9 +633,8 @@ class Condenser(Component):
             R_tot = R_cool + R_cond
 
             # Calculate the heat transfer from the cooling water
-            # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-            h_cool_out = fp.enthalpy("water", P=self.P_cool_in.v / 1000.0, T=T_cool_out)
-            h_cool_out = h_cool_out * 1000.0
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_cool_out = fp.enthalpy("water", P=self.P_cool_in.v, T=T_cool_out)
             Q_dot_R = (T_sat - T_cw) / (R_tot)  # heat transfer based on the resistance network
             Q_dot_cw = self.m_dot_cool_in.v * (h_cool_out - self.h_cool_in.v)  # heat transfer based on the amount of cooling flow traveling through the type
             Q_dot = min(Q_dot_R, Q_dot_cw)  # limiting heat transfer amount
@@ -656,8 +642,8 @@ class Condenser(Component):
             # Calculating volumetric cooling flow
             m_dot_cool_out = self.m_dot_cool_in.v
             h_cool_out = (self.m_dot_cool_in.v * self.h_cool_in.v + Q_dot) / self.m_dot_cool_in.v
-            # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg
-            T_cool_out = fp.temperature("water", P=self.P_cool_in.v / 1000.0, h=h_cool_out / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_cool_out = fp.temperature("water", P=self.P_cool_in.v, h=h_cool_out)
             P_cool_out = self.P_cool_in.v
             Vol_cool_out = m_dot_cool_out / 1000.0
         else:  # No Cooling Flow is entering the Condenser
@@ -666,8 +652,8 @@ class Condenser(Component):
             h_cool_out = self.h_cool_in.v
             P_cool_out = self.P_cool_in.v
             Q_dot = 0.0
-            # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg
-            T_cool_out = fp.temperature("water", P=self.P_cool_in.v / 1000.0, h=h_cool_out / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            T_cool_out = fp.temperature("water", P=self.P_cool_in.v, h=h_cool_out)
 
         # -------------------Calling OUTPUT Values----------------------------------------------------------------!
         self.m_dot_cool_out.v = m_dot_cool_out  # Cooling mass flow leaving the condenser HX [kg/s]
@@ -709,22 +695,19 @@ class Condenser(Component):
 
                 # RK4 Step Forward in Time to solve for new pressure and enthalpy at the end of the timestep
                 # AA tank calculations
-                # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000
-                T_tank = fp.temperature("water", P=P_tank_prev / 1000.0, x=0.0)
-                h_res = fp.enthalpy("water", P=P_tank_prev / 1000.0, x=0.0)
-                h_res = h_res * 1000.0  # Converting from KJ/kg to J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                T_tank = fp.temperature("water", P=P_tank_prev, x=0.0)
+                h_res = fp.enthalpy("water", P=P_tank_prev, x=0.0)
                 P_pump_in = P_tank_prev + self.L_tank_ini.v * rho_f * 9.81
-                # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                h_pump = h_pump * 1000.0  # Converting from KJ/kg to J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                 drhodhcp_a = drhodhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
                 drhodpch_a = drhodpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
                 dudhcp_a = dudhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
                 dudpch_a = dudpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
                 rho_tank = m_tank_prev / Vol_tank
-                u_tank = fp.intenergy("water", P=P_tank_prev / 1000.0, h=h_tank_prev / 1000.0)
-                u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                u_tank = fp.intenergy("water", P=P_tank_prev, h=h_tank_prev)
 
                 dPdt_aa = (
                     ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -736,21 +719,18 @@ class Condenser(Component):
                 h_aa = h_tank_prev + dhdt_aa * ts / 2.0
 
                 # BB tank calculations
-                # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000
-                T_tank = fp.temperature("water", P=P_aa / 1000.0, x=0.0)
-                h_res = fp.enthalpy("water", P=P_aa / 1000.0, x=0.0)
-                h_res = h_res * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                T_tank = fp.temperature("water", P=P_aa, x=0.0)
+                h_res = fp.enthalpy("water", P=P_aa, x=0.0)
                 P_pump_in = P_aa + self.L_tank_ini.v * rho_f * 9.81
-                # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                h_pump = h_pump * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                 drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
                 drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
                 dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
                 dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
-                u_tank = fp.intenergy("water", P=P_aa / 1000.0, h=h_aa / 1000.0)
-                u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                u_tank = fp.intenergy("water", P=P_aa, h=h_aa)
 
                 dPdt_bb = (
                     ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -762,22 +742,19 @@ class Condenser(Component):
                 h_bb = h_tank_prev + dhdt_bb * ts / 2.0
 
                 # CC Tank Calculations
-                # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000
-                T_tank = fp.temperature("water", P=P_bb / 1000.0, x=0.0)
-                h_res = fp.enthalpy("water", P=P_bb / 1000.0, x=0.0)
-                h_res = h_res * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                T_tank = fp.temperature("water", P=P_bb, x=0.0)
+                h_res = fp.enthalpy("water", P=P_bb, x=0.0)
                 P_pump_in = P_bb + self.L_tank_ini.v + rho_f * 9.81
-                # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                h_pump = h_pump * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                 drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
                 drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
                 dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
                 dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
                 rho_tank = m_tank_prev / Vol_tank
-                u_tank = fp.intenergy("water", P=P_bb / 1000.0, h=h_bb / 1000.0)
-                u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                u_tank = fp.intenergy("water", P=P_bb, h=h_bb)
 
                 dPdt_cc = (
                     ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -789,22 +766,19 @@ class Condenser(Component):
                 h_cc = h_tank_prev + dhdt_cc * ts
 
                 # DD Tank Calculations
-                # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000
-                T_tank = fp.temperature("water", P=P_cc / 1000.0, x=0.0)
-                h_res = fp.enthalpy("water", P=P_cc / 1000.0, x=0.0)
-                h_res = h_res * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                T_tank = fp.temperature("water", P=P_cc, x=0.0)
+                h_res = fp.enthalpy("water", P=P_cc, x=0.0)
                 P_pump_in = P_cc + self.L_tank_ini.v + rho_f * 9.81
-                # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                h_pump = h_pump * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                 drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
                 drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
                 dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
                 dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
-                # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg; internal energy returned in kJ/kg then *1000
-                u_tank = fp.intenergy("water", P=P_cc / 1000.0, h=h_cc / 1000.0)
-                u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                u_tank = fp.intenergy("water", P=P_cc, h=h_cc)
 
                 dPdt_dd = (
                     ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -815,10 +789,10 @@ class Condenser(Component):
                 # Solving for pressure at the end of the timestep
                 P_tank_new = P_tank_prev + (dPdt_aa + 2.0 * dPdt_bb + 2.0 * dPdt_cc + dPdt_dd) * ts / 6.0
                 h_tank_new = h_tank_prev + (dhdt_aa + 2.0 * dhdt_bb + 2.0 * dhdt_cc + dhdt_dd) * ts / 6.0
-                # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg
-                x_tank_new = fp.quality("water", P=P_tank_new / 1000.0, h=h_tank_new / 1000.0)
-                rho_tank_new = fp.density("water", P=P_tank_new / 1000.0, h=h_tank_new / 1000.0)
-                T_tank_new = fp.temperature("water", P=P_tank_new / 1000.0, h=h_tank_new / 1000.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                x_tank_new = fp.quality("water", P=P_tank_new, h=h_tank_new)
+                rho_tank_new = fp.density("water", P=P_tank_new, h=h_tank_new)
+                T_tank_new = fp.temperature("water", P=P_tank_new, h=h_tank_new)
 
                 dmdt = self.m_dot_in.v - m_dot_pump + m_dot_res
                 m_tank_new = m_tank_prev + dmdt * ts
@@ -893,7 +867,7 @@ class Condenser(Component):
             P_tank_new = P_tank_prev
             h_tank_new = h_tank_prev
             m_tank_new = m_tank_prev
-            T_tank_new = fp.temperature("water", P=P_tank_prev / 1000.0, x=0.0)  # TODO-NEEDS UNITS CHECK
+            T_tank_new = fp.temperature("water", P=P_tank_prev, x=0.0)  # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
 
             for i in range(1, ts_sub_i + 1):
                 if i > 1:
@@ -911,22 +885,19 @@ class Condenser(Component):
 
                     # RK4 Step Forward in Time to solve for new pressure and enthalpy at the end of the timestep
                     # AA tank calculations
-                    # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000
-                    T_tank = fp.temperature("water", P=P_tank_prev / 1000.0, x=0.0)
-                    h_res = fp.enthalpy("water", P=P_tank_prev / 1000.0, x=0.0)
-                    h_res = h_res * 1000.0  # Converting from KJ/kg to J/kg
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    T_tank = fp.temperature("water", P=P_tank_prev, x=0.0)
+                    h_res = fp.enthalpy("water", P=P_tank_prev, x=0.0)
                     P_pump_in = P_tank_prev + self.L_tank_ini.v * rho_f * 9.81
-                    # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                    h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                    h_pump = h_pump * 1000.0  # Converting from KJ/kg to J/kg
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                     drhodhcp_a = drhodhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
                     drhodpch_a = drhodpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
                     dudhcp_a = dudhcp(P_tank=P_tank_prev, h_tank=h_tank_prev, dh=dh)
                     dudpch_a = dudpch(P_tank=P_tank_prev, h_tank=h_tank_prev, dP=dP)
                     rho_tank = m_tank_prev / Vol_tank
-                    u_tank = fp.intenergy("water", P=P_tank_prev / 1000.0, h=h_tank_prev / 1000.0)
-                    u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                    u_tank = fp.intenergy("water", P=P_tank_prev, h=h_tank_prev)
 
                     dPdt_aa = (
                         ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -938,21 +909,18 @@ class Condenser(Component):
                     h_aa = h_tank_prev + dhdt_aa * ts_sub_f / 2.0
 
                     # BB tank calculations
-                    # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000
-                    T_tank = fp.temperature("water", P=P_aa / 1000.0, x=0.0)
-                    h_res = fp.enthalpy("water", P=P_aa / 1000.0, x=0.0)
-                    h_res = h_res * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    T_tank = fp.temperature("water", P=P_aa, x=0.0)
+                    h_res = fp.enthalpy("water", P=P_aa, x=0.0)
                     P_pump_in = P_aa + self.L_tank_ini.v * rho_f * 9.81
-                    # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                    h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                    h_pump = h_pump * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                     drhodhcp_a = drhodhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
                     drhodpch_a = drhodpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
                     dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
                     dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
-                    u_tank = fp.intenergy("water", P=P_aa / 1000.0, h=h_aa / 1000.0)
-                    u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                    u_tank = fp.intenergy("water", P=P_aa, h=h_aa)
 
                     dPdt_bb = (
                         ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -964,22 +932,19 @@ class Condenser(Component):
                     h_bb = h_tank_prev + dhdt_bb * ts_sub_f / 2.0
 
                     # CC Tank Calculations
-                    # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; enthalpy returned in kJ/kg then *1000
-                    T_tank = fp.temperature("water", P=P_bb / 1000.0, x=0.0)
-                    h_res = fp.enthalpy("water", P=P_bb / 1000.0, x=0.0)
-                    h_res = h_res * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    T_tank = fp.temperature("water", P=P_bb, x=0.0)
+                    h_res = fp.enthalpy("water", P=P_bb, x=0.0)
                     P_pump_in = P_bb + self.L_tank_ini.v + rho_f * 9.81
-                    # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                    h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                    h_pump = h_pump * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                     drhodhcp_a = drhodhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
                     drhodpch_a = drhodpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
                     dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
                     dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
                     rho_tank = m_tank_prev / Vol_tank
-                    u_tank = fp.intenergy("water", P=P_bb / 1000.0, h=h_bb / 1000.0)
-                    u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                    u_tank = fp.intenergy("water", P=P_bb, h=h_bb)
 
                     dPdt_cc = (
                         ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -991,22 +956,19 @@ class Condenser(Component):
                     h_cc = h_tank_prev + dhdt_cc * ts_sub_f
 
                     # DD Tank Calculations
-                    # TODO-NEEDS UNITS CHECK: FIT_PQ passes P in kPa; density returned; enthalpy in kJ/kg then *1000
-                    T_tank = fp.temperature("water", P=P_cc / 1000.0, x=0.0)
-                    h_res = fp.enthalpy("water", P=P_cc / 1000.0, x=0.0)
-                    rho_f = fp.density("water", P=P_cc / 1000.0, x=0.0)
-                    h_res = h_res * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    T_tank = fp.temperature("water", P=P_cc, x=0.0)
+                    h_res = fp.enthalpy("water", P=P_cc, x=0.0)
+                    rho_f = fp.density("water", P=P_cc, x=0.0)
                     P_pump_in = P_cc + self.L_tank_ini.v + rho_f * 9.81
-                    # TODO-NEEDS UNITS CHECK: FIT_TP passes P in kPa; enthalpy returned in kJ/kg then *1000
-                    h_pump = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank)
-                    h_pump = h_pump * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    h_pump = fp.enthalpy("water", P=P_pump_in, T=T_tank)
 
                     drhodhcp_a = drhodhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
                     drhodpch_a = drhodpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
                     dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
                     dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
-                    u_tank = fp.intenergy("water", P=P_cc / 1000.0, h=h_cc / 1000.0)
-                    u_tank = u_tank * 1000.0  # converting kJ/kg to J/kg
+                    u_tank = fp.intenergy("water", P=P_cc, h=h_cc)
 
                     dPdt_dd = (
                         ((-h_pump + u_tank) * m_dot_pump + (h_res - u_tank) * m_dot_res + (self.h_in.v - u_tank) * self.m_dot_in.v - Q_dot) * drhodhcp_a
@@ -1017,10 +979,10 @@ class Condenser(Component):
                     # Solving for pressure at the end of the timestep
                     P_tank_new = P_tank_prev + (dPdt_aa + 2.0 * dPdt_bb + 2.0 * dPdt_cc + dPdt_dd) * ts_sub_f / 6.0
                     h_tank_new = h_tank_prev + (dhdt_aa + 2.0 * dhdt_bb + 2.0 * dhdt_cc + dhdt_dd) * ts_sub_f / 6.0
-                    # TODO-NEEDS UNITS CHECK: FIT_PH passes P in kPa, h in kJ/kg
-                    x_tank_new = fp.quality("water", P=P_tank_new / 1000.0, h=h_tank_new / 1000.0)
-                    rho_tank_new = fp.density("water", P=P_tank_new / 1000.0, h=h_tank_new / 1000.0)
-                    T_tank_new = fp.temperature("water", P=P_tank_new / 1000.0, h=h_tank_new / 1000.0)
+                    # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+                    x_tank_new = fp.quality("water", P=P_tank_new, h=h_tank_new)
+                    rho_tank_new = fp.density("water", P=P_tank_new, h=h_tank_new)
+                    T_tank_new = fp.temperature("water", P=P_tank_new, h=h_tank_new)
 
                     dmdt = self.m_dot_in.v - m_dot_pump + m_dot_res
                     m_tank_new = m_tank_prev + dmdt * ts_sub_f

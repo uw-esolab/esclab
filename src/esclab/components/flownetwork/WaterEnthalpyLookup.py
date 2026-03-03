@@ -48,20 +48,17 @@ class WaterEnthalpyLookup(Component):
         if self.if_sat.v == 1.0:  # Wants a enthalpy value in the saturation region
             if self.use_temp.v == 1.0:  # use Temp and Quality to find enthalpy
                 # TODO-NEEDS LIBRARY: eeslib equivalent of FIT_TQ("water", T, Q, enth) for saturation-region enthalpy
+                # CONVERTED-NEEDS UNITS CHECK: removed *1000 kJ/kg->J/kg; eeslib fp.enthalpy returns J/kg
                 enthalpy = fp.enthalpy("water", T=self.temperature.v, Q=self.x_value.v)
-                # TODO-NEEDS UNITS CHECK: FIT_TQ returns kJ/kg; multiplied by 1000 to convert to J/kg
-                enthalpy = enthalpy * 1000.0
             else:  # use pressure and quality to find enthalpy
                 # TODO-NEEDS LIBRARY: eeslib equivalent of FIT_PQ("water", P, Q, enth) for saturation-region enthalpy
-                # TODO-NEEDS UNITS CHECK: FIT returns kJ/kg; incoming pressure was divided by 1000 in Fortran (Pa->kPa)
-                enthalpy = fp.enthalpy("water", P=self.pressure.v / 1000.0, Q=self.x_value.v)
-                # TODO-NEEDS UNITS CHECK: FIT_PQ returns kJ/kg; multiplied by 1000 to convert to J/kg
-                enthalpy = enthalpy * 1000.0
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+                # CONVERTED-NEEDS UNITS CHECK: removed *1000 kJ/kg->J/kg; eeslib fp.enthalpy returns J/kg
+                enthalpy = fp.enthalpy("water", P=self.pressure.v, Q=self.x_value.v)
         else:  # enthalpy value is not in the saturation region
-            # TODO-NEEDS UNITS CHECK: FIT_TP("water", T, P/1000, enth); incoming pressure converted Pa->kPa
-            enthalpy = fp.enthalpy("water", T=self.temperature.v, P=self.pressure.v / 1000.0)
-            # TODO-NEEDS UNITS CHECK: FIT_TP returns kJ/kg; multiplied by 1000 to convert to J/kg
-            enthalpy = enthalpy * 1000.0
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+            # CONVERTED-NEEDS UNITS CHECK: removed *1000 kJ/kg->J/kg; eeslib fp.enthalpy returns J/kg
+            enthalpy = fp.enthalpy("water", T=self.temperature.v, P=self.pressure.v)
         return enthalpy
 
     def presim_setup(self, **kwargs):

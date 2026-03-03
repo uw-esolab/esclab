@@ -60,10 +60,10 @@ class PowerBlockValve(Component):
             #     endif
             # endif
 
-            # TODO-NEEDS UNITS CHECK: P=101325.0 passed directly (Pa); eeslib fp may expect kPa
+            # CONVERTED-NEEDS UNITS CHECK: P=101325.0 is already in Pa; eeslib uses Pa
             v_ref = fp.specific_volume("water", T=288.5, P=101325.0)  # density of water at reference state (atm pressure and 15.5 deg C)
-            # TODO-NEEDS UNITS CHECK: P in kPa (Pa/1000), h in kJ/kg (J/kg / 1000)
-            v_in = fp.specific_volume("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0)  # density of water entering valve
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+            v_in = fp.specific_volume("water", P=self.P_in.v, h=self.h_in.v)  # density of water entering valve
 
             if v_in > 0.0:  # ERROR with FIT, set spec_grav to 1.d0 for this iteration
                 spec_grav = v_in / v_ref  # specific gravity (actual density over reference density)
@@ -83,8 +83,8 @@ class PowerBlockValve(Component):
             # yet been assigned at this point in the code. This appears to be a bug in the original Fortran
             # (h_out is uninitialized). Ported as-is.
             h_in_local = self.h_out.v
-            # TODO-NEEDS UNITS CHECK: P in kPa (Pa/1000), h in kJ/kg (J/kg / 1000)
-            rho = fp.density("water", P=P_out / 1000.0, h=self.h_out.v / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+            rho = fp.density("water", P=P_out, h=self.h_out.v)
             if rho > 0.0:
                 Vol_dot_out = self.m_dot_in.v / rho
             else:
@@ -131,8 +131,8 @@ class PowerBlockValve(Component):
 
             if self.P_in.v > 1000.0:  # Pressure is possible, calculate specific gravity using FIT
                 v_ref = 0.0009600113091621002  # density of water at reference state (atm pressure and 15.5 deg C)
-                # TODO-NEEDS UNITS CHECK: P in kPa (Pa/1000), h in kJ/kg (J/kg / 1000)
-                v_in = fp.specific_volume("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0)  # density of water entering valve
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                v_in = fp.specific_volume("water", P=self.P_in.v, h=self.h_in.v)  # density of water entering valve
                 spec_grav = v_in / v_ref  # specific gravity (actual density over reference density)
             else:
                 spec_grav = 1.0  # guess until there is a high enough pressure to compute with FIT Model
@@ -145,9 +145,9 @@ class PowerBlockValve(Component):
             P_out = self.P_in.v - DELTA_P
             h_out = self.h_in.v  # No work or heat is traveling through system boundary, enthalpy does not change
             if P_out > 1000.0:  # will work with FIT
-                # TODO-NEEDS UNITS CHECK: P in kPa (Pa/1000), h in kJ/kg (J/kg / 1000)
-                T_out = fp.temperature("water", P=P_out / 1000.0, h=h_out / 1000.0)
-                rho = fp.density("water", P=P_out / 1000.0, h=h_out / 1000.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                T_out = fp.temperature("water", P=P_out, h=h_out)
+                rho = fp.density("water", P=P_out, h=h_out)
             else:
                 T_out = 0.0  # set temperature to zero, won't be entered as input to any type so okay to do
 
@@ -179,8 +179,8 @@ class PowerBlockValve(Component):
 
             if self.P_in.v > 1000.0:  # Pressure is possible, compute specific gravity
                 v_ref = 0.0009600113091621002  # density of water at reference state (atm pressure and 15.5 deg C)
-                # TODO-NEEDS UNITS CHECK: P in kPa (Pa/1000), h in kJ/kg (J/kg / 1000)
-                v_in = fp.specific_volume("water", P=self.P_in.v / 1000.0, h=self.h_in.v / 1000.0)  # density of water entering valve
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                v_in = fp.specific_volume("water", P=self.P_in.v, h=self.h_in.v)  # density of water entering valve
                 spec_grav = v_in / v_ref   # specific gravity (actual density over reference density)
             else:
                 spec_grav = 1.0  # assume until pressure is valid to use fit
@@ -193,9 +193,9 @@ class PowerBlockValve(Component):
             P_out = self.P_in.v - DELTA_P
             h_out = self.h_in.v  # No work or heat is traveling through system boundary, enthalpy does not change
             if P_out > 1000.0:  # will work with FIT
-                # TODO-NEEDS UNITS CHECK: P in kPa (Pa/1000), h in kJ/kg (J/kg / 1000)
-                T_out = fp.temperature("water", P=P_out / 1000.0, h=h_out / 1000.0)
-                rho = fp.density("water", P=P_out / 1000.0, h=h_out / 1000.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                T_out = fp.temperature("water", P=P_out, h=h_out)
+                rho = fp.density("water", P=P_out, h=h_out)
             else:
                 T_out = 0.0  # set temperature to zero, won't be entered as input to any type so okay to do
 

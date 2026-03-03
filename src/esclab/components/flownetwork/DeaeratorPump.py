@@ -228,15 +228,15 @@ class DeaeratorPump(Component):
 
             # Check for pump cavitation through pump 1
             if self.Power_VarPump.v == 1.0:
-                # TODO-NEEDS UNITS CHECK: P_tank_val in Pa passed as kPa to fp
-                T_v = fp.temperature("water", P=P_tank_val / 1000.0, Q=1.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+                T_v = fp.temperature("water", P=P_tank_val, Q=1.0)
                 P_pump_in = P_tank_val + (L_tank_val + self.Length_tank2pump.v) * 9.81 * 1000.0
                 Q_dot = self.m_dot_P1.v / 1000.0
                 vel = Q_dot / (3.14 / 4.0 * D_pump_inlet ** 2.0)
                 lnP1P2 = 8.314 * (1 / T_ref - 1 / T_v)   # Clausius Clapeyron Equation to find vapor pressure of water
                 P_v = P_ref * math.exp(lnP1P2)
-                # TODO-NEEDS UNITS CHECK: P_v in Pa passed as kPa to fp
-                rho_v = fp.density("water", P=P_v / 1000.0, Q=1.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+                rho_v = fp.density("water", P=P_v, Q=1.0)
                 # Speed-scaled NPSH curve coefficients
                 A = self.P1_NPSH_A.v * self.pump_speed.v ** 3.0
                 B = self.P1_NPSH_B.v * self.pump_speed.v ** 2.0
@@ -254,15 +254,15 @@ class DeaeratorPump(Component):
 
             # Check for Cavitation through pump 2
             if self.Power_Pump2.v == 1.0:
-                # TODO-NEEDS UNITS CHECK: P_tank_val in Pa passed as kPa to fp
-                T_v = fp.temperature("water", P=P_tank_val / 1000.0, Q=1.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+                T_v = fp.temperature("water", P=P_tank_val, Q=1.0)
                 P_pump_in = P_tank_val + (L_tank_val + self.Length_tank2pump.v) * 9.81 * 1000.0
                 Q_dot = self.m_dot_P2.v / 1000.0
                 vel = Q_dot / (3.14 / 4.0 * D_pump_inlet ** 2.0)
                 lnP1P2 = 8.314 * (1 / T_ref - 1 / T_v)   # Clausius Clapeyron Equation to find vapor pressure of water
                 P_v = P_ref * math.exp(lnP1P2)
-                # TODO-NEEDS UNITS CHECK: P_v in Pa passed as kPa to fp
-                rho_v = fp.density("water", P=P_v / 1000.0, Q=1.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+                rho_v = fp.density("water", P=P_v, Q=1.0)
                 A = self.P2_NPSH_A.v * self.pump_speed.v ** 3.0
                 B = self.P2_NPSH_B.v * self.pump_speed.v ** 2.0
                 C = self.P2_NPSH_C.v * self.pump_speed.v
@@ -279,15 +279,15 @@ class DeaeratorPump(Component):
 
             # check for cavitation through pump 3
             if self.Power_Pump3.v == 1.0:
-                # TODO-NEEDS UNITS CHECK: P_tank_val in Pa passed as kPa to fp
-                T_v = fp.temperature("water", P=P_tank_val / 1000.0, Q=1.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+                T_v = fp.temperature("water", P=P_tank_val, Q=1.0)
                 P_pump_in = P_tank_val + (L_tank_val + self.Length_tank2pump.v) * 9.81 * 1000.0
                 Q_dot = self.m_dot_P3.v / 1000.0
                 vel = Q_dot / (3.14 / 4.0 * D_pump_inlet ** 2.0)
                 lnP1P2 = 8.314 * (1 / T_ref - 1 / T_v)   # Clausius Clapeyron Equation to find vapor pressure of water
                 P_v = P_ref * math.exp(lnP1P2)
-                # TODO-NEEDS UNITS CHECK: P_v in Pa passed as kPa to fp
-                rho_v = fp.density("water", P=P_v / 1000.0, Q=1.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+                rho_v = fp.density("water", P=P_v, Q=1.0)
                 # TODO-NEEDS CONVERSION REVIEW: Fortran uses P2_NPSH coefficients here instead of P3_NPSH; ported faithfully
                 A = self.P2_NPSH_A.v * self.pump_speed.v ** 3.0
                 B = self.P2_NPSH_B.v * self.pump_speed.v ** 2.0
@@ -357,10 +357,10 @@ class DeaeratorPump(Component):
                 m_dot_LPB1 = 0.0
 
             # Finding initial tank enthalpy
-            # TODO-NEEDS UNITS CHECK: P_tank_ini in Pa passed as kPa to fp
-            T_tank = fp.temperature("water", P=self.P_tank_ini.v / 1000.0, Q=1.0)
-            rho_tank_g = fp.density("water", P=self.P_tank_ini.v / 1000.0, Q=1.0)
-            rho_tank_f = fp.density("water", P=self.P_tank_ini.v / 1000.0, Q=0.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+            T_tank = fp.temperature("water", P=self.P_tank_ini.v, Q=1.0)
+            rho_tank_g = fp.density("water", P=self.P_tank_ini.v, Q=1.0)
+            rho_tank_f = fp.density("water", P=self.P_tank_ini.v, Q=0.0)
             R_tank = self.D_tank.v / 2.0
             Vol_tank = 3.14 * R_tank ** 2.0 * self.Length_tank.v
             Area_liquid = (
@@ -372,27 +372,27 @@ class DeaeratorPump(Component):
             m_tank_g = (Vol_tank - Area_liquid * self.Length_tank.v) * rho_tank_g
             m_tank_tot = m_tank_f + m_tank_g
             x_tank = m_tank_g / m_tank_tot
-            # TODO-NEEDS UNITS CHECK: P_tank_ini in Pa passed as kPa to fp; returned h in kJ/kg multiplied by 1000
-            h_tank_ini = fp.enthalpy("water", P=self.P_tank_ini.v / 1000.0, Q=x_tank) * 1000.0   # Converting to J/kg from KJ/kg
-            T_tank_new = fp.temperature("water", P=self.P_tank_ini.v / 1000.0, Q=x_tank)
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+            h_tank_ini = fp.enthalpy("water", P=self.P_tank_ini.v, Q=x_tank)   # J/kg
+            T_tank_new = fp.temperature("water", P=self.P_tank_ini.v, Q=x_tank)
 
             P_bottom = self.P_tank_ini.v + self.L_tank_ini.v * rho_tank_f * 9.81
             m_dot_pump = 0.0001
             Q_dot_pump = m_dot_pump / rho_tank_f
-            # TODO-NEEDS UNITS CHECK: P_bottom in Pa passed as kPa to fp; returned h/s in kJ/kg multiplied by 1000
-            h_pump_in = fp.enthalpy("water", P=P_bottom / 1000.0, T=T_tank) * 1000.0   # Converting to J/kg from KJ/kg
-            s_pump_in = fp.entropy("water", P=P_bottom / 1000.0, T=T_tank) * 1000.0    # Converting from KJ/kg-K to J/kg-K
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+            h_pump_in = fp.enthalpy("water", P=P_bottom, T=T_tank)   # J/kg
+            s_pump_in = fp.entropy("water", P=P_bottom, T=T_tank)    # J/(kg·K)
             # Finding enthalpy leaving the pump assuming minimal flow leaving
             P_pump_out = self.P1_Coef_C.v * rho_tank_f * 9.81 + self.P_tank_ini.v + self.L_tank_ini.v * rho_tank_f * 9.81
             s_pump_out_s = s_pump_in   # Converting from KJ/kg-K to J/kg-K
-            # TODO-NEEDS UNITS CHECK: P_pump_out in Pa passed as kPa; s_pump_out_s in J/kg-K divided by 1000 to get kJ/kg-K
-            h_pump_out_s = fp.enthalpy("water", P=P_pump_out / 1000.0, S=s_pump_out_s / 1000.0) * 1000.0   # Converting to J/kg from KJ/kg
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+            h_pump_out_s = fp.enthalpy("water", P=P_pump_out, S=s_pump_out_s)   # J/kg
             Eta_P1 = 0.01    # pump is running at minimal efficiency
             W_dot_pump_s = m_dot_pump * (h_pump_out_s - h_pump_in)
             W_dot_P1 = W_dot_pump_s / Eta_P1
             h_pump_out = (m_dot_pump * h_pump_in + W_dot_P1) / m_dot_pump
-            # TODO-NEEDS UNITS CHECK: P_pump_out in Pa passed as kPa; h_pump_out in J/kg divided by 1000 to get kJ/kg
-            T_pump_out = fp.temperature("water", P=P_pump_out / 1000.0, H=h_pump_out / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed /1000 J/kg->kJ/kg; eeslib uses J/kg
+            T_pump_out = fp.temperature("water", P=P_pump_out, H=h_pump_out)
 
             # check alarm and trip states
             if self.LL_Alarm_sp.v >= self.L_tank_ini.v:
@@ -458,9 +458,9 @@ class DeaeratorPump(Component):
         L_tank = self.L_tank.v
         # Pressure of the Deaerator during this timestep
         P_tank = self.P_tank.v
-        # TODO-NEEDS UNITS CHECK: P_tank in Pa passed as kPa to fp
-        rho_tank_f = fp.density("water", P=P_tank / 1000.0, Q=0.0)
-        T_tank = fp.temperature("water", P=P_tank / 1000.0, Q=0.0)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+        rho_tank_f = fp.density("water", P=P_tank, Q=0.0)
+        T_tank = fp.temperature("water", P=P_tank, Q=0.0)
         # Previous Pressure leaving the pumps
         P_pump_prev = self.P_pump_out.v
 
@@ -510,9 +510,9 @@ class DeaeratorPump(Component):
 
                     P1_point_2x = Q_new_P1
                     P_pump_in = P_tank + rho_tank_f * 9.81 * (L_tank + self.Length_tank2pump.v)
-                    # TODO-NEEDS UNITS CHECK: P_pump_in in Pa passed as kPa to fp; returned h/s in kJ/kg multiplied by 1000
-                    h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0   # converting from kJ/kg to J/kg
-                    s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0    # converting from KJ/kg-K to J/kg-K
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                    h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)   # J/kg
+                    s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)    # J/(kg·K)
                     # Mass flow rate leaving pump 1
                     m_dot_P1 = max(Q_new_P1 * rho_tank_f, 0.000001)
                     P_P1_out = (A * Q_new_P1 ** 2.0 + B * Q_new_P1 + C) * rho_tank_f * 9.81 + P_pump_in
@@ -528,8 +528,8 @@ class DeaeratorPump(Component):
                         0.2
                     )
                     s_pump_out_s = s_pump_in
-                    # TODO-NEEDS UNITS CHECK: P_P1_out in Pa passed as kPa; s_pump_out_s in J/kg-K divided by 1000
-                    h_pump_out_s = fp.enthalpy("water", P=P_P1_out / 1000.0, S=s_pump_out_s / 1000.0) * 1000.0   # converting from kJ/kg to J/kg
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                    h_pump_out_s = fp.enthalpy("water", P=P_P1_out, S=s_pump_out_s)   # J/kg
                     # Isentropic energy balance to find ideal work required
                     W_dot_pump_s = m_dot_P1 * (h_pump_out_s - h_pump_in)
                     W_dot_P1 = W_dot_pump_s / Eta_P1
@@ -590,9 +590,9 @@ class DeaeratorPump(Component):
 
                     # Pressure into the pump is the pressure at the bottom of the condenser tank
                     P_pump_in = P_tank + rho_tank_f * 9.81 * (L_tank + self.Length_tank2pump.v)
-                    # TODO-NEEDS UNITS CHECK: P_pump_in in Pa passed as kPa to fp; returned h/s in kJ/kg multiplied by 1000
-                    h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0   # converting from kJ/kg to J/kg
-                    s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0    # converting from KJ/kg-K to J/kg-K
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                    h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)   # J/kg
+                    s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)    # J/(kg·K)
                     m_dot_P1 = max(Q_new_P1 * rho_tank_f, 0.0001)
                     P_P1_out = (A * Q_new_P1 ** 2.0 + B * Q_new_P1 + C) * rho_tank_f * 9.81 + P_pump_in
 
@@ -607,8 +607,8 @@ class DeaeratorPump(Component):
                         0.2
                     )
                     s_pump_out_s = s_pump_in
-                    # TODO-NEEDS UNITS CHECK: P_P1_out in Pa passed as kPa; s_pump_out_s in J/kg-K divided by 1000
-                    h_pump_out_s = fp.enthalpy("water", P=P_P1_out / 1000.0, S=s_pump_out_s / 1000.0) * 1000.0   # converting from kJ/kg to J/kg
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                    h_pump_out_s = fp.enthalpy("water", P=P_P1_out, S=s_pump_out_s)   # J/kg
                     # Isentropic energy balance to find ideal work required
                     W_dot_pump_s = m_dot_P1 * (h_pump_out_s - h_pump_in)
                     W_dot_P1 = W_dot_pump_s / Eta_P1
@@ -682,9 +682,9 @@ class DeaeratorPump(Component):
 
                 P2_point_2x = Q_new_P2
                 P_pump_in = P_tank + rho_tank_f * 9.81 * (L_tank + self.Length_tank2pump.v)
-                # TODO-NEEDS UNITS CHECK: P_pump_in in Pa passed as kPa to fp; returned h/s in kJ/kg multiplied by 1000
-                h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0   # converting from kJ/kg to J/kg
-                s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0    # converting from KJ/kg-K to J/kg-K
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)   # J/kg
+                s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)    # J/(kg·K)
                 # Mass flow rate leaving pump 2
                 m_dot_P2 = max(Q_new_P2 * rho_tank_f, 0.000001)
                 P_P2_out = (A * Q_new_P2 ** 2.0 + B * Q_new_P2 + C) * rho_tank_f * 9.81 + P_pump_in
@@ -698,8 +698,8 @@ class DeaeratorPump(Component):
                     0.01
                 )
                 s_pump_out_s = s_pump_in
-                # TODO-NEEDS UNITS CHECK: P_P2_out in Pa passed as kPa; s_pump_out_s in J/kg-K divided by 1000
-                h_pump_out_s = fp.enthalpy("water", P=P_P2_out / 1000.0, S=s_pump_out_s / 1000.0) * 1000.0   # converting from kJ/kg to J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_out_s = fp.enthalpy("water", P=P_P2_out, S=s_pump_out_s)   # J/kg
                 # Isentropic energy balance to find ideal work required
                 W_dot_pump_s = m_dot_P2 * (h_pump_out_s - h_pump_in)
                 W_dot_P2 = W_dot_pump_s / Eta_P2
@@ -760,9 +760,9 @@ class DeaeratorPump(Component):
 
                 # Pressure into the pump is the pressure at the bottom of the condenser tank
                 P_pump_in = P_tank + rho_tank_f * 9.81 * (L_tank + self.Length_tank2pump.v)
-                # TODO-NEEDS UNITS CHECK: P_pump_in in Pa passed as kPa to fp; returned h/s in kJ/kg multiplied by 1000
-                h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0   # converting from kJ/kg to J/kg
-                s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0    # converting from KJ/kg-K to J/kg-K
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)   # J/kg
+                s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)    # J/(kg·K)
                 m_dot_P2 = max(Q_new_P2 * rho_tank_f, 0.0001)
                 P_P2_out = (A * Q_new_P2 ** 2.0 + B * Q_new_P2 + C) * rho_tank_f * 9.81 + P_pump_in
 
@@ -775,8 +775,8 @@ class DeaeratorPump(Component):
                     0.01
                 )
                 s_pump_out_s = s_pump_in
-                # TODO-NEEDS UNITS CHECK: P_P2_out in Pa passed as kPa; s_pump_out_s in J/kg-K divided by 1000
-                h_pump_out_s = fp.enthalpy("water", P=P_P2_out / 1000.0, S=s_pump_out_s / 1000.0) * 1000.0   # converting from kJ/kg to J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_out_s = fp.enthalpy("water", P=P_P2_out, S=s_pump_out_s)   # J/kg
                 # Isentropic energy balance to find ideal work required
                 W_dot_pump_s = m_dot_P2 * (h_pump_out_s - h_pump_in)
                 W_dot_P2 = W_dot_pump_s / Eta_P2
@@ -841,9 +841,9 @@ class DeaeratorPump(Component):
 
                 P3_point_2x = Q_new_P3
                 P_pump_in = P_tank + rho_tank_f * 9.81 * (L_tank + self.Length_tank2pump.v)
-                # TODO-NEEDS UNITS CHECK: P_pump_in in Pa passed as kPa to fp; returned h/s in kJ/kg multiplied by 1000
-                h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0   # converting from kJ/kg to J/kg
-                s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0    # converting from KJ/kg-K to J/kg-K
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)   # J/kg
+                s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)    # J/(kg·K)
                 # Mass flow rate leaving pump 2
                 m_dot_P3 = max(Q_new_P3 * rho_tank_f, 0.000001)
                 P_P3_out = (A * Q_new_P3 ** 2.0 + B * Q_new_P3 + C) * rho_tank_f * 9.81 + P_pump_in
@@ -857,8 +857,8 @@ class DeaeratorPump(Component):
                     0.01
                 )
                 s_pump_out_s = s_pump_in
-                # TODO-NEEDS UNITS CHECK: P_P3_out in Pa passed as kPa; s_pump_out_s in J/kg-K divided by 1000
-                h_pump_out_s = fp.enthalpy("water", P=P_P3_out / 1000.0, S=s_pump_out_s / 1000.0) * 1000.0   # converting from kJ/kg to J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_out_s = fp.enthalpy("water", P=P_P3_out, S=s_pump_out_s)   # J/kg
                 # Isentropic energy balance to find ideal work required
                 W_dot_pump_s = m_dot_P3 * (h_pump_out_s - h_pump_in)
                 W_dot_P3 = W_dot_pump_s / Eta_P3
@@ -919,9 +919,9 @@ class DeaeratorPump(Component):
 
                 # Pressure into the pump is the pressure at the bottom of the condenser tank
                 P_pump_in = P_tank + rho_tank_f * 9.81 * (L_tank + self.Length_tank2pump.v)
-                # TODO-NEEDS UNITS CHECK: P_pump_in in Pa passed as kPa to fp; returned h/s in kJ/kg multiplied by 1000
-                h_pump_in = fp.enthalpy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0   # converting from kJ/kg to J/kg
-                s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, T=T_tank) * 1000.0    # converting from KJ/kg-K to J/kg-K
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_in = fp.enthalpy("water", P=P_pump_in, T=T_tank)   # J/kg
+                s_pump_in = fp.entropy("water", P=P_pump_in, T=T_tank)    # J/(kg·K)
                 m_dot_P3 = max(Q_new_P3 * rho_tank_f, 0.0001)
                 P_P3_out = (A * Q_new_P3 ** 2.0 + B * Q_new_P3 + C) * rho_tank_f * 9.81 + P_pump_in
 
@@ -934,8 +934,8 @@ class DeaeratorPump(Component):
                     0.01
                 )
                 s_pump_out_s = s_pump_in
-                # TODO-NEEDS UNITS CHECK: P_P3_out in Pa passed as kPa; s_pump_out_s in J/kg-K divided by 1000
-                h_pump_out_s = fp.enthalpy("water", P=P_P3_out / 1000.0, S=s_pump_out_s / 1000.0) * 1000.0   # converting from kJ/kg to J/kg
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+                h_pump_out_s = fp.enthalpy("water", P=P_P3_out, S=s_pump_out_s)   # J/kg
                 # Isentropic energy balance to find ideal work required
                 W_dot_pump_s = m_dot_P3 * (h_pump_out_s - h_pump_in)
                 W_dot_P3 = W_dot_pump_s / Eta_P3
@@ -972,8 +972,8 @@ class DeaeratorPump(Component):
             Vol_dot_pump = m_dot_pump / 1000.0
             h_pump_out_combined = (self.m_dot_P1.v * h_P1_out + self.m_dot_P2.v * h_P2_out + self.m_dot_P3.v * h_P3_out) / m_dot_pump
             P_pump_out_combined = (self.m_dot_P1.v * P_P1_out + self.m_dot_P2.v * P_P2_out + self.m_dot_P3.v * P_P3_out) / m_dot_pump   # weighted average
-            # TODO-NEEDS UNITS CHECK: P_pump_out_combined in Pa passed as kPa; h_pump_out_combined in J/kg divided by 1000
-            T_pump_out_combined = fp.temperature("water", P=P_pump_out_combined / 1000.0, H=h_pump_out_combined / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed /1000 J/kg->kJ/kg; eeslib uses J/kg
+            T_pump_out_combined = fp.temperature("water", P=P_pump_out_combined, H=h_pump_out_combined)
         else:
             m_dot_pump = 0.00000001
             Vol_dot_pump = 0.0
@@ -1005,8 +1005,8 @@ class DeaeratorPump(Component):
             m_dot_LPB1_prev = self.m_dot_LPB1.v
 
             # enthalpy of saturated liquid in the tank for current pressure
-            # TODO-NEEDS UNITS CHECK: P_tank in Pa passed as kPa; returned h in kJ/kg multiplied by 1000
-            h_in = fp.enthalpy("water", P=P_tank / 1000.0, Q=0.05) * 1000.0   # Converting from KJ/kg to J/kg
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+            h_in = fp.enthalpy("water", P=P_tank, Q=0.05)   # J/kg
 
             # Find the mass of bleed needed to get the water entering to a saturated state
             m_dot_LPB1 = (self.m_dot_fw_in.v * (self.h_fw_in.v - h_in) + self.m_dot_TB.v * (self.h_TB.v - h_in) + self.m_dot_HPFWH.v * (self.h_HPFWH.v - h_in)) / (h_in - self.h_LPB1.v)
@@ -1051,12 +1051,12 @@ class DeaeratorPump(Component):
         m_dot_in = self.m_dot_fw_in.v + self.m_dot_TB.v + self.m_dot_HPFWH.v + m_dot_LPB1
         # energy balance
         h_in = (self.m_dot_fw_in.v * self.h_fw_in.v + self.m_dot_TB.v * self.h_TB.v + self.m_dot_HPFWH.v * self.h_HPFWH.v + m_dot_LPB1 * self.h_LPB1.v) / m_dot_in
-        # TODO-NEEDS UNITS CHECK: P_tank in Pa passed as kPa; h_in in J/kg divided by 1000
-        T_in = fp.temperature("water", P=P_tank / 1000.0, H=h_in / 1000.0)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed /1000 J/kg->kJ/kg; eeslib uses J/kg
+        T_in = fp.temperature("water", P=P_tank, H=h_in)
 
         # amount of steam leaving the deaerator
-        # TODO-NEEDS UNITS CHECK: P_tank in Pa passed as kPa; returned h in kJ/kg multiplied by 1000
-        h_vent = fp.enthalpy("water", P=P_tank / 1000.0, Q=1.0) * 1000.0   # Converting from KJ/kg to J/kg
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        h_vent = fp.enthalpy("water", P=P_tank, Q=1.0)   # J/kg
 
         # -----------------------------------------------------------------------
         # Step 7: Tank Calculations Finding Enthalpy and Pressure Next Timestep
@@ -1073,10 +1073,10 @@ class DeaeratorPump(Component):
         dudhcp_a = dudhcp(P_tank=P_tank, h_tank=h_tank, dh=dh)
         dudpch_a = dudpch(P_tank=P_tank, h_tank=h_tank, dP=dP)
         rho_tank = m_tank / Vol_tank
-        # TODO-NEEDS UNITS CHECK: P_tank in Pa passed as kPa; h_tank in J/kg divided by 1000; returned u in kJ/kg multiplied by 1000
-        u_tank = fp.internalenergy("water", P=P_tank / 1000.0, H=h_tank / 1000.0) * 1000.0   # Converting from KJ/kg to J/kg
-        # TODO-NEEDS UNITS CHECK: P_tank in Pa passed as kPa; returned h_sat_f in kJ/kg multiplied by 1000
-        h_sat_f = fp.enthalpy("water", P=P_tank / 1000.0, Q=0.0) * 1000.0
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        u_tank = fp.internalenergy("water", P=P_tank, H=h_tank)   # J/kg
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        h_sat_f = fp.enthalpy("water", P=P_tank, Q=0.0)   # J/kg
         denominator = dudhcp_a * drhodpch_a - dudpch_a * drhodhcp_a
         denominator = math.copysign(max(abs(denominator), 0.000025), denominator)
         drhodhcp_a = math.copysign(max(abs(drhodhcp_a), 0.0001), drhodhcp_a)
@@ -1093,11 +1093,11 @@ class DeaeratorPump(Component):
         dudhcp_a = dudhcp(P_tank=P_aa, h_tank=h_aa, dh=dh)
         dudpch_a = dudpch(P_tank=P_aa, h_tank=h_aa, dP=dP)
         rho_tank = m_tank / Vol_tank
-        # TODO-NEEDS UNITS CHECK: P_aa in Pa passed as kPa; h_aa in J/kg divided by 1000; returned u in kJ/kg multiplied by 1000
-        u_tank = fp.internalenergy("water", P=P_aa / 1000.0, H=h_aa / 1000.0) * 1000.0   # Converting from KJ/kg to J/kg
-        T_tank = fp.temperature("water", P=P_aa / 1000.0, H=h_aa / 1000.0)
-        # TODO-NEEDS UNITS CHECK: P_aa in Pa passed as kPa; returned h_sat_f in kJ/kg multiplied by 1000
-        h_sat_f = fp.enthalpy("water", P=P_aa / 1000.0, Q=0.0) * 1000.0
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        u_tank = fp.internalenergy("water", P=P_aa, H=h_aa)   # J/kg
+        T_tank = fp.temperature("water", P=P_aa, H=h_aa)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        h_sat_f = fp.enthalpy("water", P=P_aa, Q=0.0)   # J/kg
         P_pump_in = P_aa + L_tank * rho_tank_f * 9.81
         denominator = dudhcp_a * drhodpch_a - dudpch_a * drhodhcp_a
         denominator = math.copysign(max(abs(denominator), 0.000025), denominator)
@@ -1115,11 +1115,11 @@ class DeaeratorPump(Component):
         dudhcp_a = dudhcp(P_tank=P_bb, h_tank=h_bb, dh=dh)
         dudpch_a = dudpch(P_tank=P_bb, h_tank=h_bb, dP=dP)
         rho_tank = m_tank / Vol_tank
-        # TODO-NEEDS UNITS CHECK: P_bb in Pa passed as kPa; h_bb in J/kg divided by 1000; returned u in kJ/kg multiplied by 1000
-        u_tank = fp.internalenergy("water", P=P_bb / 1000.0, H=h_bb / 1000.0) * 1000.0   # Converting from KJ/kg to J/kg
-        T_tank = fp.temperature("water", P=P_bb / 1000.0, H=h_bb / 1000.0)
-        # TODO-NEEDS UNITS CHECK: P_bb in Pa passed as kPa; returned h_sat_f in kJ/kg multiplied by 1000
-        h_sat_f = fp.enthalpy("water", P=P_bb / 1000.0, Q=0.0) * 1000.0
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        u_tank = fp.internalenergy("water", P=P_bb, H=h_bb)   # J/kg
+        T_tank = fp.temperature("water", P=P_bb, H=h_bb)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        h_sat_f = fp.enthalpy("water", P=P_bb, Q=0.0)   # J/kg
         denominator = dudhcp_a * drhodpch_a - dudpch_a * drhodhcp_a
         denominator = math.copysign(max(abs(denominator), 0.000025), denominator)
         drhodhcp_a = math.copysign(max(abs(drhodhcp_a), 0.0001), drhodhcp_a)
@@ -1136,11 +1136,11 @@ class DeaeratorPump(Component):
         dudhcp_a = dudhcp(P_tank=P_cc, h_tank=h_cc, dh=dh)
         dudpch_a = dudpch(P_tank=P_cc, h_tank=h_cc, dP=dP)
         rho_tank = m_tank / Vol_tank
-        # TODO-NEEDS UNITS CHECK: P_cc in Pa passed as kPa; h_cc in J/kg divided by 1000; returned u in kJ/kg multiplied by 1000
-        u_tank = fp.internalenergy("water", P=P_cc / 1000.0, H=h_cc / 1000.0) * 1000.0   # Converting from KJ/kg to J/kg
-        T_tank = fp.temperature("water", P=P_cc / 1000.0, H=h_cc / 1000.0)
-        # TODO-NEEDS UNITS CHECK: P_cc in Pa passed as kPa; returned h_sat_f in kJ/kg multiplied by 1000
-        h_sat_f = fp.enthalpy("water", P=P_cc / 1000.0, Q=0.0) * 1000.0
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        u_tank = fp.internalenergy("water", P=P_cc, H=h_cc)   # J/kg
+        T_tank = fp.temperature("water", P=P_cc, H=h_cc)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed *1000 kJ/kg->J/kg; eeslib returns J/kg
+        h_sat_f = fp.enthalpy("water", P=P_cc, Q=0.0)   # J/kg
         denominator = dudhcp_a * drhodpch_a - dudpch_a * drhodhcp_a
         denominator = math.copysign(max(abs(denominator), 0.000025), denominator)
         drhodhcp_a = math.copysign(max(abs(drhodhcp_a), 0.0001), drhodhcp_a)
@@ -1152,10 +1152,10 @@ class DeaeratorPump(Component):
         # End of timestep Pressure and Enthalpy
         P_tank_new = P_tank + (dPdt_aa + 2.0 * dPdt_bb + 2.0 * dPdt_cc + dPdt_dd) * ts / 6.0
         h_tank_new = h_tank + (dhdt_aa + 2.0 * dhdt_bb + 2.0 * dhdt_cc + dhdt_dd) * ts / 6.0
-        # TODO-NEEDS UNITS CHECK: P_tank_new in Pa passed as kPa; h_tank_new in J/kg divided by 1000; returned values used directly
-        x_tank_new = fp.quality("water", P=P_tank_new / 1000.0, H=h_tank_new / 1000.0)
-        rho_tank_new = fp.density("water", P=P_tank_new / 1000.0, H=h_tank_new / 1000.0)
-        T_tank_new = fp.temperature("water", P=P_tank_new / 1000.0, H=h_tank_new / 1000.0)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa; removed /1000 J/kg->kJ/kg; eeslib uses J/kg
+        x_tank_new = fp.quality("water", P=P_tank_new, H=h_tank_new)
+        rho_tank_new = fp.density("water", P=P_tank_new, H=h_tank_new)
+        T_tank_new = fp.temperature("water", P=P_tank_new, H=h_tank_new)
 
         # -----------------------------------------------------------------------
         # Step 8: Finding new tank level
@@ -1165,8 +1165,8 @@ class DeaeratorPump(Component):
         m_tank_new = m_tank + dmdt * ts
         m_tank_g_new = m_tank_new * x_tank_new
         m_tank_f_new = m_tank_new - max(m_tank_g_new, 0.0)
-        # TODO-NEEDS UNITS CHECK: P_tank_new in Pa passed as kPa
-        rho_f_new = fp.density("water", P=P_tank_new / 1000.0, Q=0.0)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa; eeslib uses Pa
+        rho_f_new = fp.density("water", P=P_tank_new, Q=0.0)
         Vol_liquid = m_tank_f_new / rho_f_new
         level_tol = 0.01   # [m]
         L_tank_new = tank_level(Vol_liquid, self.D_tank.v, self.Length_tank.v, L_tank_prev, level_tol)

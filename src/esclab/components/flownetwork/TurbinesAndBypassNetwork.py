@@ -397,11 +397,11 @@ class TurbinesAndBypassNetwork(Component):
         LP_drain_VPi = self.LP_drain_VPi.v    # Valve Position for low pressure drain line
 
         # ---- Calculate the design efficiencies for HPT and LPT using Spencer Cotton Cannon Efficiency Calculations ----
-        # TODO-NEEDS UNITS CHECK: kPa↔Pa and kJ/kg↔J/kg at eeslib call sites
-        h_HPT_in_d = fp.enthalpy("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)  # TODO-NEEDS UNITS CHECK: kJ/kg->J/kg conversion removed, eeslib uses SI
-        v_HPT_in_d = fp.spec_vol("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)  # TODO-NEEDS UNITS CHECK: kPa↔Pa
-        s_HPT_in_d = fp.entropy("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)   # TODO-NEEDS UNITS CHECK: kPa↔Pa
-        rho_steam = fp.density("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)    # TODO-NEEDS UNITS CHECK: kPa↔Pa
+        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI throughout; all P in Pa and h/s in J/kg
+        h_HPT_in_d = fp.enthalpy("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)  # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
+        v_HPT_in_d = fp.spec_vol("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses Pa; no /1000 needed
+        s_HPT_in_d = fp.entropy("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses Pa; no /1000 needed
+        rho_steam = fp.density("water", T=self.T_HPT_in_d.v, P=self.P_HPT_in_d.v)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses Pa; no /1000 needed
         eta_HPT_d = eta_SCC_hpt(self.m_dot_HPT_d.v, self.m_dot_HPT_d.v, self.HPT_parallel_sects.v, self.GS_diameter.v, self.P_HPT_in_d.v, v_HPT_in_d, v_HPT_in_d, self.P_HPT_exh_d.v, self.HPT_CV_NUMBER.v, self.HPT_no_GS.v)
 
         # ---- Find Control Valve Pressure Losses ----
@@ -419,16 +419,16 @@ class TurbinesAndBypassNetwork(Component):
         DELTA_P_CV = DELTA_P_psi * 6894.76
         P_GS_out_d = self.P_HPT_in_d.v - DELTA_P_CV
         h_GS_out_d = h_HPT_in_d
-        s_GS_out_d = fp.entropy("water", P=P_GS_out_d, h=h_GS_out_d)   # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg↔J/kg
-        v_GS_out_d = fp.spec_vol("water", P=P_GS_out_d, h=h_GS_out_d)  # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg↔J/kg
+        s_GS_out_d = fp.entropy("water", P=P_GS_out_d, h=h_GS_out_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+        v_GS_out_d = fp.spec_vol("water", P=P_GS_out_d, h=h_GS_out_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         # ---- Find Exhaust (Stage 2 Outlet) design pressure, enthalpy, specific volume and entropy ----
-        h_HPT_exh_s = fp.enthalpy("water", P=self.P_HPT_exh_d.v, s=s_GS_out_d)  # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg-K↔J/kg-K
-        # TODO-NEEDS UNITS CHECK: kJ/kg->J/kg conversion removed, eeslib uses SI
+        h_HPT_exh_s = fp.enthalpy("water", P=self.P_HPT_exh_d.v, s=s_GS_out_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+        # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
         h_HPT_exh_d = h_HPT_in_d - eta_HPT_d * (h_HPT_in_d - h_HPT_exh_s)
-        s_HPT_exh_d = fp.entropy("water", P=self.P_HPT_exh_d.v, h=h_HPT_exh_d)    # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg↔J/kg
-        v_HPT_exh_d = fp.spec_vol("water", P=self.P_HPT_exh_d.v, h=h_HPT_exh_d)   # TODO-NEEDS UNITS CHECK
-        x_HPT_exh_d = fp.quality("water", P=self.P_HPT_exh_d.v, h=h_HPT_exh_d)    # TODO-NEEDS UNITS CHECK
+        s_HPT_exh_d = fp.entropy("water", P=self.P_HPT_exh_d.v, h=h_HPT_exh_d)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+        v_HPT_exh_d = fp.spec_vol("water", P=self.P_HPT_exh_d.v, h=h_HPT_exh_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+        x_HPT_exh_d = fp.quality("water", P=self.P_HPT_exh_d.v, h=h_HPT_exh_d)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         # ---- Find HPT Stage 1 Outlet enthalpy, specific volume and entropy ----
         m_elep_d = (h_GS_out_d - h_HPT_exh_d) / (s_GS_out_d - s_HPT_exh_d)
@@ -446,7 +446,7 @@ class TurbinesAndBypassNetwork(Component):
         while abs(error2) > tol2:
             whileiterations3 = whileiterations3 + 1.0
             h_elep_d = m_elep_d * s_HPT1_d + b_elep_d
-            h_HPT1_d = fp.enthalpy("water", P=self.P_HPT1_d.v, s=s_HPT1_d)  # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg-K↔J/kg-K; kJ/kg->J/kg conversion removed, eeslib uses SI
+            h_HPT1_d = fp.enthalpy("water", P=self.P_HPT1_d.v, s=s_HPT1_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             error2 = h_elep_d - h_HPT1_d
             if abs(error2) > tol2:
                 if whileiterations3 > 1.0:
@@ -478,8 +478,8 @@ class TurbinesAndBypassNetwork(Component):
                     else:
                         s_HPT1_d = max(s_HPT1_d - 1.0, s_min)
 
-        v_HPT1_d = fp.spec_vol("water", P=self.P_HPT1_d.v, h=h_HPT1_d)   # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg↔J/kg
-        x_HPT_exh_d = fp.quality("water", P=self.P_HPT1_d.v, h=h_HPT1_d)  # TODO-NEEDS UNITS CHECK
+        v_HPT1_d = fp.spec_vol("water", P=self.P_HPT1_d.v, h=h_HPT1_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+        x_HPT_exh_d = fp.quality("water", P=self.P_HPT1_d.v, h=h_HPT1_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         m_dot_HPTS1 = self.m_dot_HPT_d.v
         m_dot_HPTS2 = m_dot_HPTS1 - self.m_dot_HPT1_d.v
@@ -496,39 +496,39 @@ class TurbinesAndBypassNetwork(Component):
         # ---- LPT Inlet Conditions ----
         # LPT inlet pressure set equal to HPT exhaust pressure
         P_LPT_in_d = self.P_HPT_exh_d.v
-        h_LPT_in_d = fp.enthalpy("water", P=P_LPT_in_d, T=self.T_LPT_in_d.v)   # TODO-NEEDS UNITS CHECK: kPa↔Pa; kJ/kg->J/kg conversion removed, eeslib uses SI
-        s_LPT_in_d = fp.entropy("water", P=P_LPT_in_d, T=self.T_LPT_in_d.v)    # TODO-NEEDS UNITS CHECK; kJ/kg-K->J/kg-K conversion removed, eeslib uses SI
-        v_LPT_in_d = fp.spec_vol("water", P=P_LPT_in_d, T=self.T_LPT_in_d.v)   # TODO-NEEDS UNITS CHECK
+        h_LPT_in_d = fp.enthalpy("water", P=P_LPT_in_d, T=self.T_LPT_in_d.v)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+        s_LPT_in_d = fp.entropy("water", P=P_LPT_in_d, T=self.T_LPT_in_d.v)    # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/(kg·K); no *1000 needed
+        v_LPT_in_d = fp.spec_vol("water", P=P_LPT_in_d, T=self.T_LPT_in_d.v)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         # ---- LPT Efficiency Calculations ----
         eta_LPT_d = eta_SCC_lpt(m_dot_LPT_d, m_dot_LPT_d, self.LPT_parallel_sects.v, P_LPT_in_d, self.T_LPT_in_d.v, v_LPT_in_d, v_LPT_in_d, self.P_cond_d.v)
-        h_LPT_exh_s = fp.enthalpy("water", P=self.P_cond_d.v, s=s_LPT_in_d)  # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg-K↔J/kg-K; kJ/kg->J/kg conversion removed, eeslib uses SI
+        h_LPT_exh_s = fp.enthalpy("water", P=self.P_cond_d.v, s=s_LPT_in_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
         h_LPT_exh_d = h_LPT_in_d - eta_LPT_d * (h_LPT_in_d - h_LPT_exh_s)
-        s_LPT_exh_d = fp.entropy("water", P=self.P_cond_d.v, h=h_LPT_exh_d)   # TODO-NEEDS UNITS CHECK; kJ/kg-K->J/kg-K conversion removed, eeslib uses SI
-        v_LPT_exh_d = fp.spec_vol("water", P=self.P_cond_d.v, h=h_LPT_exh_d)  # TODO-NEEDS UNITS CHECK
+        s_LPT_exh_d = fp.entropy("water", P=self.P_cond_d.v, h=h_LPT_exh_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/(kg·K); no *1000 needed
+        v_LPT_exh_d = fp.spec_vol("water", P=self.P_cond_d.v, h=h_LPT_exh_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         h_guess = (h_LPT_in_d - h_LPT_exh_d) / 2.0
         tol = 10.0
 
         # finding enthalpy out of stage 1
         h_LPT1_d = h_lpt_stage(h_guess, h_LPT_exh_d, h_LPT_in_d, self.P_LPT1_d.v, 0.0, self.LPT_EXP_A0.v, self.LPT_EXP_A1.v, self.LPT_EXP_A2.v, tol)
-        s_LPT1_d = fp.entropy("water", P=self.P_LPT1_d.v, h=h_LPT1_d)   # TODO-NEEDS UNITS CHECK: kPa↔Pa, kJ/kg↔J/kg; kJ/kg-K->J/kg-K conversion removed, eeslib uses SI
-        v_LPT1_d = fp.spec_vol("water", P=self.P_LPT1_d.v, h=h_LPT1_d)  # TODO-NEEDS UNITS CHECK
+        s_LPT1_d = fp.entropy("water", P=self.P_LPT1_d.v, h=h_LPT1_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/(kg·K); no *1000 needed
+        v_LPT1_d = fp.spec_vol("water", P=self.P_LPT1_d.v, h=h_LPT1_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         # finding enthalpy out of stage 2
         h_LPT2_d = h_lpt_stage(h_guess, h_LPT_exh_d, h_LPT_in_d, self.P_LPT2_d.v, 0.0, self.LPT_EXP_A0.v, self.LPT_EXP_A1.v, self.LPT_EXP_A2.v, tol)
-        s_LPT2_d = fp.entropy("water", P=self.P_LPT2_d.v, h=h_LPT2_d)   # TODO-NEEDS UNITS CHECK; kJ/kg-K->J/kg-K conversion removed, eeslib uses SI
-        v_LPT2_d = fp.spec_vol("water", P=self.P_LPT2_d.v, h=h_LPT2_d)  # TODO-NEEDS UNITS CHECK
+        s_LPT2_d = fp.entropy("water", P=self.P_LPT2_d.v, h=h_LPT2_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/(kg·K); no *1000 needed
+        v_LPT2_d = fp.spec_vol("water", P=self.P_LPT2_d.v, h=h_LPT2_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         # finding enthalpy out of stage 3
         h_LPT3_d = h_lpt_stage(h_guess, h_LPT_exh_d, h_LPT_in_d, self.P_LPT3_d.v, 0.0, self.LPT_EXP_A0.v, self.LPT_EXP_A1.v, self.LPT_EXP_A2.v, tol)
-        s_LPT3_d = fp.entropy("water", P=self.P_LPT3_d.v, h=h_LPT3_d)   # TODO-NEEDS UNITS CHECK; kJ/kg-K->J/kg-K conversion removed, eeslib uses SI
-        v_LPT3_d = fp.spec_vol("water", P=self.P_LPT3_d.v, h=h_LPT3_d)  # TODO-NEEDS UNITS CHECK
+        s_LPT3_d = fp.entropy("water", P=self.P_LPT3_d.v, h=h_LPT3_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/(kg·K); no *1000 needed
+        v_LPT3_d = fp.spec_vol("water", P=self.P_LPT3_d.v, h=h_LPT3_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         # finding enthalpy out of stage 4
         h_LPT4_d = h_lpt_stage(h_guess, h_LPT_exh_d, h_LPT_in_d, self.P_LPT4_d.v, 0.0, self.LPT_EXP_A0.v, self.LPT_EXP_A1.v, self.LPT_EXP_A2.v, tol)
-        s_LPT4_d = fp.entropy("water", P=self.P_LPT4_d.v, h=h_LPT4_d)   # TODO-NEEDS UNITS CHECK; kJ/kg-K->J/kg-K conversion removed, eeslib uses SI
-        v_LPT4_d = fp.spec_vol("water", P=self.P_LPT4_d.v, h=h_LPT4_d)  # TODO-NEEDS UNITS CHECK
+        s_LPT4_d = fp.entropy("water", P=self.P_LPT4_d.v, h=h_LPT4_d)   # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/(kg·K); no *1000 needed
+        v_LPT4_d = fp.spec_vol("water", P=self.P_LPT4_d.v, h=h_LPT4_d)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
         # Stage Design Inlet Mass Flows
         m_dot_LPTS1 = m_dot_LPT_d
@@ -546,37 +546,37 @@ class TurbinesAndBypassNetwork(Component):
         W_dot_total = w_dot_LPT + w_dot_HPT
 
         # ---- High pressure main initial enthalpy ----
-        # TODO-NEEDS UNITS CHECK: kPa↔Pa at eeslib call sites
-        T_sat_HP = fp.temperature("water", P=self.P_HPmain_ini.v, Q=1.0)  # TODO-NEEDS UNITS CHECK: kPa↔Pa
-        h_sat_HP = fp.enthalpy("water", P=self.P_HPmain_ini.v, Q=1.0)     # TODO-NEEDS UNITS CHECK; kJ/kg->J/kg conversion removed, eeslib uses SI
-        rho_HP = fp.density("water", P=self.P_HPmain_ini.v, Q=1.0)        # TODO-NEEDS UNITS CHECK
+        # CONVERTED-NEEDS UNITS CHECK: eeslib uses Pa; no /1000 needed
+        T_sat_HP = fp.temperature("water", P=self.P_HPmain_ini.v, Q=1.0)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses Pa; no /1000 needed
+        h_sat_HP = fp.enthalpy("water", P=self.P_HPmain_ini.v, Q=1.0)     # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
+        rho_HP = fp.density("water", P=self.P_HPmain_ini.v, Q=1.0)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
         if self.T_HPmain_ini.v > T_sat_HP:
-            h_hpmain_ini = fp.enthalpy("water", P=self.P_HPmain_ini.v, T=self.T_HPmain_ini.v)  # TODO-NEEDS UNITS CHECK; kJ/kg->J/kg conversion removed, eeslib uses SI
-            rho_HP = fp.density("water", P=self.P_HPmain_ini.v, T=self.T_HPmain_ini.v)         # TODO-NEEDS UNITS CHECK
+            h_hpmain_ini = fp.enthalpy("water", P=self.P_HPmain_ini.v, T=self.T_HPmain_ini.v)  # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
+            rho_HP = fp.density("water", P=self.P_HPmain_ini.v, T=self.T_HPmain_ini.v)         # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             m_hpmain_ini = rho_HP * math.pi / 4.0 * self.D_HPmain.v ** 2.0 * self.Length_HPmain.v
         else:
             h_hpmain_ini = h_sat_HP
             m_hpmain_ini = rho_HP * math.pi / 4.0 * self.D_HPmain.v ** 2.0 * self.Length_HPmain.v
 
         # ---- Low pressure main initial enthalpy and mass ----
-        T_sat_LP = fp.temperature("water", P=self.P_LPmain_ini.v, Q=1.0)  # TODO-NEEDS UNITS CHECK: kPa↔Pa
-        h_sat_LP = fp.enthalpy("water", P=self.P_LPmain_ini.v, Q=1.0)     # TODO-NEEDS UNITS CHECK; kJ/kg->J/kg conversion removed, eeslib uses SI
-        rho_LP = fp.density("water", P=self.P_LPmain_ini.v, Q=1.0)        # TODO-NEEDS UNITS CHECK
+        T_sat_LP = fp.temperature("water", P=self.P_LPmain_ini.v, Q=1.0)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses Pa; no /1000 needed
+        h_sat_LP = fp.enthalpy("water", P=self.P_LPmain_ini.v, Q=1.0)     # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
+        rho_LP = fp.density("water", P=self.P_LPmain_ini.v, Q=1.0)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
         if self.T_LPmain_ini.v > T_sat_LP:
-            h_lpmain_ini = fp.enthalpy("water", P=self.P_LPmain_ini.v, T=self.T_LPmain_ini.v)  # TODO-NEEDS UNITS CHECK; kJ/kg->J/kg conversion removed, eeslib uses SI
-            rho_LP = fp.density("water", P=self.P_LPmain_ini.v, T=self.T_LPmain_ini.v)         # TODO-NEEDS UNITS CHECK
+            h_lpmain_ini = fp.enthalpy("water", P=self.P_LPmain_ini.v, T=self.T_LPmain_ini.v)  # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
+            rho_LP = fp.density("water", P=self.P_LPmain_ini.v, T=self.T_LPmain_ini.v)         # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             m_lpmain_ini = rho_LP * math.pi / 4.0 * self.D_LPmain.v ** 2.0 * self.Length_LPmain.v
         else:
             h_lpmain_ini = h_sat_LP
             m_lpmain_ini = rho_LP * math.pi / 4.0 * self.D_LPmain.v ** 2.0 * self.Length_LPmain.v
 
         # ---- Aux line initial enthalpy and mass ----
-        T_sat_Aux = fp.temperature("water", P=self.P_Aux_ini.v, Q=1.0)  # TODO-NEEDS UNITS CHECK: kPa↔Pa
-        h_sat_Aux = fp.enthalpy("water", P=self.P_Aux_ini.v, Q=1.0)     # TODO-NEEDS UNITS CHECK; kJ/kg->J/kg conversion removed, eeslib uses SI
-        rho_Aux = fp.density("water", P=self.P_Aux_ini.v, Q=1.0)        # TODO-NEEDS UNITS CHECK
+        T_sat_Aux = fp.temperature("water", P=self.P_Aux_ini.v, Q=1.0)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses Pa; no /1000 needed
+        h_sat_Aux = fp.enthalpy("water", P=self.P_Aux_ini.v, Q=1.0)     # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
+        rho_Aux = fp.density("water", P=self.P_Aux_ini.v, Q=1.0)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
         if self.T_Aux_ini.v > T_sat_Aux:
-            h_aux_ini = fp.enthalpy("water", P=self.P_Aux_ini.v, T=self.T_Aux_ini.v)  # TODO-NEEDS UNITS CHECK; kJ/kg->J/kg conversion removed, eeslib uses SI
-            rho_Aux = fp.density("water", P=self.P_Aux_ini.v, T=self.T_Aux_ini.v)     # TODO-NEEDS UNITS CHECK
+            h_aux_ini = fp.enthalpy("water", P=self.P_Aux_ini.v, T=self.T_Aux_ini.v)  # CONVERTED-NEEDS UNITS CHECK: eeslib returns J/kg; no *1000 needed
+            rho_Aux = fp.density("water", P=self.P_Aux_ini.v, T=self.T_Aux_ini.v)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             m_aux_ini = rho_Aux * math.pi / 4.0 * self.D_AuxLine.v ** 2.0 * self.Length_AuxLine.v
         else:
             h_aux_ini = h_sat_Aux
@@ -739,7 +739,7 @@ class TurbinesAndBypassNetwork(Component):
                 W_dot_total_eon = self.W_dot_tot.v
 
                 # HPT Superheat alarm/trip (Fortran lines 170–217)
-                T_sat_eon = fp.temperature("water", P=P_HPmain_prev_eon, Q=0.0)  # TODO-NEEDS UNITS CHECK
+                T_sat_eon = fp.temperature("water", P=P_HPmain_prev_eon, Q=0.0)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 Superheat_eon = T_hpmain_prev_eon - T_sat_eon
                 if W_dot_total_eon > self.Partial_Load.v:
                     # Full load conditions
@@ -785,7 +785,7 @@ class TurbinesAndBypassNetwork(Component):
                     )
 
                 # LPT Superheat alarm/trip (Fortran lines 257–276)
-                T_sat_lpt_eon = fp.temperature("water", P=P_LPmain_prev_eon, Q=0.0)  # TODO-NEEDS UNITS CHECK
+                T_sat_lpt_eon = fp.temperature("water", P=P_LPmain_prev_eon, Q=0.0)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 Superheat_lpt = T_LPmain_eon - T_sat_lpt_eon
                 if Superheat_lpt > self.LPT_SH_Alarm.v:
                     self.LPT_SH_Alarm_state.v = 0.0
@@ -1256,7 +1256,7 @@ class TurbinesAndBypassNetwork(Component):
                         # Solve for HPT efficiency via Spencer-Cotton-Cannon
                         P_HPT_in = P_HPmain_prev
                         H_HPT_in = h_HPmain_prev
-                        v_HPT_in = fp.spec_vol("water", P=P_HPT_in, h=H_HPT_in)  # TODO-NEEDS UNITS CHECK
+                        v_HPT_in = fp.spec_vol("water", P=P_HPT_in, h=H_HPT_in)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                         eta_HPT = eta_SCC_HPT(
                             m_dot_HPT_in, self.m_dot_HPT_d.v, self.HPT_parallel_sects.v,
                             self.GS_diameter.v, P_HPT_in, v_HPT_in, v_HPT_in_d,
@@ -1274,7 +1274,7 @@ class TurbinesAndBypassNetwork(Component):
                         DELTA_P_CV = DELTA_P_psi * 6894.76
                         P_GS_out = P_HPT_in - DELTA_P_CV
                         H_GS_out = H_HPT_in  # no enthalpy change through control valves
-                        s_GS_out = fp.entropy("water", P=P_GS_out, h=H_GS_out)  # TODO-NEEDS UNITS CHECK
+                        s_GS_out = fp.entropy("water", P=P_GS_out, h=H_GS_out)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
                         # HPT Stage 1 pressure via Stodola's Ellipse
                         P_HPT1 = StodolaStage(
@@ -1301,9 +1301,9 @@ class TurbinesAndBypassNetwork(Component):
                             break  # ← GO TO 10
 
                         # Enthalpy and entropy leaving HPT stage 2
-                        H_HPT2_s = fp.enthalpy("water", P=P_HPT2, s=s_GS_out)  # TODO-NEEDS UNITS CHECK
+                        H_HPT2_s = fp.enthalpy("water", P=P_HPT2, s=s_GS_out)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                         H_HPT2 = H_GS_out - eta_HPT * (H_GS_out - H_HPT2_s)
-                        s_HPT2 = fp.entropy("water", P=P_HPT2, h=H_HPT2)  # TODO-NEEDS UNITS CHECK
+                        s_HPT2 = fp.entropy("water", P=P_HPT2, h=H_HPT2)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
                         # Expansion line slope and intercept
                         if s_HPT2 != s_GS_out:
@@ -1313,7 +1313,7 @@ class TurbinesAndBypassNetwork(Component):
                         b_elep = H_GS_out - s_GS_out * m_elep
 
                         # Current entropy at HPT stage 1 exit from previous h_HPT1
-                        s_HPT1 = fp.entropy("water", P=P_HPT1, h=h_HPT1)  # TODO-NEEDS UNITS CHECK
+                        s_HPT1 = fp.entropy("water", P=P_HPT1, h=h_HPT1)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                         s_max = s_HPT2
                         s_min = s_GS_out
                         h_HPT1_prev = h_HPT1
@@ -1328,7 +1328,7 @@ class TurbinesAndBypassNetwork(Component):
                         while abs(error2) > tol2:
                             whileiterations3 += 1.0
                             h_elep = m_elep * s_HPT1 + b_elep
-                            h_HPT1 = fp.enthalpy("water", P=P_HPT1, s=s_HPT1)  # TODO-NEEDS UNITS CHECK
+                            h_HPT1 = fp.enthalpy("water", P=P_HPT1, s=s_HPT1)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                             error2 = h_elep - h_HPT1
                             if abs(error2) > tol2:
                                 if whileiterations3 > 1.0:
@@ -1499,9 +1499,9 @@ class TurbinesAndBypassNetwork(Component):
                     m_dot_LPT_exh = m_dot_LPTS4 - m_dot_LPT4
 
                     # FIT_PH for LPT inlet (Fortran lines 1481–1483)
-                    v_LPT_in = fp.spec_vol("water", P=P_LPT_in, h=h_LPT_in)       # TODO-NEEDS UNITS CHECK
-                    s_LPT_in = fp.entropy("water", P=P_LPT_in, h=h_LPT_in)        # TODO-NEEDS UNITS CHECK
-                    T_LPT_in = fp.temperature("water", P=P_LPT_in, h=h_LPT_in)    # TODO-NEEDS UNITS CHECK
+                    v_LPT_in = fp.spec_vol("water", P=P_LPT_in, h=h_LPT_in)       # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                    s_LPT_in = fp.entropy("water", P=P_LPT_in, h=h_LPT_in)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                    T_LPT_in = fp.temperature("water", P=P_LPT_in, h=h_LPT_in)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
                     # -- INNER ENTHALPY-CONVERGENCE WHILE (Fortran inner do-while, lines 1489–1636) --
                     # GO TO 20 inside body: set goto20_flag=True; break → outer while continues
@@ -1578,9 +1578,9 @@ class TurbinesAndBypassNetwork(Component):
 
                         # Isentropic exhaust enthalpy + actual exhaust enthalpy
                         s_LPT_exh_s = s_LPT_in
-                        h_LPT_exh_s = fp.enthalpy("water", P=P_LPT_exh, s=s_LPT_exh_s)  # TODO-NEEDS UNITS CHECK
+                        h_LPT_exh_s = fp.enthalpy("water", P=P_LPT_exh, s=s_LPT_exh_s)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                         h_LPT_exh = h_LPT_in - eta_LPT * (h_LPT_in - h_LPT_exh_s)
-                        s_LPT_exh = fp.entropy("water", P=P_LPT_exh, h=h_LPT_exh)       # TODO-NEEDS UNITS CHECK
+                        s_LPT_exh = fp.entropy("water", P=P_LPT_exh, h=h_LPT_exh)       # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                         s_prime = self.LPT_EXP_A0.v + self.LPT_EXP_A1.v * h_LPT_exh + self.LPT_EXP_A2.v * h_LPT_exh ** 2.0
                         DELTA_S = s_LPT_exh - s_prime
 
@@ -1652,13 +1652,13 @@ class TurbinesAndBypassNetwork(Component):
                     # end of LPT outer while
 
                 # ---- Turbine work and stage temperatures (Fortran lines 1646–1680) ----
-                T_HPT1 = fp.temperature("water", P=P_HPT1, h=h_HPT1)    # TODO-NEEDS UNITS CHECK
-                T_HPT2 = fp.temperature("water", P=P_HPT2, h=H_HPT2)    # TODO-NEEDS UNITS CHECK
-                T_LPT1 = fp.temperature("water", P=P_LPT1, h=h_LPT1)    # TODO-NEEDS UNITS CHECK
-                T_LPT2 = fp.temperature("water", P=P_LPT2, h=h_LPT2)    # TODO-NEEDS UNITS CHECK
-                T_LPT3 = fp.temperature("water", P=P_LPT3, h=h_LPT3)    # TODO-NEEDS UNITS CHECK
-                T_LPT4 = fp.temperature("water", P=P_LPT4, h=h_LPT4)    # TODO-NEEDS UNITS CHECK
-                T_LPT_exh = fp.temperature("water", P=P_LPT_exh, h=h_LPT_exh)  # TODO-NEEDS UNITS CHECK
+                T_HPT1 = fp.temperature("water", P=P_HPT1, h=h_HPT1)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_HPT2 = fp.temperature("water", P=P_HPT2, h=H_HPT2)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_LPT1 = fp.temperature("water", P=P_LPT1, h=h_LPT1)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_LPT2 = fp.temperature("water", P=P_LPT2, h=h_LPT2)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_LPT3 = fp.temperature("water", P=P_LPT3, h=h_LPT3)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_LPT4 = fp.temperature("water", P=P_LPT4, h=h_LPT4)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_LPT_exh = fp.temperature("water", P=P_LPT_exh, h=h_LPT_exh)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
                 W_dot_HPT = (m_dot_HPT_in * (H_HPT_in - h_HPT1)
                              + m_dot_HPTS2 * (h_HPT1 - H_HPT2))
@@ -1747,13 +1747,13 @@ class TurbinesAndBypassNetwork(Component):
             # HP drain — two-phase check (Fortran lines 1733–1754)
             if self.HP_drain_VPo.v != 0.0:
                 HP_drain_CV = PB_CV_data(self.HP_drain_vt.v, self.HP_drain_d.v, self.HP_drain_VPo.v)
-                h_sat_g_HPdrain = fp.enthalpy("water", P=P_HPmain_prev, Q=1.0)   # TODO-NEEDS UNITS CHECK
+                h_sat_g_HPdrain = fp.enthalpy("water", P=P_HPmain_prev, Q=1.0)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 if h_HPmain_prev >= h_sat_g_HPdrain:
                     m_dot_HP_drain = 0.0
                     h_HP_drain = h_HPmain_prev
                 else:
-                    x_HPdrain = fp.quality("water", P=P_HPmain_prev, h=h_HPmain_prev)  # TODO-NEEDS UNITS CHECK
-                    h_sat_f_HPdrain = fp.enthalpy("water", P=P_HPmain_prev, Q=0.0)     # TODO-NEEDS UNITS CHECK
+                    x_HPdrain = fp.quality("water", P=P_HPmain_prev, h=h_HPmain_prev)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                    h_sat_f_HPdrain = fp.enthalpy("water", P=P_HPmain_prev, Q=0.0)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                     m_dot_HP_drain_max = m_HPmain_prev * (1.0 - x_HPdrain)
                     m_dot_HP_drain = min(
                         valve_massflow(HP_drain_CV, P_HPmain_prev, h_sat_f_HPdrain, P_atm),
@@ -1803,13 +1803,13 @@ class TurbinesAndBypassNetwork(Component):
             # LP drain — two-phase check (Fortran lines 1796–1817)
             if self.LP_Drain_VPo.v != 0.0:
                 LP_drain_CV = PB_CV_data(self.LP_drain_vt.v, self.LP_drain_d.v, self.LP_Drain_VPo.v)
-                h_sat_g_LPdrain = fp.enthalpy("water", P=P_LPmain_prev, Q=1.0)   # TODO-NEEDS UNITS CHECK
+                h_sat_g_LPdrain = fp.enthalpy("water", P=P_LPmain_prev, Q=1.0)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 if h_LPmain_prev >= h_sat_g_LPdrain:
                     m_dot_LP_drain = 0.0
                     h_LP_drain = h_LPmain_prev
                 else:
-                    x_LPdrain = fp.quality("water", P=P_LPmain_prev, h=h_LPmain_prev)  # TODO-NEEDS UNITS CHECK
-                    h_sat_f_LPdrain = fp.enthalpy("water", P=P_LPmain_prev, Q=0.0)     # TODO-NEEDS UNITS CHECK
+                    x_LPdrain = fp.quality("water", P=P_LPmain_prev, h=h_LPmain_prev)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                    h_sat_f_LPdrain = fp.enthalpy("water", P=P_LPmain_prev, Q=0.0)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                     m_dot_LP_drain_max = m_LPmain_prev * (1.0 - x_LPdrain)
                     m_dot_LP_drain = min(
                         valve_massflow(LP_drain_CV, P_LPmain_prev, h_sat_f_LPdrain, P_atm),
@@ -1871,13 +1871,13 @@ class TurbinesAndBypassNetwork(Component):
                 # Weighted inlet enthalpy (Fortran line 1851)
                 h_SS_in = (m_dot_HPT_exh * H_HPT2 + m_dot_HP_bypass * h_HP_bypass) / m_dot_SS_in
                 # Flash the mixture at LP-main pressure
-                x_SS_in   = fp.quality("water", P=P_LPmain_prev, h=h_SS_in)    # TODO-NEEDS UNITS CHECK
-                T_SS_in   = fp.temperature("water", P=P_LPmain_prev, h=h_SS_in) # TODO-NEEDS UNITS CHECK
-                rho_SS_in = fp.density("water", P=P_LPmain_prev, h=h_SS_in)     # TODO-NEEDS UNITS CHECK
+                x_SS_in   = fp.quality("water", P=P_LPmain_prev, h=h_SS_in)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_SS_in   = fp.temperature("water", P=P_LPmain_prev, h=h_SS_in) # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                rho_SS_in = fp.density("water", P=P_LPmain_prev, h=h_SS_in)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 # Saturated vapour properties
-                h_sat_g   = fp.enthalpy("water", P=P_LPmain_prev, Q=1.0)        # TODO-NEEDS UNITS CHECK
-                rho_sat_g = fp.density("water", P=P_LPmain_prev, Q=1.0)         # TODO-NEEDS UNITS CHECK
-                T_sat     = fp.temperature("water", P=P_LPmain_prev, Q=1.0)     # TODO-NEEDS UNITS CHECK
+                h_sat_g   = fp.enthalpy("water", P=P_LPmain_prev, Q=1.0)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                rho_sat_g = fp.density("water", P=P_LPmain_prev, Q=1.0)         # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_sat     = fp.temperature("water", P=P_LPmain_prev, Q=1.0)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
                 if h_SS_in >= h_sat_g:  # all steam
                     m_dot_SS_drain    = 0.0
@@ -1891,8 +1891,8 @@ class TurbinesAndBypassNetwork(Component):
                 else:  # two-phase: separate drain (liquid) from steam
                     # Round quality to 3 dp to aid convergence (Fortran: nint(x*1000)/1000)
                     x_SS_in = round(x_SS_in, 3)
-                    h_sat_f   = fp.enthalpy("water", P=P_LPmain_prev, Q=0.0)    # TODO-NEEDS UNITS CHECK
-                    rho_sat_f = fp.density("water", P=P_LPmain_prev, Q=0.0)     # TODO-NEEDS UNITS CHECK
+                    h_sat_f   = fp.enthalpy("water", P=P_LPmain_prev, Q=0.0)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                    rho_sat_f = fp.density("water", P=P_LPmain_prev, Q=0.0)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                     # Drain (liquid) outputs
                     m_dot_SS_drain   = m_dot_SS_in * (1.0 - x_SS_in)
                     Vol_dot_SS_drain = m_dot_SS_drain / rho_sat_f
@@ -1967,7 +1967,7 @@ class TurbinesAndBypassNetwork(Component):
                     Eta_OD = (_ratio ** self.HX_no_shell.v - 1.0) / (_ratio ** self.HX_no_shell.v - CR)
                     # Heat transfer — clipped by temperature direction
                     if T_SS_steam < HTF_T_in:  # normal: HTF heats steam
-                        h_HX_out_s = fp.enthalpy("water", P=P_LPmain_prev, T=HTF_T_in)  # TODO-NEEDS UNITS CHECK
+                        h_HX_out_s = fp.enthalpy("water", P=P_LPmain_prev, T=HTF_T_in)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                         Q_dot_HX = min(
                             Eta_OD * m_dot_SS_steam * (h_HX_out_s - h_SS_steam),
                             Eta_OD * m_dot_HTF * cp_HTF * (HTF_T_in - T_SS_steam)
@@ -1975,7 +1975,7 @@ class TurbinesAndBypassNetwork(Component):
                         h_HX_out  = (m_dot_SS_steam * h_SS_steam + Q_dot_HX) / m_dot_SS_steam
                         T_HTF_out = (m_dot_HTF * cp_HTF * HTF_T_in - Q_dot_HX) / (m_dot_HTF * cp_HTF)
                     else:  # heat going wrong direction
-                        h_HX_out_s = fp.enthalpy("water", P=P_LPmain_prev, T=HTF_T_in)  # TODO-NEEDS UNITS CHECK
+                        h_HX_out_s = fp.enthalpy("water", P=P_LPmain_prev, T=HTF_T_in)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                         Q_dot_HX = min(
                             Eta_OD * m_dot_SS_steam * (h_SS_steam - h_HX_out_s),
                             Eta_OD * m_dot_HTF * cp_HTF * (T_SS_steam - HTF_T_in)
@@ -1986,8 +1986,8 @@ class TurbinesAndBypassNetwork(Component):
                     rho_htf    = density(fnumd=self.Fluid_ID.v, T=T_HTF_out, P=HTF_P_in)
                     Vol_dot_HTF = m_dot_HTF / rho_htf
                     # Update steam exit temperature and volumetric flow
-                    T_HX_out  = fp.temperature("water", P=P_LPmain_prev, h=h_HX_out)  # TODO-NEEDS UNITS CHECK
-                    rho_steam = fp.density("water", P=P_LPmain_prev, h=h_HX_out)      # TODO-NEEDS UNITS CHECK
+                    T_HX_out  = fp.temperature("water", P=P_LPmain_prev, h=h_HX_out)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                    rho_steam = fp.density("water", P=P_LPmain_prev, h=h_HX_out)      # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                     if rho_steam == 0.0:
                         rho_steam = 0.6  # [kg/m³] fallback
                     Vol_dot_SS_steam = m_dot_SS_steam / rho_steam
@@ -2037,7 +2037,7 @@ class TurbinesAndBypassNetwork(Component):
             m_dot_prev_HP = m_dot_in_HP
             pressure_error_prev = 0.0
 
-            T_hpmain_prev = fp.temperature("water", P=P_HPmain_prev, h=h_HPmain_prev)  # TODO-NEEDS UNITS CHECK
+            T_hpmain_prev = fp.temperature("water", P=P_HPmain_prev, h=h_HPmain_prev)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
             # Initialise RK4 derivatives/heat-transfer rates (used in label-50 even if loop skipped)
             Q_dot_aa = Q_dot_bb = Q_dot_cc = Q_dot_dd = 0.0
@@ -2106,8 +2106,8 @@ class TurbinesAndBypassNetwork(Component):
                 m_dot_ave_HP = (m_dot_in_HP + m_dot_out_HP) / 2.0
 
                 # ---- RK4 step aa (initial state: P_HPmain_prev, h_HPmain_prev) ----
-                _rho = fp.density("water", P=P_HPmain_prev, h=h_HPmain_prev)      # TODO-NEEDS UNITS CHECK
-                _u   = fp.int_energy("water", P=P_HPmain_prev, h=h_HPmain_prev)   # TODO-NEEDS UNITS CHECK
+                _rho = fp.density("water", P=P_HPmain_prev, h=h_HPmain_prev)      # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                _u   = fp.int_energy("water", P=P_HPmain_prev, h=h_HPmain_prev)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 _drhodh = drhodhcp(P_HPmain_prev, h_HPmain_prev, dh)
                 _drhodp = drhodpch(P_HPmain_prev, h_HPmain_prev, dP)
                 _dudh   = dudhcp(P_HPmain_prev, h_HPmain_prev, dh)
@@ -2128,10 +2128,10 @@ class TurbinesAndBypassNetwork(Component):
                 T_pipe_aa = (self.mc_HPmain_pipe.v * T_HP_pipe + Q_dot_aa * t_crit / 2.0) / self.mc_HPmain_pipe.v
 
                 # ---- RK4 step bb (midpoint: P_aa, h_aa) ----
-                _rho  = fp.density("water", P=P_aa, h=h_aa)        # TODO-NEEDS UNITS CHECK
-                _u    = fp.int_energy("water", P=P_aa, h=h_aa)     # TODO-NEEDS UNITS CHECK
-                T_aa  = fp.temperature("water", P=P_aa, h=h_aa)    # TODO-NEEDS UNITS CHECK
-                _h_sf = fp.enthalpy("water", P=P_aa, Q=0.0)        # TODO-NEEDS UNITS CHECK
+                _rho  = fp.density("water", P=P_aa, h=h_aa)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                _u    = fp.int_energy("water", P=P_aa, h=h_aa)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_aa  = fp.temperature("water", P=P_aa, h=h_aa)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                _h_sf = fp.enthalpy("water", P=P_aa, Q=0.0)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 _drhodh = drhodhcp(P_aa, h_aa, dh)
                 _drhodp = drhodpch(P_aa, h_aa, dP)
                 _dudh   = dudhcp(P_aa, h_aa, dh)
@@ -2156,10 +2156,10 @@ class TurbinesAndBypassNetwork(Component):
                 T_pipe_bb = (self.mc_HPmain_pipe.v * T_HP_pipe + Q_dot_bb * t_crit / 2.0) / self.mc_HPmain_pipe.v
 
                 # ---- RK4 step cc (midpoint: P_bb, h_bb) ----
-                _rho  = fp.density("water", P=P_bb, h=h_bb)        # TODO-NEEDS UNITS CHECK
-                _u    = fp.int_energy("water", P=P_bb, h=h_bb)     # TODO-NEEDS UNITS CHECK
-                T_bb  = fp.temperature("water", P=P_bb, h=h_bb)    # TODO-NEEDS UNITS CHECK
-                _h_sf = fp.enthalpy("water", P=P_bb, Q=0.0)        # TODO-NEEDS UNITS CHECK
+                _rho  = fp.density("water", P=P_bb, h=h_bb)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                _u    = fp.int_energy("water", P=P_bb, h=h_bb)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_bb  = fp.temperature("water", P=P_bb, h=h_bb)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                _h_sf = fp.enthalpy("water", P=P_bb, Q=0.0)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 _drhodh = drhodhcp(P_bb, h_bb, dh)
                 _drhodp = drhodpch(P_bb, h_bb, dP)
                 _dudh   = dudhcp(P_bb, h_bb, dh)
@@ -2184,10 +2184,10 @@ class TurbinesAndBypassNetwork(Component):
                 T_pipe_cc = (self.mc_HPmain_pipe.v * T_HP_pipe + Q_dot_cc * t_crit) / self.mc_HPmain_pipe.v
 
                 # ---- RK4 step dd (full step: P_cc, h_cc) ----
-                _rho  = fp.density("water", P=P_cc, h=h_cc)        # TODO-NEEDS UNITS CHECK
-                _u    = fp.int_energy("water", P=P_cc, h=h_cc)     # TODO-NEEDS UNITS CHECK
-                T_cc  = fp.temperature("water", P=P_cc, h=h_cc)    # TODO-NEEDS UNITS CHECK
-                _h_sf = fp.enthalpy("water", P=P_cc, Q=0.0)        # TODO-NEEDS UNITS CHECK
+                _rho  = fp.density("water", P=P_cc, h=h_cc)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                _u    = fp.int_energy("water", P=P_cc, h=h_cc)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                T_cc  = fp.temperature("water", P=P_cc, h=h_cc)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+                _h_sf = fp.enthalpy("water", P=P_cc, Q=0.0)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
                 _drhodh = drhodhcp(P_cc, h_cc, dh)
                 _drhodp = drhodpch(P_cc, h_cc, dP)
                 _dudh   = dudhcp(P_cc, h_cc, dh)
@@ -2221,9 +2221,9 @@ class TurbinesAndBypassNetwork(Component):
             m_HPmain_prev = m_HPmain_prev + (m_dot_in_HP - m_dot_out_HP) * t_crit
             Q_dot_hpmain_avg = (Q_dot_aa + Q_dot_bb + Q_dot_cc + Q_dot_dd) / 4.0
             T_HP_pipe = (self.mc_HPmain_pipe.v * T_HP_pipe + Q_dot_hpmain_avg * t_crit) / self.mc_HPmain_pipe.v
-            T_HPmain = fp.temperature("water", P=P_HPmain_prev, h=h_HPmain_prev)  # TODO-NEEDS UNITS CHECK
-            x_HPmain = fp.quality("water", P=P_HPmain_prev, h=h_HPmain_prev)      # TODO-NEEDS UNITS CHECK
-            _h_sat_g_HP = fp.enthalpy("water", P=P_HPmain_prev, Q=1.0)            # TODO-NEEDS UNITS CHECK
+            T_HPmain = fp.temperature("water", P=P_HPmain_prev, h=h_HPmain_prev)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            x_HPmain = fp.quality("water", P=P_HPmain_prev, h=h_HPmain_prev)      # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _h_sat_g_HP = fp.enthalpy("water", P=P_HPmain_prev, Q=1.0)            # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             if h_HPmain_prev > _h_sat_g_HP:
                 x_HPmain = 100.0
 
@@ -2247,10 +2247,10 @@ class TurbinesAndBypassNetwork(Component):
             vol_pipe_LP = self.D_LPmain.v ** 2.0 * math.pi / 4.0 * self.Length_LPmain.v
 
             # Initial state properties for the aa step (Fortran: FIT_PH + FIT_PQ before Q_dot_aa)
-            _rho_LP = fp.density("water", P=P_LPmain_prev, h=h_LPmain_prev)      # TODO-NEEDS UNITS CHECK
-            _u_LP   = fp.int_energy("water", P=P_LPmain_prev, h=h_LPmain_prev)   # TODO-NEEDS UNITS CHECK
-            T_lpmain = fp.temperature("water", P=P_LPmain_prev, h=h_LPmain_prev) # TODO-NEEDS UNITS CHECK
-            _h_sf0  = fp.enthalpy("water", P=P_LPmain_prev, Q=0.0)              # TODO-NEEDS UNITS CHECK
+            _rho_LP = fp.density("water", P=P_LPmain_prev, h=h_LPmain_prev)      # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_LP   = fp.int_energy("water", P=P_LPmain_prev, h=h_LPmain_prev)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_lpmain = fp.temperature("water", P=P_LPmain_prev, h=h_LPmain_prev) # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _h_sf0  = fp.enthalpy("water", P=P_LPmain_prev, Q=0.0)              # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
             # Initial outlet enthalpy weighted by outflow type (drain uses sat-liquid)
             if m_dot_out_LP > 0.0:
@@ -2285,10 +2285,10 @@ class TurbinesAndBypassNetwork(Component):
             T_pipe_aa_LP = (self.mc_LPmain_pipe.v * T_LP_pipe + Q_dot_aa_LP * t_crit / 2.0) / self.mc_LPmain_pipe.v
 
             # ---- RK4 step bb (midpoint: P_aa_LP, h_aa_LP) ----
-            _rho_LP = fp.density("water", P=P_aa_LP, h=h_aa_LP)        # TODO-NEEDS UNITS CHECK
-            _u_LP   = fp.int_energy("water", P=P_aa_LP, h=h_aa_LP)     # TODO-NEEDS UNITS CHECK
-            T_aa_LP = fp.temperature("water", P=P_aa_LP, h=h_aa_LP)    # TODO-NEEDS UNITS CHECK
-            _h_sf   = fp.enthalpy("water", P=P_aa_LP, Q=0.0)           # TODO-NEEDS UNITS CHECK
+            _rho_LP = fp.density("water", P=P_aa_LP, h=h_aa_LP)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_LP   = fp.int_energy("water", P=P_aa_LP, h=h_aa_LP)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_aa_LP = fp.temperature("water", P=P_aa_LP, h=h_aa_LP)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _h_sf   = fp.enthalpy("water", P=P_aa_LP, Q=0.0)           # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             if m_dot_out_LP > 0.0:
                 h_out_LP = ((h_aa_LP * m_dot_LP_bypass + m_dot_LP_warmup * h_aa_LP
                              + m_dot_LP_AUX * h_aa_LP + m_dot_LP_drain * _h_sf
@@ -2312,10 +2312,10 @@ class TurbinesAndBypassNetwork(Component):
             T_pipe_bb_LP = (self.mc_LPmain_pipe.v * T_LP_pipe + Q_dot_bb_LP * t_crit / 2.0) / self.mc_LPmain_pipe.v
 
             # ---- RK4 step cc (midpoint: P_bb_LP, h_bb_LP) ----
-            _rho_LP = fp.density("water", P=P_bb_LP, h=h_bb_LP)        # TODO-NEEDS UNITS CHECK
-            _u_LP   = fp.int_energy("water", P=P_bb_LP, h=h_bb_LP)     # TODO-NEEDS UNITS CHECK
-            T_bb_LP = fp.temperature("water", P=P_bb_LP, h=h_bb_LP)    # TODO-NEEDS UNITS CHECK
-            _h_sf   = fp.enthalpy("water", P=P_bb_LP, Q=0.0)           # TODO-NEEDS UNITS CHECK
+            _rho_LP = fp.density("water", P=P_bb_LP, h=h_bb_LP)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_LP   = fp.int_energy("water", P=P_bb_LP, h=h_bb_LP)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_bb_LP = fp.temperature("water", P=P_bb_LP, h=h_bb_LP)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _h_sf   = fp.enthalpy("water", P=P_bb_LP, Q=0.0)           # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             if m_dot_out_LP > 0.0:
                 h_out_LP = ((h_bb_LP * m_dot_LP_bypass + m_dot_LP_warmup * h_bb_LP
                              + m_dot_LP_AUX * h_bb_LP + m_dot_LP_drain * _h_sf
@@ -2339,10 +2339,10 @@ class TurbinesAndBypassNetwork(Component):
             T_pipe_cc_LP = (self.mc_LPmain_pipe.v * T_LP_pipe + Q_dot_cc_LP * t_crit) / self.mc_LPmain_pipe.v
 
             # ---- RK4 step dd (full step: P_cc_LP, h_cc_LP) ----
-            _rho_LP = fp.density("water", P=P_cc_LP, h=h_cc_LP)        # TODO-NEEDS UNITS CHECK
-            _u_LP   = fp.int_energy("water", P=P_cc_LP, h=h_cc_LP)     # TODO-NEEDS UNITS CHECK
-            T_cc_LP = fp.temperature("water", P=P_cc_LP, h=h_cc_LP)    # TODO-NEEDS UNITS CHECK
-            _h_sf   = fp.enthalpy("water", P=P_cc_LP, Q=0.0)           # TODO-NEEDS UNITS CHECK
+            _rho_LP = fp.density("water", P=P_cc_LP, h=h_cc_LP)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_LP   = fp.int_energy("water", P=P_cc_LP, h=h_cc_LP)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_cc_LP = fp.temperature("water", P=P_cc_LP, h=h_cc_LP)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _h_sf   = fp.enthalpy("water", P=P_cc_LP, Q=0.0)           # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             if m_dot_out_LP > 0.0:
                 h_out_LP = ((h_cc_LP * m_dot_LP_bypass + m_dot_LP_warmup * h_cc_LP
                              + m_dot_LP_AUX * h_cc_LP + m_dot_LP_drain * _h_sf
@@ -2370,9 +2370,9 @@ class TurbinesAndBypassNetwork(Component):
             Q_dot_lpmain_avg = (Q_dot_aa_LP + Q_dot_bb_LP + Q_dot_cc_LP + Q_dot_dd_LP) / 4.0
             m_LPmain_prev = m_LPmain_prev + (m_dot_in_LP - m_dot_out_LP) * t_crit
             T_LP_pipe = (self.mc_LPmain_pipe.v * T_LP_pipe + Q_dot_lpmain_avg * t_crit) / self.mc_LPmain_pipe.v
-            T_LPmain   = fp.temperature("water", P=P_LPmain_prev, h=h_LPmain_prev)  # TODO-NEEDS UNITS CHECK
-            x_LPmain   = fp.quality("water", P=P_LPmain_prev, h=h_LPmain_prev)      # TODO-NEEDS UNITS CHECK
-            _h_sat_g_LP = fp.enthalpy("water", P=P_LPmain_prev, Q=1.0)              # TODO-NEEDS UNITS CHECK
+            T_LPmain   = fp.temperature("water", P=P_LPmain_prev, h=h_LPmain_prev)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            x_LPmain   = fp.quality("water", P=P_LPmain_prev, h=h_LPmain_prev)      # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _h_sat_g_LP = fp.enthalpy("water", P=P_LPmain_prev, Q=1.0)              # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             if h_LPmain_prev > _h_sat_g_LP:
                 x_LPmain = 100.0
 
@@ -2396,9 +2396,9 @@ class TurbinesAndBypassNetwork(Component):
             vol_pipe_AUX = math.pi / 4.0 * self.D_AuxLine.v ** 2.0 * self.Length_AuxLine.v
 
             # Initial state properties for AUX aa step
-            _rho_AUX = fp.density("water", P=P_Aux_prev, h=h_Aux_prev)      # TODO-NEEDS UNITS CHECK
-            _u_AUX   = fp.int_energy("water", P=P_Aux_prev, h=h_Aux_prev)   # TODO-NEEDS UNITS CHECK
-            T_aux    = fp.temperature("water", P=P_Aux_prev, h=h_Aux_prev)  # TODO-NEEDS UNITS CHECK
+            _rho_AUX = fp.density("water", P=P_Aux_prev, h=h_Aux_prev)      # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_AUX   = fp.int_energy("water", P=P_Aux_prev, h=h_Aux_prev)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_aux    = fp.temperature("water", P=P_Aux_prev, h=h_Aux_prev)  # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
 
             # AUX h_out = current state enthalpy (no split drain correction like LP)
             h_out_AUX = h_Aux_prev
@@ -2425,9 +2425,9 @@ class TurbinesAndBypassNetwork(Component):
             T_pipe_aa_AUX = (self.mc_AUX_pipe.v * T_Aux_pipe + Q_dot_aa_AUX * t_crit / 2.0) / self.mc_AUX_pipe.v
 
             # ---- RK4 step bb ----
-            _rho_AUX = fp.density("water", P=P_aa_AUX, h=h_aa_AUX)        # TODO-NEEDS UNITS CHECK
-            _u_AUX   = fp.int_energy("water", P=P_aa_AUX, h=h_aa_AUX)     # TODO-NEEDS UNITS CHECK
-            T_aa_AUX = fp.temperature("water", P=P_aa_AUX, h=h_aa_AUX)    # TODO-NEEDS UNITS CHECK
+            _rho_AUX = fp.density("water", P=P_aa_AUX, h=h_aa_AUX)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_AUX   = fp.int_energy("water", P=P_aa_AUX, h=h_aa_AUX)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_aa_AUX = fp.temperature("water", P=P_aa_AUX, h=h_aa_AUX)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             h_out_AUX = h_aa_AUX  # AUX h_out updates to current state enthalpy
             _drhodh  = drhodhcp(P_aa_AUX, h_aa_AUX, dh)
             _drhodp  = drhodpch(P_aa_AUX, h_aa_AUX, dP)
@@ -2448,9 +2448,9 @@ class TurbinesAndBypassNetwork(Component):
             T_pipe_bb_AUX = (self.mc_AUX_pipe.v * T_Aux_pipe + Q_dot_bb_AUX * t_crit / 2.0) / self.mc_AUX_pipe.v
 
             # ---- RK4 step cc ----
-            _rho_AUX = fp.density("water", P=P_bb_AUX, h=h_bb_AUX)        # TODO-NEEDS UNITS CHECK
-            _u_AUX   = fp.int_energy("water", P=P_bb_AUX, h=h_bb_AUX)     # TODO-NEEDS UNITS CHECK
-            T_bb_AUX = fp.temperature("water", P=P_bb_AUX, h=h_bb_AUX)    # TODO-NEEDS UNITS CHECK
+            _rho_AUX = fp.density("water", P=P_bb_AUX, h=h_bb_AUX)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_AUX   = fp.int_energy("water", P=P_bb_AUX, h=h_bb_AUX)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_bb_AUX = fp.temperature("water", P=P_bb_AUX, h=h_bb_AUX)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             h_out_AUX = h_bb_AUX
             _drhodh  = drhodhcp(P_bb_AUX, h_bb_AUX, dh)
             _drhodp  = drhodpch(P_bb_AUX, h_bb_AUX, dP)
@@ -2471,9 +2471,9 @@ class TurbinesAndBypassNetwork(Component):
             T_pipe_cc_AUX = (self.mc_AUX_pipe.v * T_Aux_pipe + Q_dot_cc_AUX * t_crit) / self.mc_AUX_pipe.v
 
             # ---- RK4 step dd ----
-            _rho_AUX = fp.density("water", P=P_cc_AUX, h=h_cc_AUX)        # TODO-NEEDS UNITS CHECK
-            _u_AUX   = fp.int_energy("water", P=P_cc_AUX, h=h_cc_AUX)     # TODO-NEEDS UNITS CHECK
-            T_cc_AUX = fp.temperature("water", P=P_cc_AUX, h=h_cc_AUX)    # TODO-NEEDS UNITS CHECK
+            _rho_AUX = fp.density("water", P=P_cc_AUX, h=h_cc_AUX)        # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _u_AUX   = fp.int_energy("water", P=P_cc_AUX, h=h_cc_AUX)     # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            T_cc_AUX = fp.temperature("water", P=P_cc_AUX, h=h_cc_AUX)    # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             h_out_AUX = h_cc_AUX
             _drhodh  = drhodhcp(P_cc_AUX, h_cc_AUX, dh)
             _drhodp  = drhodpch(P_cc_AUX, h_cc_AUX, dP)
@@ -2498,9 +2498,9 @@ class TurbinesAndBypassNetwork(Component):
             Q_dot_aux_avg = (Q_dot_aa_AUX + Q_dot_bb_AUX + Q_dot_cc_AUX + Q_dot_dd_AUX) / 4.0
             m_Aux_prev = m_Aux_prev + (m_dot_in_AUX - m_dot_out_AUX) * t_crit
             T_Aux_pipe = (self.mc_AUX_pipe.v * T_Aux_pipe + Q_dot_aux_avg * t_crit) / self.mc_AUX_pipe.v
-            T_AUX  = fp.temperature("water", P=P_Aux_prev, h=h_Aux_prev)   # TODO-NEEDS UNITS CHECK
-            x_AUX  = fp.quality("water", P=P_Aux_prev, h=h_Aux_prev)       # TODO-NEEDS UNITS CHECK
-            _h_sat_g_AUX = fp.enthalpy("water", P=P_Aux_prev, Q=1.0)       # TODO-NEEDS UNITS CHECK
+            T_AUX  = fp.temperature("water", P=P_Aux_prev, h=h_Aux_prev)   # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            x_AUX  = fp.quality("water", P=P_Aux_prev, h=h_Aux_prev)       # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
+            _h_sat_g_AUX = fp.enthalpy("water", P=P_Aux_prev, Q=1.0)       # CONVERTED-NEEDS UNITS CHECK: eeslib uses SI; inputs confirmed in Pa/J/kg
             if h_Aux_prev > _h_sat_g_AUX:
                 x_LPmain = 100.0  # NOTE: Fortran bug — sets x_LPmain instead of x_AUX; replicating
 

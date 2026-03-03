@@ -37,8 +37,8 @@ class PowerBlockPiping(Component):
         super().presim_setup(**kwargs)
 
         # Do All of the First Timestep Manipulations Here - There Are No Iterations at the Initial Time
-        T_in = fp.temperature("water", P=self.P_in.v / 1000., h=self.h_in.v / 1000.)  # TODO-NEEDS UNITS CHECK: P_in [Pa->kPa /1000], h_in [J/kg->kJ/kg /1000]
-        rho = fp.density("water", P=self.P_in.v / 1000., h=self.h_in.v / 1000.)       # TODO-NEEDS UNITS CHECK: P_in [Pa->kPa /1000], h_in [J/kg->kJ/kg /1000]
+        T_in = fp.temperature("water", P=self.P_in.v, h=self.h_in.v)  # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses Pa and J/kg
+        rho = fp.density("water", P=self.P_in.v, h=self.h_in.v)       # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses Pa and J/kg
         guess = 10.  # setting friction factor guess value for next iteration
 
         if rho > 0.:
@@ -72,7 +72,7 @@ class PowerBlockPiping(Component):
 
         # Calculating Friction Pressure Drop
         if self.P_in.v > 10000.:
-            rho = fp.density("water", P=self.P_in.v / 1000., h=self.h_in.v / 1000.)  # TODO-NEEDS UNITS CHECK: P_in [Pa->kPa /1000], h_in [J/kg->kJ/kg /1000]
+            rho = fp.density("water", P=self.P_in.v, h=self.h_in.v)  # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses Pa and J/kg
             if rho == 0.:
                 rho = 1000.  # Pressure entering was negative, assume density is 1000 kg/s for this iteration
         else:
@@ -98,7 +98,7 @@ class PowerBlockPiping(Component):
         # energy balance - assuming no heat transfer with environment
         self.h_out.v = self.h_in.v
         if self.P_in.v > 10000.:  # make sure it can solve with FIT
-            self.T_out.v = fp.temperature("water", P=self.P_out.v / 1000., h=self.h_out.v / 1000.)  # TODO-NEEDS UNITS CHECK: P_out [Pa->kPa /1000], h_out [J/kg->kJ/kg /1000]
+            self.T_out.v = fp.temperature("water", P=self.P_out.v, h=self.h_out.v)  # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses Pa and J/kg
         else:
             self.T_out.v = self.T_out.v  # use previous output value
 

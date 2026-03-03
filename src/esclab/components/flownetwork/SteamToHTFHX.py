@@ -288,19 +288,18 @@ class SteamToHTFHX(Component):
 
                     # Saturation temperature and enthalpy of saturated liquid at feedwater pressure
                     # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PQ for T_sat and h_sat_f at x=0
-                    # TODO-NEEDS UNITS CHECK: P_fw converted Pa→kPa (/1000), h_sat_f returned kJ/kg×1000→J/kg
-                    T_sat = fp.T_Px("water", P=self.P_fw.v / 1000.0, x=0.0)
-                    h_sat_f = fp.h_Px("water", P=self.P_fw.v / 1000.0, x=0.0) * 1000.0
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg and *1000 kJ/kg->J/kg; eeslib uses SI
+                    T_sat = fp.T_Px("water", P=self.P_fw.v, x=0.0)
+                    h_sat_f = fp.h_Px("water", P=self.P_fw.v, x=0.0)
 
                     # Finding temperature of feedwater in based on pressure and enthalpy in
                     # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for T(P,h)
-                    # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), h_fw J/kg→kJ/kg (/1000)
-                    T_fw = fp.T_ph("water", P=self.P_fw.v / 1000.0, h=self.h_fw.v / 1000.0)
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                    T_fw = fp.T_ph("water", P=self.P_fw.v, h=self.h_fw.v)
 
                     # solve for specific heat values of fw and htf
                     # finding the specific heat of the htf entering heat exchanger
-                    # TODO-NEEDS UNITS CHECK: Inc.specheat returns kJ/(kg·K); verify consistency
-                    #   with h_fw (J/kg) and Q_dot_hx calculations below
+                    # CONVERTED-NEEDS UNITS CHECK: esol_properties.specheat returns J/(kg·K); no conversion needed
                     cp_htf = Inc.specheat(self.Fluid_ID.v, T=T_htf_local, P=self.P_htf.v)
 
                     if abs(T_fw - T_sat) > 1.0:
@@ -336,8 +335,8 @@ class SteamToHTFHX(Component):
                     if T_fw < T_htf_local:  # Heat Transfer is going the correct way
 
                         # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_TP for h(P,T)
-                        # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), result kJ/kg×1000→J/kg
-                        h_fw_out_s = fp.h_PT("water", P=self.P_fw.v / 1000.0, T=T_htf_local) * 1000.0
+                        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
+                        h_fw_out_s = fp.h_PT("water", P=self.P_fw.v, T=T_htf_local)
 
                         Q_dot_hx_calc = min(
                             eta_od_calc * self.m_dot_fw.v * (h_fw_out_s - self.h_fw.v),
@@ -354,8 +353,8 @@ class SteamToHTFHX(Component):
                                 Q_dot_hx_calc = self.m_dot_fw.v * (h_fw_out_calc - self.h_fw.v)
 
                         # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for T(P,h)
-                        # TODO-NEEDS UNITS CHECK: h_fw_out J/kg→kJ/kg (/1000)
-                        T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v / 1000.0, h=h_fw_out_calc / 1000.0)
+                        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                        T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v, h=h_fw_out_calc)
 
                         # energy balance on HTF side of heat exchanger
                         T_htf_out_calc = (
@@ -366,8 +365,8 @@ class SteamToHTFHX(Component):
                         # htf temperature is lower than feedwater temperature,
                         # heat transfer is going the wrong way
                         # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_TP for h(P,T)
-                        # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), result kJ/kg×1000→J/kg
-                        h_fw_out_s = fp.h_PT("water", P=self.P_fw.v / 1000.0, T=T_htf_local) * 1000.0
+                        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
+                        h_fw_out_s = fp.h_PT("water", P=self.P_fw.v, T=T_htf_local)
 
                         Q_dot_hx_calc = min(
                             eta_od_calc * self.m_dot_fw.v * (self.h_fw.v - h_fw_out_s),
@@ -381,8 +380,8 @@ class SteamToHTFHX(Component):
                             h_fw_out_calc = (self.m_dot_fw.v * self.h_fw.v - Q_dot_hx_calc) / self.m_dot_fw.v
 
                             # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PQ for h_sat_g at x=1
-                            # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), result kJ/kg×1000→J/kg
-                            h_sat_g = fp.h_Px("water", P=self.P_fw.v / 1000.0, x=1.0) * 1000.0
+                            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and *1000 kJ/kg->J/kg; eeslib uses SI
+                            h_sat_g = fp.h_Px("water", P=self.P_fw.v, x=1.0)
 
                             # if this type is the superheater do not allow it to go below saturation
                             # - would break other types
@@ -390,8 +389,8 @@ class SteamToHTFHX(Component):
                                 h_fw_out_calc = h_sat_g
 
                             # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for T(P,h)
-                            # TODO-NEEDS UNITS CHECK: h_fw J/kg→kJ/kg (/1000)
-                            T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v / 1000.0, h=self.h_fw.v / 1000.0)
+                            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                            T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v, h=self.h_fw.v)
 
                         # energy balance on HTF side of heat exchanger
                         T_htf_out_calc = (
@@ -400,8 +399,8 @@ class SteamToHTFHX(Component):
 
                     # calculating the volumetric flow rates
                     # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for density(P,h)
-                    # TODO-NEEDS UNITS CHECK: h_fw_out J/kg→kJ/kg (/1000)
-                    rho_fw = fp.density_ph("water", P=self.P_fw.v / 1000.0, h=h_fw_out_calc / 1000.0)
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                    rho_fw = fp.density_ph("water", P=self.P_fw.v, h=h_fw_out_calc)
                     if rho_fw > 0.0:
                         Vol_dot_fw_calc = self.m_dot_fw.v / rho_fw
                     else:
@@ -427,8 +426,8 @@ class SteamToHTFHX(Component):
                     # Pressure is not possible, need to wait for next iteration to compute temperatures
                     # keep values the same
                     # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for T(P,h)
-                    # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), h_fw J/kg→kJ/kg (/1000)
-                    T_fw = fp.T_ph("water", P=self.P_fw.v / 1000.0, h=self.h_fw.v / 1000.0)
+                    # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                    T_fw = fp.T_ph("water", P=self.P_fw.v, h=self.h_fw.v)
 
                     self.m_dot_fw_out.v = self.m_dot_fw.v    # m_dot_fw
                     self.P_fw_out.v = self.P_fw.v            # P_fw
@@ -449,8 +448,8 @@ class SteamToHTFHX(Component):
 
                 # FW Outputs
                 # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for T(P,h)
-                # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), h_fw J/kg→kJ/kg (/1000)
-                T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v / 1000.0, h=self.h_fw.v / 1000.0)
+                # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+                T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v, h=self.h_fw.v)
                 Vol_dot_fw_calc = self.m_dot_fw.v
                 h_fw_out_calc = self.h_fw.v
 
@@ -478,9 +477,9 @@ class SteamToHTFHX(Component):
 
             # FW Outputs
             # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for T(P,h) and density(P,h)
-            # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), h_fw J/kg→kJ/kg (/1000)
-            rho_fw = fp.density_ph("water", P=self.P_fw.v / 1000.0, h=self.h_fw.v / 1000.0)
-            T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v / 1000.0, h=self.h_fw.v / 1000.0)
+            # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+            rho_fw = fp.density_ph("water", P=self.P_fw.v, h=self.h_fw.v)
+            T_fw_out_calc = fp.T_ph("water", P=self.P_fw.v, h=self.h_fw.v)
             if rho_fw > 0.0:
                 Vol_dot_fw_calc = self.m_dot_fw.v / rho_fw
             else:
@@ -532,8 +531,8 @@ class SteamToHTFHX(Component):
         P_HTF_val = self.P_htf.v           # HTF inlet Pressure
 
         # TODO-NEEDS LIBRARY: eeslib.fluid_properties equivalent of FIT_PH for T(P,h)
-        # TODO-NEEDS UNITS CHECK: P_fw Pa→kPa (/1000), h_fw J/kg→kJ/kg (/1000)
-        T_fw = fp.T_ph("water", P=self.P_fw.v / 1000.0, h=self.h_fw.v / 1000.0)
+        # CONVERTED-NEEDS UNITS CHECK: removed /1000 Pa->kPa and /1000 J/kg->kJ/kg; eeslib uses SI
+        T_fw = fp.T_ph("water", P=self.P_fw.v, h=self.h_fw.v)
 
         # High HTF Temp In Check
         if self.Alarm_HTF_high_temp_in.v > T_HTF:  # HTF Inlet Temperature is less than Alarm (Alarm = 0)

@@ -110,8 +110,8 @@ class LPBFWHTankPump(Component):
         # Make sure initial tank temperature is not saturated
         T_tank_ini_val = min(self.T_tank_ini.v, 373.15)
         # Determine initial tank enthalpy
-        # TODO-NEEDS UNITS CHECK: P in Pa converted to kPa for eeslib call; h returned in kJ/kg converted back to J/kg
-        h_tank_start_val = fp.enthalpy("water", T=T_tank_ini_val, P=P_tank / 1000.0) * 1000.0
+        # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+        h_tank_start_val = fp.enthalpy("water", T=T_tank_ini_val, P=P_tank)
 
         # Determine the amount of mass in the tank at the start of the timestep
         rho_water = 1000.0  # density of water
@@ -280,11 +280,11 @@ class LPBFWHTankPump(Component):
                 self.Eta_Coef_D.v * flow,
                 0.2
             )
-            # TODO-NEEDS UNITS CHECK: P in Pa converted to kPa for eeslib call; h in J/kg converted to kJ/kg; returned entropy in kJ/kg-K converted to J/kg-K
-            s_pump_in = fp.entropy("water", P=P_pump_in / 1000.0, h=h_pump_in / 1000.0) * 1000.0  # Converting from kJ/kg-K to J/kg-K
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            s_pump_in = fp.entropy("water", P=P_pump_in, h=h_pump_in)
             s_pump_out_s = s_pump_in
-            # TODO-NEEDS UNITS CHECK: P in Pa converted to kPa; s in J/kg-K converted to kJ/kg-K; returned enthalpy in kJ/kg converted to J/kg
-            h_pump_out_s = fp.enthalpy("water", P=P_pump_out / 1000.0, s=s_pump_out_s / 1000.0) * 1000.0  # Converting from kJ/kg to J/kg
+            # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+            h_pump_out_s = fp.enthalpy("water", P=P_pump_out, s=s_pump_out_s)
             W_dot_pump_s = m_dot_pump * (h_pump_out_s - h_pump_in)
             W_dot_pump = W_dot_pump_s / Eta_pump
             if m_dot_pump == 0.0:
@@ -300,8 +300,8 @@ class LPBFWHTankPump(Component):
         m_tank_end = self.m_tank_start.v + self.m_dot_BFWH.v * ts - m_dot_pump * ts
         L_tank_end = m_tank_end / rho_water / (3.14 * (self.D_tank.v / 2) ** 2.0)
         h_tank_end = (self.m_tank_start.v * self.h_tank_start.v + self.m_dot_BFWH.v * ts * self.h_BFWH.v - m_dot_pump * ts * self.h_tank_start.v) / m_tank_end
-        # TODO-NEEDS UNITS CHECK: P in Pa converted to kPa; h in J/kg converted to kJ/kg; returned temperature in K
-        T_tank_end = fp.temperature("water", P=P_tank / 1000.0, h=h_tank_end / 1000.0)
+        # CONVERTED-NEEDS UNITS CHECK: removed unit scale factors; eeslib uses SI
+        T_tank_end = fp.temperature("water", P=P_tank, h=h_tank_end)
 
         #### COMPLETE FEEDWATER MIXING CALCS ####
         m_dot_fw_out = self.m_dot_fw_in.v + m_dot_pump

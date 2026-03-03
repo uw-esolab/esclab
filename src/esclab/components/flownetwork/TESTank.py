@@ -191,8 +191,8 @@ class TESTank(Component):
         #################### SALT Properties based on Fluid Temperature ####################
         rho_salt = Inc.density(self.ID_Fluid.v, T=T_tank)
         m_tank = rho_salt * (L_tank * 3.1415 * self.D_in.v**2.0) / 4.0
-        # TODO-NEEDS UNITS CHECK: spec_SF returns kJ/(kg·K); multiply by 1000 converts to J/(kg·K)
-        cp_salt_in = 1000.0 * Inc.specheat(self.ID_Fluid.v, T=self.T_in.v)
+        # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
+        cp_salt_in = Inc.specheat(self.ID_Fluid.v, T=self.T_in.v)
 
         ################# TANK PROPERTIES #################
         A_total = 3.1415 * self.D_in.v * self.Height.v + 3.1415 * self.D_in.v * self.D_in.v / 4.0  # Total area of the tank (walls and bottom)
@@ -207,8 +207,8 @@ class TESTank(Component):
         for i in range(1, N + 1):
             # Properties of the molten salt at previous time step
             rho_salt = Inc.density(self.ID_Fluid.v, T=T_tank)
-            # TODO-NEEDS UNITS CHECK: spec_SF returns kJ/(kg·K); multiply by 1000 converts to J/(kg·K)
-            cp_salt = 1000.0 * Inc.specheat(self.ID_Fluid.v, T=T_tank)  # Specific heat evaluated at T_tank (initial temperature at each subtime step)
+            # CONVERTED-NEEDS UNITS CHECK: removed *1000; esol_properties.specheat already returns J/(kg·K)
+            cp_salt = Inc.specheat(self.ID_Fluid.v, T=T_tank)  # Specific heat evaluated at T_tank (initial temperature at each subtime step)
 
             # Here starts the "while" loop
             error = 1.0
