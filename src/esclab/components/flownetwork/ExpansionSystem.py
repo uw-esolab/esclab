@@ -11,6 +11,7 @@ from esclab.components.flownetwork.sf_piping_helpers import PressureDrop
 from esclab.components.flownetwork.Valve import CV_data
 from esclab.components.flownetwork.sergio_scripts import matrixinv  # SergioScripts module
 
+from eeslib import convert
 
 class ExpansionSystem(Component):
     """
@@ -200,13 +201,11 @@ class ExpansionSystem(Component):
         self._CV_LV_204_05 = 0.0
         self._CV_LV_205_14 = 0.0
 
+        # Gravity
+        self._g = 9.81
+
     def calculate(self):
         super().calculate()
-
-        # Get the Global Trnsys Simulation Variables
-        # TODO-NEEDS CONVERSION REVIEW: Time and Timestep converted to seconds as in original Fortran
-        Time = self.model.time * 3600.0
-        Timestep = self.model.settings.timestep * 3600.0  # THIS MAKES THE TIMESTEP IN SECONDS
 
         # Do All of the First Timestep Manipulations Here - There Are No Iterations at the Initial Time
         if self.model.is_first_step:
@@ -260,7 +259,7 @@ class ExpansionSystem(Component):
 
             self.m_dot_in_out.v = self.m_dot_in.v
             self.T_in_out.v = self.T_in.v
-            self.P_bot_ev.v = self.P_ev.v + Inc.density(self.Fluid_ID.v, T=self.T_ev.v, P=self.P_of.v) * 9.81 * self.level_ev.v * self.H_ev.v
+            self.P_bot_ev.v = self.P_ev.v + Inc.density(self.Fluid_ID.v, T=self.T_ev.v, P=self.P_of.v) * self._g * self.level_ev.v * self.H_ev.v
             self.net_of_flow.v = 0.0  # m_in_of - m_out_of (uninitialized at start)
             self.m_dot_exp.v = 0.0    # m_dot_exp uninitialized at start
             self.m_dot_recirc.v = 0.0
@@ -276,7 +275,7 @@ class ExpansionSystem(Component):
             self._HV_204_09A_prev = self.HV_204_09A.v   # Control valve Exp to OF
             self._LV_205_14_prev = self.LV_205_14.v     # Control valve HX bypass
             # Pressure at bottom of overflow
-            self._P_bot_of = self.P_of.v + Inc.density(self.Fluid_ID.v, T=self.T_of.v, P=self.P_of.v) * 9.81 * self.level_of.v * self.H_of.v
+            self._P_bot_of = self.P_of.v + Inc.density(self.Fluid_ID.v, T=self.T_of.v, P=self.P_of.v) * self._g * self.level_of.v * self.H_of.v
             self._m_count_prev = self.m_counter.v
             return
 
@@ -303,8 +302,8 @@ class ExpansionSystem(Component):
 
                 # Compute mass flow into or out of expansion tank
                 m_dot_SF_to_exp = 0.0
-                if Time > Timestep:
-                    m_dot_SF_to_exp = (m_count_prev - self.m_counter.v) / Timestep
+                if self.model.time > self.model.settings.timestep:
+                    m_dot_SF_to_exp = (m_count_prev - self.m_counter.v) / self.model.settings.timestep
 
                 # Update tank temperature
                 if m_dot_SF_to_exp > 0:
@@ -317,7 +316,7 @@ class ExpansionSystem(Component):
                 # it is computed below, but the temperature update uses the previous mass_ev.
                 mass_ev = self.total_mass.v - self.m_counter.v
                 dT_dt = 1 / (mass_ev * c) * (-h * m_dot_SF_to_exp + m_dot_SF_to_exp * h_plant)
-                T_ev = T_ev + dT_dt * Timestep
+                T_ev = T_ev + dT_dt * self.model.settings.timestep
 
                 self._T_ev_state = T_ev
                 self._m_count_prev = self.m_counter.v
@@ -331,7 +330,7 @@ class ExpansionSystem(Component):
             # Send outputs
             self.m_dot_in_out.v = self.m_dot_in.v
             self.T_in_out.v = self.T_in.v
-            self.P_bot_ev.v = self.P_ev.v + Inc.density(self.Fluid_ID.v, T=T_ev, P=self.P_of.v) * 9.81 * self.level_ev.v * self.H_ev.v
+            self.P_bot_ev.v = self.P_ev.v + Inc.density(self.Fluid_ID.v, T=T_ev, P=self.P_of.v) * self._g * self.level_ev.v * self.H_ev.v
             self.net_of_flow.v = 0.0
             self.m_dot_exp.v = 0.0
             self.m_dot_recirc.v = 0.0
@@ -389,20 +388,19 @@ class ExpansionSystem(Component):
                         dp1 = PressureDrop(self.Fluid_ID.v, self._m1_4012[0], T_of, 1.0, self._D[0],
                                            self.roughness.v, self._L[0], 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
-                        dp_pump = 9.81 * (Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self.PC_a.v + self.PC_b.v * self._m1_4012[0] / self._n_pump + self.PC_c.v * self._m1_4012[0] ** 2 / Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) / self._n_pump ** 2)
+                        dp_pump = self._g * (Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self.PC_a.v + self.PC_b.v * self._m1_4012[0] / self._n_pump + self.PC_c.v * self._m1_4012[0] ** 2 / Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) / self._n_pump ** 2)
 
                         P_1 = P_bot_of - math.copysign(dp1, self._m1_4012[0]) + dp_pump
 
                         # Compute P_34
                         # Compute Volumetric Flow Rate
                         rho_fluid = Inc.density(self.Fluid_ID.v, T=T_of, P=0.0)
-                        Q = self._m1_4012[2] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
+                        Q = self._m1_4012[2] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
                         # Compute specific gravity of fluid
                         SG = rho_fluid / 1000.0
                         dp3 = PressureDrop(self.Fluid_ID.v, self._m1_4012[2], T_of, 1.0, self._D[2],
-                                           self.roughness.v, self._L[2], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_LV_204_09 ** 2) * 6894.76
+                                           self.roughness.v, self._L[2], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) \
+                                           + SG * Q ** 2 / (self._CV_LV_204_09 ** 2) * convert('psi','Pa')
 
                         dp34 = PressureDrop(self.Fluid_ID.v, self._m1_4012[2], T_of, 1.0, self._D[3],
                                             self.roughness.v, self._L[3], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -411,21 +409,18 @@ class ExpansionSystem(Component):
 
                         # Compute P_8
                         # Compute Volumetric Flow Rate
-                        Q = self._m1_4012[1] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
-                        # Compute specific gravity of fluid
-                        SG = rho_fluid / 1000.0
-
-                        dp_orifice = SG * Q ** 2 / (self.CV_orifice.v ** 2) * 6894.76
+                        Q = self._m1_4012[1] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
+                        
+                        dp_orifice = SG * Q ** 2 / (self.CV_orifice.v ** 2) * convert('psi','Pa')
 
                         dp2 = PressureDrop(self.Fluid_ID.v, self._m1_4012[1], T_of, 1.0, self._D[1],
                                            self.roughness.v, self._L[1], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
                         dp8 = PressureDrop(self.Fluid_ID.v, self._m1_4012[1], T_of, 1.0, self._D[4],
-                                           self.roughness.v, self._L[5] + self._L[7] + self._L[8], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_LV_205_14 ** 2) * 6894.76
+                                           self.roughness.v, self._L[5] + self._L[7] + self._L[8], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) \
+                                            + SG * Q ** 2 / (self._CV_LV_205_14 ** 2) * convert('psi','Pa')
 
-                        dp_elevation = self.H_of.v * rho_fluid * 9.81
+                        dp_elevation = self.H_of.v * rho_fluid * self._g
 
                         P_8 = P_1 - math.copysign(dp2, self._m1_4012[1]) - math.copysign(dp_orifice, self._m1_4012[1]) - math.copysign(dp8, self._m1_4012[1]) - dp_elevation
 
@@ -450,14 +445,14 @@ class ExpansionSystem(Component):
                         b1[0] = 0.0
 
                         # Pressure Constraint: P_34 = P_bot_ev
-                        A1[1, 0] = 9.81 * (self.PC_b.v / self._n_pump + self._m1_4012[0] * self.PC_c.v / (Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self._n_pump ** 2)) - self._m1_4012[0] * K1
+                        A1[1, 0] = self._g * (self.PC_b.v / self._n_pump + self._m1_4012[0] * self.PC_c.v / (Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self._n_pump ** 2)) - self._m1_4012[0] * K1
                         A1[1, 2] = -self._m1_4012[2] * K3
-                        b1[1] = P_bot_ev - P_bot_of - 9.81 * rho_fluid * self.PC_a.v
+                        b1[1] = P_bot_ev - P_bot_of - self._g * rho_fluid * self.PC_a.v
 
                         # Pressure Constraint: P_8 = P_of
-                        A1[2, 0] = 9.81 * (self.PC_b.v / self._n_pump + self._m1_4012[0] * self.PC_c.v / (rho_fluid * self._n_pump ** 2)) - self._m1_4012[0] * K1
+                        A1[2, 0] = self._g * (self.PC_b.v / self._n_pump + self._m1_4012[0] * self.PC_c.v / (rho_fluid * self._n_pump ** 2)) - self._m1_4012[0] * K1
                         A1[2, 1] = -self._m1_4012[1] * K8
-                        b1[2] = self.P_of.v + dp_elevation - P_bot_of - 9.81 * rho_fluid * self.PC_a.v
+                        b1[2] = self.P_of.v + dp_elevation - P_bot_of - self._g * rho_fluid * self.PC_a.v
 
                         # Invert matrix to obtain new flow rates
                         # matrixinv available from sergio_scripts; np.linalg.inv used here as equivalent
@@ -517,28 +512,28 @@ class ExpansionSystem(Component):
 
                         # Compute Volumetric Flow Rate
                         rho_fluid = Inc.density(self.Fluid_ID.v, T=T_ev, P=0.0)
-                        Q = self._m2_4012[1] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
+                        Q = self._m2_4012[1] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
+                        
                         # Compute specific gravity of fluid
                         SG = rho_fluid / 1000.0
                         dp4 = PressureDrop(self.Fluid_ID.v, self._m2_4012[1], T_ev, 1.0, self._D[4],
-                                           self.roughness.v, self._L[4], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_HV_204_09 ** 2) * 6894.76
+                                           self.roughness.v, self._L[4], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) \
+                                            + SG * Q ** 2 / (self._CV_HV_204_09 ** 2) * convert('psi','Pa')
 
                         P_4 = P_bot_ev - math.copysign(dp34, self._m2_4012[1]) - math.copysign(dp4, self._m2_4012[1])
 
                         # Compute Volumetric Flow Rate
                         rho_fluid = Inc.density(self.Fluid_ID.v, T=(T_ev * self._m2_4012[1] + T_of * self._m2_4012[0]) / (self._m2_4012[1] + self._m2_4012[0]), P=0.0)
-                        Q = self._m2_4012[2] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
+                        Q = self._m2_4012[2] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
+                        
                         # Compute specific gravity of fluid
                         SG = rho_fluid / 1000.0
                         T_mix = (T_ev * self._m2_4012[1] + T_of * self._m2_4012[0]) / (self._m2_4012[1] + self._m2_4012[0])
                         dp8 = PressureDrop(self.Fluid_ID.v, self._m2_4012[2], T_mix, 1.0, self._D[4],
-                                           self.roughness.v, self._L[5] + self._L[7] + self._L[8], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_LV_205_14 ** 2) * 6894.76
+                                           self.roughness.v, self._L[5] + self._L[7] + self._L[8], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) \
+                                            + SG * Q ** 2 / (self._CV_LV_205_14 ** 2) * convert('psi','Pa')
 
-                        dp_elevation = self.H_of.v * Inc.density(self.Fluid_ID.v, T=T_mix, P=self.P_of.v) * 9.81
+                        dp_elevation = self.H_of.v * Inc.density(self.Fluid_ID.v, T=T_mix, P=self.P_of.v) * self._g
 
                         P_8 = P_bot_ev - math.copysign(dp34, self._m2_4012[1]) - math.copysign(dp4, self._m2_4012[1]) - math.copysign(dp8, self._m2_4012[2]) - dp_elevation
 
@@ -546,17 +541,17 @@ class ExpansionSystem(Component):
                         dp1 = PressureDrop(self.Fluid_ID.v, self._m2_4012[0], T_of, 1.0, self._D[0],
                                            self.roughness.v, self._L[0] + self._L[1], 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
-                        dp_pump = 9.81 * (Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self.PC_a.v + self.PC_b.v * self._m2_4012[0] / self._n_pump + self.PC_c.v * self._m2_4012[0] ** 2 / Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) / self._n_pump ** 2)
+                        rho_of = Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v)
+                        dp_pump = self._g * (rho_of * self.PC_a.v + self.PC_b.v * self._m2_4012[0] / self._n_pump + self.PC_c.v * self._m2_4012[0] ** 2 / rho_of / self._n_pump ** 2)
 
                         # Compute Volumetric Flow Rate
                         rho_fluid = Inc.density(self.Fluid_ID.v, T=T_of, P=0.0)
-                        Q = self._m2_4012[0] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
+                        Q = self._m2_4012[0] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
+                        
                         # Compute specific gravity of fluid
                         SG = rho_fluid / 1000.0
 
-                        dp_orifice = SG * Q ** 2 / (self.CV_orifice.v ** 2) * 6894.76
+                        dp_orifice = SG * Q ** 2 / (self.CV_orifice.v ** 2) * convert('psi','Pa')
 
                         dp1 = dp1 + dp_orifice
 
@@ -588,9 +583,9 @@ class ExpansionSystem(Component):
                         b2[1] = self.P_of.v + dp_elevation - P_bot_ev
 
                         # Pressure Constraint: P_2 = P_4
-                        A2[2, 0] = 9.81 * (self.PC_b.v / self._n_pump + self._m2_4012[0] * self.PC_c.v / (Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self._n_pump ** 2)) - self._m2_4012[0] * K1
+                        A2[2, 0] = self._g * (self.PC_b.v / self._n_pump + self._m2_4012[0] * self.PC_c.v / (Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self._n_pump ** 2)) - self._m2_4012[0] * K1
                         A2[2, 1] = self._m2_4012[1] * K4
-                        b2[2] = P_bot_ev - P_bot_of - 9.81 * Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self.PC_a.v
+                        b2[2] = P_bot_ev - P_bot_of - self._g * Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self.PC_a.v
 
                         # Invert matrix to obtain new flow rates
                         # matrixinv available from sergio_scripts; np.linalg.inv used here as equivalent
@@ -647,18 +642,17 @@ class ExpansionSystem(Component):
                         ## Compute P_5
                         # Compute Volumetric Flow Rate
                         rho_fluid = Inc.density(self.Fluid_ID.v, T=T_of, P=0.0)
-                        Q = self._m3_4012[0] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
+                        Q = self._m3_4012[0] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
+                        
                         # Compute specific gravity of fluid
                         SG = rho_fluid / 1000.0
 
                         dp1 = PressureDrop(self.Fluid_ID.v, self._m3_4012[0], T_of, 1.0, self._D[0],
                                            self.roughness.v, self._L[0] + self._L[1], 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
-                        dp_pump = 9.81 * (rho_fluid * self.PC_a.v + self.PC_b.v * self._m3_4012[0] / self._n_pump + self.PC_c.v * self._m3_4012[0] ** 2 / rho_fluid / self._n_pump ** 2)
+                        dp_pump = self._g * (rho_fluid * self.PC_a.v + self.PC_b.v * self._m3_4012[0] / self._n_pump + self.PC_c.v * self._m3_4012[0] ** 2 / rho_fluid / self._n_pump ** 2)
 
-                        dp_orifice = SG * Q ** 2 / (self.CV_orifice.v ** 2) * 6894.76
+                        dp_orifice = SG * Q ** 2 / (self.CV_orifice.v ** 2) * convert('psi','Pa')
 
                         dp5 = PressureDrop(self.Fluid_ID.v, self._m3_4012[0], T_of, 1.0, self._D[5],
                                            self.roughness.v, self._L[5], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -666,20 +660,17 @@ class ExpansionSystem(Component):
                         P_2 = P_bot_of - dp1 + dp_pump - dp_orifice - dp5
 
                         # Compute P_7
-                        Q = self._m3_4012[2] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
+                        Q = self._m3_4012[2] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
                         dp7 = PressureDrop(self.Fluid_ID.v, self._m3_4012[2], T_of, 1.0, self._D[7],
-                                           self.roughness.v, self._L[7], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_LV_205_14 ** 2) * 6894.76
+                                           self.roughness.v, self._L[7], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_LV_205_14 ** 2) * convert('psi','Pa')
 
                         P_7 = P_2 - dp7
 
                         ## Compute P_6
                         # Compute Volumetric Flow Rate
                         rho_fluid = Inc.density(self.Fluid_ID.v, T=self.T_chill_out.v, P=0.0)
-                        Q = self._m3_4012[1] / rho_fluid
-                        # Convert flowrate to gpm
-                        Q = Q * 15850.323140625002
+                        Q = self._m3_4012[1] / rho_fluid * convert('m^3/s', 'gpm')  # Convert flowrate to gpm
+                        
                         # Compute specific gravity of fluid
                         SG = rho_fluid / 1000.0
 
@@ -687,7 +678,7 @@ class ExpansionSystem(Component):
                                              self.roughness.v, self._L[6] / 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
                         dp6_2 = PressureDrop(self.Fluid_ID.v, self._m3_4012[1], self.T_chill_out.v, 1.0, self._D[6],
-                                             self.roughness.v, self._L[6] / 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_LV_204_05 ** 2) * 6894.76
+                                             self.roughness.v, self._L[6] / 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) + SG * Q ** 2 / (self._CV_LV_204_05 ** 2) * convert('psi','Pa')
 
                         K4 = PressureDrop(self.Fluid_ID.v, self._m3_4012[2], self.T_chill_out.v, 1.0, self._D[6],
                                           self.roughness.v, self._L[6] / 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -702,7 +693,7 @@ class ExpansionSystem(Component):
                         dp8 = PressureDrop(self.Fluid_ID.v, self._m3_4012[3], T_8, 1.0, self._D[4],
                                            self.roughness.v, self._L[8], 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
-                        dp_elevation = self.H_of.v * rho_fluid * 9.81
+                        dp_elevation = self.H_of.v * rho_fluid * self._g
 
                         P_8 = P_6 - dp8 - dp_elevation
 
@@ -741,10 +732,10 @@ class ExpansionSystem(Component):
 
                         # Pressure Constraint: P_8 = P_of
                         rho_fluid = Inc.density(self.Fluid_ID.v, T=T_of, P=0.0)
-                        A3[3, 0] = 9.81 * (self.PC_b.v / self._n_pump + self._m3_4012[0] * self.PC_c.v / (rho_fluid * self._n_pump ** 2)) - self._m3_4012[0] * K1
+                        A3[3, 0] = self._g * (self.PC_b.v / self._n_pump + self._m3_4012[0] * self.PC_c.v / (rho_fluid * self._n_pump ** 2)) - self._m3_4012[0] * K1
                         A3[3, 2] = -self._m3_4012[2] * K7
                         A3[3, 3] = -self._m3_4012[3] * K8
-                        b3[3] = self.P_of.v + dp_elevation - P_bot_of - 9.81 * rho_fluid * self.PC_a.v
+                        b3[3] = self.P_of.v + dp_elevation - P_bot_of - self._g * rho_fluid * self.PC_a.v
 
                         # Invert matrix to obtain new flow rates
                         # matrixinv available from sergio_scripts; np.linalg.inv used here as equivalent
@@ -794,11 +785,11 @@ class ExpansionSystem(Component):
                 ############################################################################
                 ######  2) Update tank levels  #############################################
                 m_dot_SF_to_exp = 0.0
-                if Time > Timestep:
-                    m_dot_SF_to_exp = (m_count_prev - self.m_counter.v) / Timestep
+                if self.model.timeTime > self.model.settings.timestep:
+                    m_dot_SF_to_exp = (m_count_prev - self.m_counter.v) / self.model.settings.timestep
 
                 # Compute mass and level in overflow system
-                self._mass_of = self._mass_of + (m_in_of - m_out_of) * Timestep
+                self._mass_of = self._mass_of + (m_in_of - m_out_of) * self.model.settings.timestep
                 self.level_of.v = self._mass_of / Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) / ((self.pi * (self.D_of.v / 2) ** 2 * self.H_of.v) * self.N_of.v)
 
                 # Compute mass and level in expansion system
@@ -813,7 +804,7 @@ class ExpansionSystem(Component):
                 h_in = Inc.enthalpy(self.Fluid_ID.v, T=T_to_of)
                 h_out = Inc.enthalpy(self.Fluid_ID.v, T=T_of)
                 dT_dt = 1 / (self._mass_of * c) * (m_in_of * (h_in - h) - m_out_of * (h - h_out))
-                T_of = T_of + dT_dt * Timestep
+                T_of = T_of + dT_dt * self.model.settings.timestep
 
                 # Expansion Tank (Eulers Method)
                 if m_dot_exp > 0:
@@ -830,12 +821,12 @@ class ExpansionSystem(Component):
                 h_plant = Inc.enthalpy(self.Fluid_ID.v, T=self.T_in.v)
                 h = Inc.enthalpy(self.Fluid_ID.v, T=T_ev)
                 dT_dt = 1 / (mass_ev * c) * (-h * (m_dot_SF_to_exp + m_in_ev - m_out_ev) + m_dot_SF_to_exp * h_plant + m_in_ev * h_in - m_out_ev * h_out)
-                T_ev = T_ev + dT_dt * Timestep
+                T_ev = T_ev + dT_dt * self.model.settings.timestep
 
                 ############################################################################
                 ######  3) Update pressure values at bottom of tanks
-                P_bot_of = self.level_of.v * self.H_of.v * Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * 9.81 + self.P_of.v
-                P_bot_ev = self.level_ev.v * self.H_ev.v * Inc.density(self.Fluid_ID.v, T=T_ev, P=self.P_ev.v) * 9.81 + self.P_ev.v
+                P_bot_of = self.level_of.v * self.H_of.v * Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self._g + self.P_of.v
+                P_bot_ev = self.level_ev.v * self.H_ev.v * Inc.density(self.Fluid_ID.v, T=T_ev, P=self.P_ev.v) * self._g + self.P_ev.v
 
                 if P_bot_ev > 1.172e6:
                     alarm_high_high_pressure = 1.0
@@ -885,36 +876,36 @@ class ExpansionSystem(Component):
                 # CV Expansion to OF
                 if self.HV_204_09A.v != HV_204_09A_prev:
                     if self.HV_204_09A.v > HV_204_09A_prev:
-                        HV_204_09A_cur = min(self.HV_204_09A.v, HV_204_09A_prev + self.valve_speed.v / 90.0 * Timestep)
+                        HV_204_09A_cur = min(self.HV_204_09A.v, HV_204_09A_prev + self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     else:
-                        HV_204_09A_cur = max(self.HV_204_09A.v, HV_204_09A_prev - self.valve_speed.v / 90.0 * Timestep)
+                        HV_204_09A_cur = max(self.HV_204_09A.v, HV_204_09A_prev - self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     self._CV_HV_204_09 = CV_data(1, self._D[4], HV_204_09A_cur)
                     self._HV_204_09A_prev = HV_204_09A_cur
 
                 # CV OF to Expansion
                 if self.LV_204_09B.v != LV_204_09B_prev:
                     if self.LV_204_09B.v > LV_204_09B_prev:
-                        LV_204_09B_cur = min(self.LV_204_09B.v, LV_204_09B_prev + self.valve_speed.v / 90.0 * Timestep)
+                        LV_204_09B_cur = min(self.LV_204_09B.v, LV_204_09B_prev + self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     else:
-                        LV_204_09B_cur = max(self.LV_204_09B.v, LV_204_09B_prev - self.valve_speed.v / 90.0 * Timestep)
+                        LV_204_09B_cur = max(self.LV_204_09B.v, LV_204_09B_prev - self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     self._CV_LV_204_09 = CV_data(1, self._D[2], LV_204_09B_cur)
                     self._LV_204_09B_prev = LV_204_09B_cur
 
                 # CV to HX
                 if self.LV_204_05.v != LV_204_05_prev:
                     if self.LV_204_05.v > LV_204_05_prev:
-                        LV_204_05_cur = min(self.LV_204_05.v, LV_204_05_prev + self.valve_speed.v / 90.0 * Timestep)
+                        LV_204_05_cur = min(self.LV_204_05.v, LV_204_05_prev + self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     else:
-                        LV_204_05_cur = max(self.LV_204_05.v, LV_204_05_prev - self.valve_speed.v / 90.0 * Timestep)
+                        LV_204_05_cur = max(self.LV_204_05.v, LV_204_05_prev - self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     self._CV_LV_204_05 = CV_data(1, self._D[6], LV_204_05_cur)
                     self._LV_204_05_prev = LV_204_05_cur
 
                 # CV to HX bypass
                 if self.LV_205_14.v != LV_205_14_prev:
                     if self.LV_205_14.v > LV_205_14_prev:
-                        LV_205_14_cur = min(self.LV_205_14.v, LV_205_14_prev + self.valve_speed.v / 90.0 * Timestep)
+                        LV_205_14_cur = min(self.LV_205_14.v, LV_205_14_prev + self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     else:
-                        LV_205_14_cur = max(self.LV_205_14.v, LV_205_14_prev - self.valve_speed.v / 90.0 * Timestep)
+                        LV_205_14_cur = max(self.LV_205_14.v, LV_205_14_prev - self.valve_speed.v / 90.0 * self.model.settings.timestep)
                     self._CV_LV_205_14 = CV_data(1, self._D[7], LV_205_14_cur)
                     self._LV_205_14_prev = LV_205_14_cur
 
