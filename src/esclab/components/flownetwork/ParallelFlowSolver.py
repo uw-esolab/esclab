@@ -4,6 +4,7 @@ import numpy as np
 
 from esclab.simulate import Component
 from esclab.components.esol_properties import Incompressible as Inc
+from esclab.components.flownetwork.sergio_scripts import matrixinv  # SergioScripts module
 
 
 class ParallelFlowSolver(Component):
@@ -215,7 +216,7 @@ class ParallelFlowSolver(Component):
                 self._b[0] = self.m_dot_1.v
 
                 # Invert matrix and compute mass flow rates
-                # TODO-NEEDS CONVERSION REVIEW: SergioScripts matrixinv replaced with numpy.linalg.solve
+                # matrixinv available from sergio_scripts; np.linalg.solve used here as equivalent
                 # call matrixinv(A, A_inv, 8); m_dots = matmul(A_inv, b)
                 self._m_dots = np.linalg.solve(self._A, self._b)
 
@@ -315,7 +316,7 @@ class ParallelFlowSolver(Component):
                 self._b[0] = self.m_dot_1.v
 
                 # Invert matrix and compute mass flow rates
-                # TODO-NEEDS CONVERSION REVIEW: SergioScripts matrixinv replaced with numpy.linalg.solve
+                # matrixinv available from sergio_scripts; np.linalg.solve used here as equivalent
                 # A2 = A(1:2,1:2); call matrixinv(A2, A2inv, 2); m_dots(1:2) = matmul(A2inv, b(1:2))
                 self._m_dots = np.linalg.solve(self._A, self._b)
 

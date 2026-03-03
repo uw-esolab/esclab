@@ -12,6 +12,12 @@ import numpy as np
 
 from esclab.simulate import Component
 from esclab.components.esol_properties import Incompressible as Inc
+from esclab.components.flownetwork.sergio_scripts import (
+    eNTU,
+    ZeroD_Eq,
+    shell,
+    tube_oneD_inc,
+)
 
 
 class HeatExchanger(Component):
@@ -359,13 +365,6 @@ class HeatExchanger(Component):
             else:
                 T_shell_in = 400.0
 
-            # TODO-NEEDS LIBRARY: eNTU subroutine from SergioScripts Fortran module.
-            # Computes steady-state shell and tube nodal temperature and enthalpy profiles
-            # using the effectiveness-NTU method.
-            # Signature (Fortran):
-            #   eNTU(p_in_shell, p_in_tube, n_nodes, shell_p, n_tubes, r_out, r_in, L_shell,
-            #        D_shell, T_tube_in, T_shell_in, m_tube, m_shell, fluid_shell, config, S_T, S_L,
-            #        fluid_tube, n_HEX, n_baffles, T_shell_new, T_tube_new, h_shell, h_tube)
             eNTU(
                 p_in_shell, p_in_tube, n_nodes,
                 self.shell_p.v, self.n_tubes.v,
@@ -484,28 +483,13 @@ class HeatExchanger(Component):
         vel_tube    = np.zeros(n_nodes)
 
         # Calculate the heat transfer between the shell and tube side
-        # TODO-NEEDS LIBRARY: ZeroD_Eq subroutine from SergioScripts Fortran module.
-        # Computes nodal heat transfer terms q_HTF_tube and q_HTF_shell from
-        # current enthalpy and temperature profiles.
-        # Signature (Fortran):
-        #   ZeroD_Eq(n_nodes, h_tube, h_shell, T_shell, T_tube, k_steel,
-        #            gap_baffle, d_in, d_out, q_HTF_tube, q_HTF_shell)
         ZeroD_Eq(
             n_nodes, h_tube, h_shell, T_shell, T_tube,
             self.k_steel.v, gap_baffle, d_in, d_out,
             q_HTF_tube, q_HTF_shell
         )
 
-        # TODO-NEEDS LIBRARY: shell subroutine from SergioScripts Fortran module.
-        # Updates shell-side nodal temperatures, enthalpy profile, velocities,
-        # and outlet pressure.  h_shell is updated in-place.
-        # Signature (Fortran):
-        #   shell(config, shell_p, Tenv, p_in_shell, gap_baffle, n_nodes, k_steel, k_ins,
-        #         S_T, S_L, m_shell, n_baffles, n_HEX, th_baffle, th_ins, T_shell, D_shell,
-        #         L_baffle, A_baffle, shell_passes, L_shell, n_tubes, D_out, q_HTF_shell,
-        #         v_out, timestep, fluid_shell, T_shell_new, h_shell, vel_shell, p_shell_out)
-        p_shell_out = 0.0
-        shell(
+        p_shell_out = shell(
             self.config.v, self.shell_p.v, self.Tenv.v, p_in_shell,
             gap_baffle, n_nodes, self.k_steel.v, self.k_ins.v,
             self.S_T.v, self.S_L.v, m_shell, self.n_baffles.v,
@@ -514,22 +498,14 @@ class HeatExchanger(Component):
             shell_passes, self.L_shell.v, self.n_tubes.v, d_out,
             q_HTF_shell, self.v_out.v, self.model.settings.timestep,
             self.fluid_shell.v,
-            T_shell_new, h_shell, vel_shell, p_shell_out
+            T_shell_new, h_shell, vel_shell
         )
 
-        # TODO-NEEDS LIBRARY: tube_oneD_inc subroutine from SergioScripts Fortran module.
-        # Updates tube-side nodal temperatures, enthalpy profile, velocities,
-        # and outlet pressure.  h_tube is updated in-place.
-        # Signature (Fortran):
-        #   tube_oneD_inc(q_HTF_tube, T_tube, n_nodes, gap_baffle, d_in,
-        #                 p_in_tube, m_tube, n_tubes, fluid_tube, timestep,
-        #                 T_tube_new, h_tube, vel_tube, p_tube_out)
-        p_tube_out = 0.0
-        tube_oneD_inc(
+        p_tube_out = tube_oneD_inc(
             q_HTF_tube, T_tube, n_nodes, gap_baffle, d_in,
             p_in_tube, m_tube, self.n_tubes.v, self.fluid_tube.v,
             self.model.settings.timestep,
-            T_tube_new, h_tube, vel_tube, p_tube_out
+            T_tube_new, h_tube, vel_tube
         )
 
         T_shell_out = T_shell_new[n_nodes - 1]

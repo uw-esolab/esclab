@@ -9,7 +9,7 @@ from esclab.components.esol_properties import Incompressible as Inc
 
 from esclab.components.flownetwork.sf_piping_helpers import PressureDrop
 from esclab.components.flownetwork.Valve import CV_data
-# TODO-NEEDS LIBRARY: SergioScripts - matrixinv function
+from esclab.components.flownetwork.sergio_scripts import matrixinv  # SergioScripts module
 
 
 class ExpansionSystem(Component):
@@ -461,7 +461,7 @@ class ExpansionSystem(Component):
                         b1[2] = self.P_of.v + dp_elevation - P_bot_of - 9.81 * rho_fluid * self.PC_a.v
 
                         # Invert matrix to obtain new flow rates
-                        # TODO-NEEDS LIBRARY: SergioScripts - matrixinv function; using np.linalg.inv as substitute
+                        # matrixinv available from sergio_scripts; np.linalg.inv used here as equivalent
                         A1inv = np.linalg.inv(A1)
                         mdots_new = A1inv @ b1
 
@@ -594,7 +594,7 @@ class ExpansionSystem(Component):
                         b2[2] = P_bot_ev - P_bot_of - 9.81 * Inc.density(self.Fluid_ID.v, T=T_of, P=self.P_of.v) * self.PC_a.v
 
                         # Invert matrix to obtain new flow rates
-                        # TODO-NEEDS LIBRARY: SergioScripts - matrixinv function; using np.linalg.inv as substitute
+                        # matrixinv available from sergio_scripts; np.linalg.inv used here as equivalent
                         A2inv = np.linalg.inv(A2)
                         mdots_new = A2inv @ b2
 
@@ -748,7 +748,7 @@ class ExpansionSystem(Component):
                         b3[3] = self.P_of.v + dp_elevation - P_bot_of - 9.81 * rho_fluid * self.PC_a.v
 
                         # Invert matrix to obtain new flow rates
-                        # TODO-NEEDS LIBRARY: SergioScripts - matrixinv function; using np.linalg.inv as substitute
+                        # matrixinv available from sergio_scripts; np.linalg.inv used here as equivalent
                         A3inv = np.linalg.inv(A3)
                         mdots_new = A3inv @ b3
 

@@ -23,6 +23,22 @@ from .nn_functions import (
     forward_prop,
     dt_dtime_NN,
 )
+# SergioScripts helper module (Source1.f90 conversion)
+from .sergio_scripts import (
+    eNTU,
+    ZeroD_Eq,
+    shell,
+    tube_oneD_inc,
+    gnielinski,
+    zukauskas,
+    taborek,
+    matrixinv,
+    gauss_elimination,
+    update_flow,
+    find_66_iter,
+    find_66_matrix,
+    find_66_outputs,
+)
 
 # Type 4008
 from .TeeReturnHTF import TeeReturnHTF
@@ -100,6 +116,20 @@ __all__ = [
     "load_NN",
     "forward_prop",
     "dt_dtime_NN",
+    # SergioScripts helper functions (Source1.f90 conversion)
+    "eNTU",
+    "ZeroD_Eq",
+    "shell",
+    "tube_oneD_inc",
+    "gnielinski",
+    "zukauskas",
+    "taborek",
+    "matrixinv",
+    "gauss_elimination",
+    "update_flow",
+    "find_66_iter",
+    "find_66_matrix",
+    "find_66_outputs",
     # New components
     "BoilerFeedwaterHeater",
     "DeaeratorPump",
