@@ -89,11 +89,12 @@ We are focusing on converting the following types:
 6031
 6032
 6034
-
 23
-57
-65
 162
+
+Not to be converted but are used in the deck:
+65
+57
 
 
 You must follow the instructions below when converting the Fortran code to Python, in this order. Do not execute the code and test for output values until explicitly stated.
@@ -107,8 +108,8 @@ You must follow the instructions below when converting the Fortran code to Pytho
   e. Never introduce value clamping, min/max functions, safety fallbacks, or other modifications that change the behavior of the code. The goal is a direct mapping in this step.
   f. Leave missing libraries and functions alone and mark with a comment like "# TODO-NEEDS LIBRARY: " and a brief description of the library or function needed. For example, if there is a call to a function in the FIT library for fluid properties, mark it with a comment like "# TODO-NEEDS LIBRARY: FIT library for fluid properties".
   g. Port all comments from the original Fortran code. If a line is <fortran code> !comment, the comment should be ported as a python comment on the line above the code. If there are block comments, these should be ported as block comments in Python. Do not add conversion comments like "Same structure as fortran" aside from explicitly stated TODO's in these instructions, but add comments provided in the original fortran source that explain the purpose of the code blocks.
-3. Move code blocks that are inside the 'getIsStartTime()', 'getIsEndOfTimestep()', 'getIsFirstCallofTimestep()', 'getTimestepIteration()==0', and 'getCurrentTime()' blocks to if statements that check for the appropriate model flags or members. For example, code inside the 'getIsStartTime()' block should be moved inside an if statement checking for the model.is_first_step flag.
-4. Convert property library calls. HTF properties map to esol_properties.Incompressible. Water properties map to eeslib.fluid_properties. Function arguments must be specified with the parameter name (e.g., T=Teval, P=Peval, etc.). Do not use surrogates for properties.  The fluid_id in fortran is a number, but in the new implementation, assume fluid_id is a string that is directly passed on. Do not use "fallback" fluid names like "Nitrate salt". Assume the property functions check for validity and return float values, and do not attempt to convert the return type or clamp/clip/limit input arguments. Flag any suspected units mismatches (e.g., J->kJ) with a comment like "# TODO-NEEDS UNITS CHECK: " and a brief description of the issue.
+3. Move code blocks that are inside the 'getIsStartTime()', 'getIsEndOfTimestep()', 'getIsFirstCallofTimestep()', 'getTimestepIteration()==0', and 'getCurrentTime()' blocks to if statements that check for the appropriate model flags or members. For example, code inside the 'getIsStartTime()' block should be moved inside an if statement checking for the model.is_first_step flag. Ignore code inside 'getIsIncludedInSSR()' blocks.
+4. Convert property library calls. HTF properties map to esol_properties.Incompressible. Water properties map to eeslib.fluid_properties. Function arguments must be specified with the parameter name (e.g., T=Teval, P=Peval, etc.). Do not use surrogates for properties.  The fluid_id in fortran is a number, but in the new implementation, assume fluid_id is a string that is directly passed on. Do not use "fallback" fluid names like "Nitrate salt". Assume the property functions check for validity and return float values, and do not attempt to convert the return type or clamp/clip/limit input arguments. Flag any suspected units mismatches (e.g., J->kJ) with a comment like "# TODO-NEEDS UNITS CHECK: " and a brief description of the issue. Humid air properties in TRNSYS are calculated with the MoistAirProperties function. eeslib contains a call humid_air returning a dictionary of desired outputs (e.g, T_wb, T_db, RH) that should be used instead.
 5. After direct conversion, note that there are some redundancies in setting and using parameters, inputs, and outputs. Find instances where a local scope variable is assigned the value of the Component.<class> member, and prefer instead to directly use the Component.<class> member in the code. For example, if there is a line like "param1 = self.myparameter.v", and then param1 is used in the code, it would be better to directly use "self.myparameter.v" instead of creating a new variable. Make these changes throughout the code, but do not change any of the underlying logic or structure of the code except to remove these redundancies. 
 
 Do not proceed to Run Type 2 or 3 unless I explicitly ask you to do so.

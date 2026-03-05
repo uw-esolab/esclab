@@ -90,6 +90,10 @@ from .DeaeratorPump import DeaeratorPump
 from .TESModeSelector import TESModeSelector
 # Type 6028
 from .TurbinesAndBypassNetwork import TurbinesAndBypassNetwork
+# Type 23
+from .PIDController import PIDController
+# Type 162
+from .CoolingTower import CoolingTower
 
 __all__ = [
     # Original components
@@ -156,4 +160,8 @@ __all__ = [
     "TurbinesAndBypassNetwork",
     "WaterEnthalpyLookup",
     "WeatherReader",
+    # Type 23
+    "PIDController",
+    # Type 162
+    "CoolingTower",
 ]
