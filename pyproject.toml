@@ -37,6 +37,10 @@ dependencies = [
 Homepage = "https://github.com/esclab/esclab"
 Issues = "https://github.com/esclab/esclab/issues"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",

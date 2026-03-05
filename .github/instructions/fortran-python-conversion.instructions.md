@@ -90,6 +90,12 @@ We are focusing on converting the following types:
 6032
 6034
 
+23
+57
+65
+162
+
+
 You must follow the instructions below when converting the Fortran code to Python, in this order. Do not execute the code and test for output values until explicitly stated.
 
 1. Using subagents assigned each to one file, starting with Type 4001, create a new python file in flownetwork corresponding to the type. Name the file with a descriptive name that reflects the functionality of the component. For example, Type 4001 is a simple pipe flow component, so it could be named 'PipeFlow.py'. The file name and component class should be named using PascalCase and should also reflect the functionality of the component, such as 'PipeFlow'. Modify the __init__.py file in the components folder to import the new component class.
