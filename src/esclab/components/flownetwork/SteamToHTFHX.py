@@ -125,37 +125,37 @@ class SteamToHTFHX(Component):
         Heating rate of HTF inlet over 1-minute window [K/min].
     HR_fw_out_val : float
         Heating rate of FW outlet temp over 1-minute window [K/min].
-    Out14_Alarm_HTF_high_temp_in : float
+    Alarm_HTF_high_temp_in : float
         High HTF Temp in Alarm [0/1].
-    Out15_Trip_HTF_high_temp_in : float
+    Trip_HTF_high_temp_in : float
         High HTF Temp in Trip [0/1].
-    Out16_Alarm_HTF_low_temp_in : float
+    Alarm_HTF_low_temp_in : float
         Low HTF Temp in Alarm [0/1].
-    Out17_Trip_HTF_low_temp_in : float
+    Trip_HTF_low_temp_in : float
         Low HTF Temp in Trip [0/1].
-    Out18_Alarm_HTF_low_temp_out : float
+    Alarm_HTF_low_temp_out : float
         Low HTF Temp out Alarm [0/1].
-    Out19_Trip_HTF_low_temp_out : float
+    Trip_HTF_low_temp_out : float
         Low HTF Temp out Trip [0/1].
-    Out20_Alarm_HTF_high_flow_in : float
+    Alarm_HTF_high_flow_in : float
         High HTF Flow entering HX Alarm [0/1].
-    Out21_Trip_HTF_high_flow_in : float
+    Trip_HTF_high_flow_in : float
         High HTF Flow entering HX Trip [0/1].
-    Out22_Alarm_HTF_high_press_in : float
+    Alarm_HTF_high_press_in : float
         High HTF Pressure entering HX Alarm [0/1].
-    Out23_Trip_HTF_high_press_in : float
+    Trip_HTF_high_press_in : float
         High HTF Pressure entering HX Trip [0/1].
-    Out24_Alarm_FW_low_temp_in : float
+    Alarm_FW_low_temp_in : float
         Low FW Temperature entering HX Alarm [0/1].
-    Out25_Trip_FW_low_temp_in : float
+    Trip_FW_low_temp_in : float
         Low FW Temperature entering HX Trip [0/1].
-    Out26_Alarm_HR_HTF_in : float
+    Alarm_HR_HTF_in : float
         High Heating Rate Alarm for HTF Inlet over 1-minute time [0/1].
-    Out27_Trip_HR_HTF_in : float
+    Trip_HR_HTF_in : float
         High Heating Rate Trip for HTF Inlet over 1-minute time [0/1].
-    Out28_Alarm_HR_fw_out : float
+    Alarm_HR_fw_out : float
         High Heating Rate Alarm for FW Outlet Temp over 1-minute time [0/1].
-    Out29_Trip_HR_fw_out : float
+    Trip_HR_fw_out : float
         High Heating Rate Trip for FW Outlet Temp over 1-minute time [0/1].
     """
 
@@ -212,22 +212,22 @@ class SteamToHTFHX(Component):
     eta_OD = Component.Output()                    # output 11: effectiveness of heat exchanger [-]
     HR_HTF_in = Component.Output()                 # output 12: heating rate of HTF inlet [K/min]
     HR_fw_out_val = Component.Output()             # output 13: heating rate of FW outlet temp [K/min]
-    Out14_Alarm_HTF_high_temp_in = Component.Output()   # output 14: High HTF Temp in Alarm
-    Out15_Trip_HTF_high_temp_in = Component.Output()    # output 15: High HTF Temp in Trip
-    Out16_Alarm_HTF_low_temp_in = Component.Output()    # output 16: Low HTF Temp in Alarm
-    Out17_Trip_HTF_low_temp_in = Component.Output()     # output 17: Low HTF Temp in Trip
-    Out18_Alarm_HTF_low_temp_out = Component.Output()   # output 18: Low HTF Temp out Alarm
-    Out19_Trip_HTF_low_temp_out = Component.Output()    # output 19: Low HTF Temp out Trip
-    Out20_Alarm_HTF_high_flow_in = Component.Output()   # output 20: Low HTF Flow entering HX Alarm
-    Out21_Trip_HTF_high_flow_in = Component.Output()    # output 21: Low HTF Flow entering HX Trip
-    Out22_Alarm_HTF_high_press_in = Component.Output()  # output 22: High HTF Pressure entering HX Alarm
-    Out23_Trip_HTF_high_press_in = Component.Output()   # output 23: High HTF Pressure entering HX Trip
-    Out24_Alarm_FW_low_temp_in = Component.Output()     # output 24: Low FW Temperature entering HX Alarm
-    Out25_Trip_FW_low_temp_in = Component.Output()      # output 25: Low FW Temperature entering HX Trip
-    Out26_Alarm_HR_HTF_in = Component.Output()          # output 26: High Heating Rate Alarm for HTF Inlet over 1 minute time
-    Out27_Trip_HR_HTF_in = Component.Output()           # output 27: High Heating Rate Trip for HTF Inlet over 1 minute time
-    Out28_Alarm_HR_fw_out = Component.Output()          # output 28: High Heating Rate Alarm for FW Outlet Temp over 1 minute time
-    Out29_Trip_HR_fw_out = Component.Output()           # output 29: High Heating Rate Trip for FW Outlet Temp over 1 minute time
+    Alarm_HTF_high_temp_in = Component.Output()   # output 14: High HTF Temp in Alarm
+    Trip_HTF_high_temp_in = Component.Output()    # output 15: High HTF Temp in Trip
+    Alarm_HTF_low_temp_in = Component.Output()    # output 16: Low HTF Temp in Alarm
+    Trip_HTF_low_temp_in = Component.Output()     # output 17: Low HTF Temp in Trip
+    Alarm_HTF_low_temp_out = Component.Output()   # output 18: Low HTF Temp out Alarm
+    Trip_HTF_low_temp_out = Component.Output()    # output 19: Low HTF Temp out Trip
+    Alarm_HTF_high_flow_in = Component.Output()   # output 20: Low HTF Flow entering HX Alarm
+    Trip_HTF_high_flow_in = Component.Output()    # output 21: Low HTF Flow entering HX Trip
+    Alarm_HTF_high_press_in = Component.Output()  # output 22: High HTF Pressure entering HX Alarm
+    Trip_HTF_high_press_in = Component.Output()   # output 23: High HTF Pressure entering HX Trip
+    Alarm_FW_low_temp_in = Component.Output()     # output 24: Low FW Temperature entering HX Alarm
+    Trip_FW_low_temp_in = Component.Output()      # output 25: Low FW Temperature entering HX Trip
+    Alarm_HR_HTF_in = Component.Output()          # output 26: High Heating Rate Alarm for HTF Inlet over 1 minute time
+    Trip_HR_HTF_in = Component.Output()           # output 27: High Heating Rate Trip for HTF Inlet over 1 minute time
+    Alarm_HR_fw_out = Component.Output()          # output 28: High Heating Rate Alarm for FW Outlet Temp over 1 minute time
+    Trip_HR_fw_out = Component.Output()           # output 29: High Heating Rate Trip for FW Outlet Temp over 1 minute time
 
     # -----------------------------------------------------------------------------------------------------------------------
     def presim_setup(self, **kwargs):
@@ -543,8 +543,8 @@ class SteamToHTFHX(Component):
                 Trip = 0.0
             else:
                 Trip = 1.0
-        self.Out14_Alarm_HTF_high_temp_in.v = Alarm   # High HTF Temp in Alarm
-        self.Out15_Trip_HTF_high_temp_in.v = Trip     # High HTF Temp in Trip
+        self.Alarm_HTF_high_temp_in.v = Alarm   # High HTF Temp in Alarm
+        self.Trip_HTF_high_temp_in.v = Trip     # High HTF Temp in Trip
 
         if self.Alarm_HTF_low_temp_in.v < T_HTF:  # HTF Inlet Temperature is above low temp alarm (Alarm = 0)
             Alarm = 0.0
@@ -555,8 +555,8 @@ class SteamToHTFHX(Component):
                 Trip = 0.0
             else:
                 Trip = 1.0
-        self.Out16_Alarm_HTF_low_temp_in.v = Alarm   # Low HTF Temp in Alarm
-        self.Out17_Trip_HTF_low_temp_in.v = Trip     # Low HTF Temp in Trip
+        self.Alarm_HTF_low_temp_in.v = Alarm   # Low HTF Temp in Alarm
+        self.Trip_HTF_low_temp_in.v = Trip     # Low HTF Temp in Trip
 
         if self.Alarm_HTF_low_temp_out.v < T_HTF_out:
             Alarm = 0.0
@@ -567,8 +567,8 @@ class SteamToHTFHX(Component):
                 Trip = 0.0
             else:
                 Trip = 1.0
-        self.Out18_Alarm_HTF_low_temp_out.v = Alarm   # Low HTF Temp out Alarm
-        self.Out19_Trip_HTF_low_temp_out.v = Trip     # Low HTF Temp out Trip
+        self.Alarm_HTF_low_temp_out.v = Alarm   # Low HTF Temp out Alarm
+        self.Trip_HTF_low_temp_out.v = Trip     # Low HTF Temp out Trip
 
         if m_dot_HTF_val < self.Alarm_HTF_high_flow_in.v:
             Alarm = 0.0
@@ -579,8 +579,8 @@ class SteamToHTFHX(Component):
                 Trip = 0.0
             else:
                 Trip = 1.0
-        self.Out20_Alarm_HTF_high_flow_in.v = Alarm   # Low HTF Flow entering HX Alarm
-        self.Out21_Trip_HTF_high_flow_in.v = Trip     # Low HTF Flow entering HX Trip
+        self.Alarm_HTF_high_flow_in.v = Alarm   # Low HTF Flow entering HX Alarm
+        self.Trip_HTF_high_flow_in.v = Trip     # Low HTF Flow entering HX Trip
 
         if P_HTF_val < self.Alarm_HTF_high_press_in.v:
             Alarm = 0.0
@@ -591,8 +591,8 @@ class SteamToHTFHX(Component):
                 Trip = 0.0
             else:
                 Trip = 1.0
-        self.Out22_Alarm_HTF_high_press_in.v = Alarm   # High HTF Pressure entering HX Alarm
-        self.Out23_Trip_HTF_high_press_in.v = Trip     # High HTF Pressure entering HX Trip
+        self.Alarm_HTF_high_press_in.v = Alarm   # High HTF Pressure entering HX Alarm
+        self.Trip_HTF_high_press_in.v = Trip     # High HTF Pressure entering HX Trip
 
         if T_fw > self.Alarm_FW_low_temp_in.v:
             Alarm = 0.0
@@ -603,8 +603,8 @@ class SteamToHTFHX(Component):
                 Trip = 0.0
             else:
                 Trip = 1.0
-        self.Out24_Alarm_FW_low_temp_in.v = Alarm   # Low FW Temperature entering HX Alarm
-        self.Out25_Trip_FW_low_temp_in.v = Trip     # Low FW Temperature entering HX Trip
+        self.Alarm_FW_low_temp_in.v = Alarm   # Low FW Temperature entering HX Alarm
+        self.Trip_FW_low_temp_in.v = Trip     # Low FW Temperature entering HX Trip
 
         # !!!!!!High Heating Rates Alarms and Trips!!!!!
         # HTF Inlet Heating Rate stored as a static variable between index 0 and N_int-1
@@ -632,8 +632,8 @@ class SteamToHTFHX(Component):
             else:
                 Trip = 1.0
         self.HR_HTF_in.v = HR
-        self.Out26_Alarm_HR_HTF_in.v = Alarm   # High Heating Rate Alarm for HTF Inlet over 1 minute time
-        self.Out27_Trip_HR_HTF_in.v = Trip     # High Heating Rate Trip for HTF Inlet over 1 minute time
+        self.Alarm_HR_HTF_in.v = Alarm   # High Heating Rate Alarm for HTF Inlet over 1 minute time
+        self.Trip_HR_HTF_in.v = Trip     # High Heating Rate Trip for HTF Inlet over 1 minute time
 
         # Update static temperature array for HTF inlet (shift left, append current)
         for i in range(N_int):
@@ -666,8 +666,8 @@ class SteamToHTFHX(Component):
             else:
                 Trip = 1.0
         self.HR_fw_out_val.v = HR
-        self.Out28_Alarm_HR_fw_out.v = Alarm   # High Heating Rate Alarm for FW Outlet Temp over 1 minute time
-        self.Out29_Trip_HR_fw_out.v = Trip     # High Heating Rate Trip for FW Outlet Temp over 1 minute time
+        self.Alarm_HR_fw_out.v = Alarm   # High Heating Rate Alarm for FW Outlet Temp over 1 minute time
+        self.Trip_HR_fw_out.v = Trip     # High Heating Rate Trip for FW Outlet Temp over 1 minute time
 
         # Update Temperature variables for next end of timestep
         # TODO-NEEDS CONVERSION REVIEW: Fortran stores T_HTF (not T_fw_out_now) in FW outlet history –

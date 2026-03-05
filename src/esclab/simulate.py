@@ -167,6 +167,26 @@ class Component:
         """
         return self.__get_io_items(Component.Output, connected_only)
     
+    def set_values_from_dict(self, values_dict):
+        """
+        Helper function to set values of inputs and parameters from a dictionary. 
+        The keys of the dictionary should match the attribute names of the inputs and parameters.
+
+        Parameters
+        ----------
+        values_dict : dict
+            Dictionary containing values to set for inputs and parameters. Keys should match attribute names.
+        """
+        for key, value in values_dict.items():
+            if hasattr(self, key):
+                attr = getattr(self, key)
+                if isinstance(attr, Component.Input) or isinstance(attr, Component.Parameter):
+                    attr.set(value=value)
+                else:
+                    raise RuntimeError(f"Attribute '{key}' is not an input or parameter.")
+            else:
+                raise RuntimeError(f"Component does not have an attribute named '{key}'.")
+    
     def auto_assign_names(self):
         """
         Automatically assign names to all inputs and outputs of this component based on the 

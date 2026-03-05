@@ -13,6 +13,8 @@ TRNSYS is a widely used software for simulating the behavior of transient system
 
 A major weakness of TRNSYS is that functionality is limited by Fortran and the limited set of libraries available, requiring basically everything to be written explicitly. TRNSYS also uses a lot of global variables, which can make it difficult to understand and maintain the code. Finally, TRNSYS lacks modern data structures, including classes, which requires special memory handling for TYPES that have multiple instances and are called multiple times in the same simulation.
 
+You can find the TRNSYS developers guide specifying TRNSYS functions and documentation in src/esclab/components/flownetwork/fortran-source/07-ProgrammersGuide.pdf.
+
 ## esclab structure
 
 esclab structures are defined in the 'simulate.py' file, which is the main entry point for running simulations. The 'components' folder contains the code for the various components that can be used in simulations. The 'models' folder contains assembled components that are connected together to create a modeled system. TYPES-->components, Decks-->models. 
@@ -112,7 +114,7 @@ You must follow the instructions below when converting the Fortran code to Pytho
 4. Convert property library calls. HTF properties map to esol_properties.Incompressible. Water properties map to eeslib.fluid_properties. Function arguments must be specified with the parameter name (e.g., T=Teval, P=Peval, etc.). Do not use surrogates for properties.  The fluid_id in fortran is a number, but in the new implementation, assume fluid_id is a string that is directly passed on. Do not use "fallback" fluid names like "Nitrate salt". Assume the property functions check for validity and return float values, and do not attempt to convert the return type or clamp/clip/limit input arguments. Flag any suspected units mismatches (e.g., J->kJ) with a comment like "# TODO-NEEDS UNITS CHECK: " and a brief description of the issue. Humid air properties in TRNSYS are calculated with the MoistAirProperties function. eeslib contains a call humid_air returning a dictionary of desired outputs (e.g, T_wb, T_db, RH) that should be used instead.
 5. After direct conversion, note that there are some redundancies in setting and using parameters, inputs, and outputs. Find instances where a local scope variable is assigned the value of the Component.<class> member, and prefer instead to directly use the Component.<class> member in the code. For example, if there is a line like "param1 = self.myparameter.v", and then param1 is used in the code, it would be better to directly use "self.myparameter.v" instead of creating a new variable. Make these changes throughout the code, but do not change any of the underlying logic or structure of the code except to remove these redundancies. 
 
-Do not proceed to Run Type 2 or 3 unless I explicitly ask you to do so.
+Do not proceed to other Run Types unless I explicitly ask you to do so.
 
 ## RUN TYPE 2
 
@@ -122,10 +124,34 @@ In this step, follow the same steps as in RUN TYPE 1, except do not pursue type 
 
 Do not change anything in the existing converted TYPE files EXCEPT to add calls to the new helper functions where appropriate. Be sure to go back to the original Fortran context to understand how to properly call the helper functions in the context of the existing code.
 
-Do not proceed to Run Type 3 unless I explicitly ask you to do so. Do not run tests to check output values.
-
+Do not proceed to other Run Types unless I explicitly ask you to do so. Do not run tests to check output values.
 
 ## RUN TYPE 3
+
+Deck file conversion
+
+Refer to src/esclab/models/sample_air-brayton.py for an example of a esclab model file.
+
+The TRNSYS .dck (deck) files specify instances of each of the TYPES and assign a unique UNIT number to each instance. The deck files also specify the connections between the inputs and outputs of the different instances, as well as the parameters and initial input values for each instance. Deck files will be converted to Python model files that specify the same information but in the context of the esclab structure. Convert using the following information:
+1. New model files go in the 'models' folder with a descriptive name that reflects the system being modeled. For example, if the deck file is modeling a solar thermal system, the model file could be named 'SolarThermalSystem.py'. The model class should also be named using PascalCase and should reflect the system being modeled, such as 'SolarThermalSystem'. Modify the __init__.py file in the models folder to import the new model class.
+2. Whole-line comments start with '*' characters. End-of-line comments start with '!' characters. Port all comments to the new Python file.
+3. The Control Cards section specifies overall simulation configuration settings. Map settings to the Model.settings member variables as appropriate. Some settings may not map and can be ignored, but should be marked in comments with "# TODO-NEEDS CONVERSION REVIEW: " and a brief description of the setting and why it may not map.
+4. Each UNIT instance contains the following subitems. Delegate the mapping of UNITS/TYPES to subagents assigned to each type.
+  a. A declaration of the TYPE and UNIT number. The TYPE number should be used to identify which component class to instantiate. The UNIT number is referenced throughout the file in other type connections to specify input/output connections. There are sometimes comments like "* Model <descriptive name>" with a unit, and those should be used to help name the component instance in a descriptive way. For example, if there is a line like "UNIT 1 TYPE 4001 * Model Pipe 1", the component instance could be named "pipe1 = PipeFlow()". If there is no descriptive comment, use the type and unit number to create a name like "type4001_unit1 = PipeFlow()".
+  b. A parameter block starting with "PARAMETERS <number>" indicating that the <number> of lines that follow map to the required parameter list for the TYPE. These should be mapped to the Component.Parameter() members of the corresponding component instance by referencing both the original Fortran TYPE and the converted Python class. 
+  c. INPUTS <number> block indicating the number of lines that follow mapping to the required input list for the TYPE. These should be mapped to the Component.Input() members of the corresponding component instance by referencing both the original Fortran TYPE and the converted Python class. Initial input values specified in the deck file should be assigned to the .v member of the corresponding Component.Input() member. The format of each input is <unit number>,<input number>    ! <comment> [sometimes with useful connection information]. Unconnected inputs are denoted 0,0 and should be omitted from conversion. Properly connecting inputs will require that you i) identify the input from the numerical ordering of inputs for a TYPE in the original fortran file, ii) identify the output similarly, and iii) identify the matching inputs/outputs in the converted python files.
+  d. Initial values for each input are important. Unconnected values use the initial value specified in the deck file throughout the simulation. Connected values use the initial value only for the first time step, and then are updated based on the connection. Be sure to properly assign initial values to the .v member of the corresponding Component.Input() member. The order of initial values given in the deck file matches the order of inputs. In esclab, the initial value of inputs should be specified in a block after specifying the parameter values.
+  d. Optional LABELS block that sometimes specifies the file name of an input or output data file. If mapping isn't obvious, mark with a comment like "# TODO-NEEDS CONVERSION REVIEW: " and a brief description of the issue.
+5. Equations blocks in deck files can generally be converted to python script directly. However, these equations are very simple and do not preserve order of operations, so some human review will be needed. In general, err on the side of preserving the equation syntax as it appears in the deck file.
+6. Ignore plotters and data file loggers. Ignore anything after the "END" statement, including *!LINK... stuff.
+
+Conversion steps:
+1. Create new Python file
+2. Generate a list of the components with their unique names and save the file. This will be used as a reference for the next steps. Note any information that you'd need to resume to resume at step 3 below.
+3. For each type, create separate file with a mapping template that identifies the parameters, inputs, and outputs for the type based on the original Fortran file. This will be used to map the parameters, inputs, and outputs in the deck file to the corresponding members of the component instances in the Python model file. Structure this template in a way that helps you expedite the mapping process in step 4.
+4. Map the parameters, inputs, and outputs for each component instance in the deck file to the corresponding members of the component instances in the Python model file using the mapping template created in step 3.
+
+## RUN TYPE 4
 
 Common TODO flags across files to review:
 
