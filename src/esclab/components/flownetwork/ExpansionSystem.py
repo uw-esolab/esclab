@@ -11,7 +11,7 @@ from esclab.components.flownetwork.sf_piping_helpers import PressureDrop
 from esclab.components.flownetwork.Valve import CV_data
 from esclab.components.flownetwork.sergio_scripts import matrixinv  # SergioScripts module
 
-from eeslib import convert
+from eeslib.functions import convert
 
 class ExpansionSystem(Component):
     """
