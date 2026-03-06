@@ -255,9 +255,9 @@ def parse_component(path: str | Path) -> dict[str, list[str]]:
     Returns
     -------
     dict with keys:
-        ``"parameters"`` – list[str], names of Component.Parameter(...) attrs  
-        ``"inputs"``     – list[str], names of Component.Input(...)     attrs  
-        ``"outputs"``    – list[str], names of Component.Output(...)    attrs  
+        ``"parameters"`` - list[str], names of Component.Parameter(...) attrs  
+        ``"inputs"``     - list[str], names of Component.Input(...)     attrs  
+        ``"outputs"``    - list[str], names of Component.Output(...)    attrs  
 
     Raises
     ------
@@ -276,11 +276,20 @@ def parse_component(path: str | Path) -> dict[str, list[str]]:
 
     if class_node is None:
         raise ValueError(f"No class definition found in {path!r}")
+    
+    # Get type number from first line of file
+    try:
+        # first match in the source using regex
+        m = re.search(r"\(Type\s+(\d+)\)", source)
+        m = m[1]
+    except:
+        m = ''
 
     result: dict[str, list[str]] = {
         "parameters": [],
         "inputs": [],
         "outputs": [],
+        "type": m,
     }
 
     # Map Component.<Attr> call name → result key
@@ -345,18 +354,20 @@ def parse_component(path: str | Path) -> dict[str, list[str]]:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import json
-    import sys
 
-    dck_path = sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / "predawn_solana.dck"
+    dck_path = Path(__file__).parent / "predawn_solana.dck"
     units = parse_dck(dck_path)
 
-    print(f"Parsed {len(units)} units.\n")
-    for u in units:
-        print(
-            f"  UNIT {u['unit']:>4d}  TYPE {u['type']:>5d}  "
-            f"name={u['name']!r:40s}  "
-            f"params={len(u['parameters'])}  "
-            f"inputs={len(u['inputs'])}  "
-            f"init_inputs={len(u['initial_inputs'])}"
-        )
+    # print(f"Parsed {len(units)} units.\n")
+    # for u in units:
+    #     print(
+    #         f"  UNIT {u['unit']:>4d}  TYPE {u['type']:>5d}  "
+    #         f"name={u['name']!r:40s}  "
+    #         f"params={len(u['parameters'])}  "
+    #         f"inputs={len(u['inputs'])}  "
+    #         f"init_inputs={len(u['initial_inputs'])}"
+    #     )
+
+    tee = parse_component(Path(__file__).parent.parent / "components/flownetwork/TeeOut.py")
+
+    pass
