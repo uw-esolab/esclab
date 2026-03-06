@@ -166,6 +166,7 @@ class HeatExchanger(Component):
     mass_counter_d_out : float
         HTF mass counter for the expansion system (discharging direction) [kg]
     """
+    trnsys_type = "4101"
 
     # *** Model Parameters ***
     # n_baffles: Number of baffles in one shell pass of a heat exchanger [0;+Inf]

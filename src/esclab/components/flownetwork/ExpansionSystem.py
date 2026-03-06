@@ -113,6 +113,7 @@ class ExpansionSystem(Component):
     alarm_high_high_pressure : float
         High-high pressure alarm flag (0 or 1).
     """
+    trnsys_type = "4012"
 
     pi = 3.1415927
 

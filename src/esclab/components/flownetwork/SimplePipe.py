@@ -59,6 +59,8 @@ class SimplePipe(Component):
     last modified: October 13, 2022
     Ported by: Mike Wagner, February 12, 2026
     """
+    trnsys_type = "4001"
+
     # Create types
     Pipe_ID = Component.Parameter()         #pipe inner diameter
     Length_Pipe = Component.Parameter()     #length of pipe

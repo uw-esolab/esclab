@@ -175,6 +175,7 @@ class SolarFieldSector(Component):
     temperature_groups_1 through temperature_groups_8 : float
         Per-group temperature status encoding [-].
     """
+    trnsys_type = "4034"
 
     # Shared sector data: class-level dict keyed by integer sf_label (1-based).
     # Each entry holds the shared numpy arrays for that sector.

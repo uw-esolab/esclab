@@ -79,6 +79,7 @@ class Pipe(Component):
     Mass_Counter : float
         Accumulated fluid mass in pipe [kg].
     """
+    trnsys_type = "4035"
 
     pi = 3.14159265
 

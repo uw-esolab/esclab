@@ -141,6 +141,7 @@ class Condenser(Component):
     ff_out : float
         Guess friction factor.
     """
+    trnsys_type = "6007"
 
     # *** Model Parameters ***
     # Height of the condenser tank in [m]

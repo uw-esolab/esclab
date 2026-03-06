@@ -31,6 +31,7 @@ class WeatherReader(Component):
         Wind    - [-Inf;+Inf]
         stdTime - [-Inf;+Inf]
     """
+    trnsys_type = "4097"
 
     # PARAMETERS
     longitudeD = Component.Parameter()      # Longitude [deg], Duffie sign convention (west is +, compared to Google Maps where west is -)

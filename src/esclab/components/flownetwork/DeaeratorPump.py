@@ -32,6 +32,7 @@ class DeaeratorPump(Component):
     ------------------
     See Output declarations below.
     """
+    trnsys_type = "6011"
 
     # -------------------------------------------------------------------------
     # Parameters

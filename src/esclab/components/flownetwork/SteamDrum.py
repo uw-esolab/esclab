@@ -171,6 +171,7 @@ class SteamDrum(Component):
     HighHTF_HR_Trip : float
         High HTF inlet heating-rate trip signal.
     """
+    trnsys_type = "6003"
 
     # *** Model Parameters ***
     D_tank = Component.Parameter()                  # Tank Diameter [m]

@@ -55,6 +55,7 @@ class SubcooledWaterPump(Component):
     N : int
         Number of parallel pumps  (param 11)
     """
+    trnsys_type = "6027"
 
     # ------------------------------------------------------------------
     # PARAMETERS  (param number matches Fortran getParameterValue index)

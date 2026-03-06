@@ -90,6 +90,7 @@ class PIDController(Component):
     Implements a Proportional, Integral and Derivative (PID) controller with anti-windup
     based on Astrom & Wittenmark (1990).
     """
+    trnsys_type = "23"
 
     # Parameters
     mode = Component.Parameter()    # 0 = Non-Iterative controller, 1 = Iterative controller

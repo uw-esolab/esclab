@@ -33,6 +33,7 @@ class WaterEnthalpyLookup(Component):
     enthalpy : float
         Fluid enthalpy [J/kg].
     """
+    trnsys_type = "6022"
 
     #    INPUTS
     temperature = Component.Input()  # Temperature used to find enthalpy

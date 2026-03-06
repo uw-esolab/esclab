@@ -14,6 +14,7 @@ class TeeOut(Component):
     # Date:     October 20, 2022
     # last modified: October 24, 2022
     """
+    trnsys_type = "4006"
 
     #    PARAMETERS
     Fluid_ID = Component.Parameter()        # Fluid ID: 40 for dowtherm A

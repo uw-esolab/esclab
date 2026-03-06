@@ -84,6 +84,7 @@ class TESTank(Component):
     Q_loss : float
         Heat lost to the environment over the timestep [J].
     """
+    trnsys_type = "4100"
 
     # *** Model Parameters ***
     D_in = Component.Parameter()      # Inner Diameter of the tank [m]

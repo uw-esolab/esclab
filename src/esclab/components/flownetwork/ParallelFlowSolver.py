@@ -23,6 +23,7 @@ class ParallelFlowSolver(Component):
     parallel network (Solver=2, 2-branch system).  Returns the fractional
     flow-split ratios f_23, f_45, and f_67.
     """
+    trnsys_type = "4050"
 
     # *** Model Parameters ***
     Solver = Component.Parameter()      # [-Inf;+Inf]

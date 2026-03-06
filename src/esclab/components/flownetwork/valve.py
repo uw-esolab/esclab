@@ -18,6 +18,7 @@ class Valve(Component):
     # Date:     October 27, 2022
     # last modified: October 27, 2022
     """
+    trnsys_type = "4007"
 
     #    PARAMETERS
     Diameter = Component.Parameter()

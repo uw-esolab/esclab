@@ -20,6 +20,7 @@ class VarSpeedPump(Component):
     last modified: January 05, 2023
     Converted by: Mike Wagner, February 12, 2026
     """
+    trnsys_type = "4004"
 
     #     PARAMETERS
     N_pumps_parallel = Component.Parameter()         #  Number of pumps that are in parallel

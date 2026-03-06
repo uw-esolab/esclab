@@ -158,6 +158,7 @@ class SteamToHTFHX(Component):
     Trip_HR_fw_out : float
         High Heating Rate Trip for FW Outlet Temp over 1-minute time [0/1].
     """
+    trnsys_type = "6017"
 
     # *** Model Parameters ***
     #    PARAMETERS

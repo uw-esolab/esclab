@@ -12,6 +12,7 @@ class PowerBlockPiping(Component):
     Object: Power Block Piping
     Simulation Studio Model: ESOL6016-PB_Piping
     """
+    trnsys_type = "6016"
 
     # PARAMETERS
     Pipe_ID = Component.Parameter()           # pipe inner diameter

@@ -54,6 +54,7 @@ class SolanaHydraulicSolver(Component):
               |
               |
     """
+    trnsys_type = "6031"
 
     #    PARAMETERS
     Solver = Component.Parameter()                  #

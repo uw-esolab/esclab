@@ -50,6 +50,7 @@ class TeeReturnHTF(Component):
     P_2_in       : float  Echo of branch 2 inlet pressure [Pa].
     Mass_Counter : float  Combined mass counter [kg].
     """
+    trnsys_type = "4008"
 
     #    PARAMETERS
     Diameter_1   = Component.Parameter()  # Diameter of branch 1 pipe [m]

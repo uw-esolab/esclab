@@ -118,6 +118,7 @@ class Component:
         """
         Define inputs, outputs, and parameters. 
         """
+        self.trnsys_type = ""     # TRNSYS type number, if applicable <string>
         return 
     
     def __get_io_items(self, item_type, connected_only=False):

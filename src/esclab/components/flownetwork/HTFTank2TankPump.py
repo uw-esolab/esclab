@@ -15,6 +15,7 @@ class HTFTank2TankPump(Component):
     last modified: April 28, 2024
     Converted from TRNSYS Type 6032
     """
+    trnsys_type = "6032"
 
     # PARAMETERS (10 total; params 5-8 are commented out in the Fortran source)
     L_downcomer = Component.Parameter()      # Length of downcomer between tank and pump [m]

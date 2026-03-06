@@ -112,6 +112,7 @@ class HEXDisplay(Component):
     dT_dt_tube_bottom  : float
         time derivative of temperature of HTF of tube on display's bottom side
     """
+    trnsys_type = "4102"
 
     # *** Model Inputs ***
     # input_tes_mode: tes mode from ESOL 6034 (Charging = 1, Discharging = 2, None = 0)

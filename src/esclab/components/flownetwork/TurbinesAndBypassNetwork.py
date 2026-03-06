@@ -29,6 +29,7 @@ class TurbinesAndBypassNetwork(Component):
     including high-pressure and low-pressure turbines, steam separator, reheater,
     main piping dynamic pressure and enthalpy calculations, and alarm/trip logic.
     """
+    trnsys_type = "6028"
 
     # -------------------------------------------------------------------------
     # Parameters

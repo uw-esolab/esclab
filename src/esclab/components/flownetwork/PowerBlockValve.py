@@ -11,6 +11,7 @@ class PowerBlockValve(Component):
     # Object: Valve
     # Simulation Studio Model: ESOL6001
     """
+    trnsys_type = "6001"
 
     #    PARAMETERS
     Valve_diameter = Component.Parameter()  # diameter of valve [m]

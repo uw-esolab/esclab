@@ -100,6 +100,7 @@ class BoilerFeedwaterHeater(Component):
     DELTA_T_act : float
         Actual feedwater temperature increase [K].
     """
+    trnsys_type = "6019"
 
     # *** Model Parameters ***
     # DELTA_T_design: design feedwater temperature increase

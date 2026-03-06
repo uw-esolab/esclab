@@ -15,6 +15,7 @@ class TeeOutSimple(Component):
     A minimal pass-through junction that forwards Temperature, Pressure, and
     Mass Counter unchanged. No parameters; no hydraulic or thermal calculation.
     """
+    trnsys_type = "4015"
 
     #    INPUTS
     Temperature = Component.Input()   # Temperature [-]

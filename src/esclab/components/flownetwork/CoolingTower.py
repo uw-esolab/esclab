@@ -95,6 +95,7 @@ class CoolingTower(Component):
     Models the performance of a cooling tower as outlined in "Effectiveness Models for Cooling Tower and
     Cooling Coils", ASME Journal of Heat and Mass Transfer, 1987.
     """
+    trnsys_type = "162"
 
     # Parameters
     # 1 | mode          | 0 = performance map, 1 = user-supplied coefficients, 2 = curve-fit from data

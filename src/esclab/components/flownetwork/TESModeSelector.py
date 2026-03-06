@@ -39,6 +39,7 @@ class TESModeSelector(Component):
     HTF_DVP_out  : float  HTFDischargingValve-Position
     HTF_CVP_out  : float  HTFChargingValve-Position
     """
+    trnsys_type = "6034"
 
     #    VARIABLES
     # (no parameters declared in the Fortran; all logic is input/output-driven)

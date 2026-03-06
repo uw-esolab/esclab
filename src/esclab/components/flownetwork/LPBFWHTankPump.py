@@ -16,6 +16,7 @@ class LPBFWHTankPump(Component):
     Date:     June 01, 2023
     last modified: June 01, 2023
     """
+    trnsys_type = "6014"
 
     # *** Model Parameters ***
     #   H_tank        - Height of the vertical cylindrical receiver tank

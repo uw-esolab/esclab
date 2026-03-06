@@ -55,6 +55,7 @@ class TeeReturn(Component):
     Mass_Counter : float
         Combined mass counter [kg].
     """
+    trnsys_type = "4016"
 
     # *** Model Parameters ***
     # Pressure_Through: selects which branch pressure passes through to outlet
