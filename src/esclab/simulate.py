@@ -85,6 +85,8 @@ class Component:
 
         # Numeric protocol — forward arithmetic and comparisons to self.v so
         # instances can be used directly in expressions without .v
+        # Note that assignment (itema.v = itemb.v) is handled in the component
+        # __setattr__ method. 
         def __float__(self):             return float(self.v)
         def __int__(self):               return int(self.v)
         def __array__(self, dtype=None): return np.asarray(self.v) if dtype is None else np.asarray(self.v, dtype=dtype)
