@@ -71,6 +71,10 @@ class Component:
             self.v = float('nan')
             self.is_connected = False
             return
+        def __repr__(self):
+            return f'{self.name} = {self.v} {self.units}'
+        
+        
         def set(self, value=None, units=None, name=None):
             if value is not None: 
                 self.v = value
@@ -78,6 +82,36 @@ class Component:
                 self.units = units
             if name is not None:
                 self.name = name
+
+        # Numeric protocol — forward arithmetic and comparisons to self.v so
+        # instances can be used directly in expressions without .v
+        def __float__(self):             return float(self.v)
+        def __int__(self):               return int(self.v)
+        def __array__(self, dtype=None): return np.asarray(self.v) if dtype is None else np.asarray(self.v, dtype=dtype)
+
+        def __neg__(self):               return -self.v
+        def __pos__(self):               return +self.v
+        def __abs__(self):               return abs(self.v)
+
+        def __add__(self, o):            return self.v + o
+        def __radd__(self, o):           return o + self.v
+        def __sub__(self, o):            return self.v - o
+        def __rsub__(self, o):           return o - self.v
+        def __mul__(self, o):            return self.v * o
+        def __rmul__(self, o):           return o * self.v
+        def __truediv__(self, o):        return self.v / o
+        def __rtruediv__(self, o):       return o / self.v
+        def __floordiv__(self, o):       return self.v // o
+        def __rfloordiv__(self, o):      return o // self.v
+        def __pow__(self, o):            return self.v ** o
+        def __rpow__(self, o):           return o ** self.v
+
+        def __lt__(self, o):             return self.v <  (o.v if hasattr(o, 'v') else o)
+        def __le__(self, o):             return self.v <= (o.v if hasattr(o, 'v') else o)
+        def __gt__(self, o):             return self.v >  (o.v if hasattr(o, 'v') else o)
+        def __ge__(self, o):             return self.v >= (o.v if hasattr(o, 'v') else o)
+        def __eq__(self, o):             return self.v == (o.v if hasattr(o, 'v') else o)
+        def __ne__(self, o):             return self.v != (o.v if hasattr(o, 'v') else o)
     # ------------ end class __io_base ----------------------------------------
     # -------------------------------------------------------------------------
     class Input(__io_base):
@@ -109,6 +143,35 @@ class Component:
             self.v = value 
             self.units = units
             self.std_dev = std_dev
+
+        # Numeric protocol — mirrors __io_base so Parameters also work in expressions
+        def __float__(self):             return float(self.v)
+        def __int__(self):               return int(self.v)
+        def __array__(self, dtype=None): return np.asarray(self.v) if dtype is None else np.asarray(self.v, dtype=dtype)
+
+        def __neg__(self):               return -self.v
+        def __pos__(self):               return +self.v
+        def __abs__(self):               return abs(self.v)
+
+        def __add__(self, o):            return self.v + o
+        def __radd__(self, o):           return o + self.v
+        def __sub__(self, o):            return self.v - o
+        def __rsub__(self, o):           return o - self.v
+        def __mul__(self, o):            return self.v * o
+        def __rmul__(self, o):           return o * self.v
+        def __truediv__(self, o):        return self.v / o
+        def __rtruediv__(self, o):       return o / self.v
+        def __floordiv__(self, o):       return self.v // o
+        def __rfloordiv__(self, o):      return o // self.v
+        def __pow__(self, o):            return self.v ** o
+        def __rpow__(self, o):           return o ** self.v
+
+        def __lt__(self, o):             return self.v <  (o.v if hasattr(o, 'v') else o)
+        def __le__(self, o):             return self.v <= (o.v if hasattr(o, 'v') else o)
+        def __gt__(self, o):             return self.v >  (o.v if hasattr(o, 'v') else o)
+        def __ge__(self, o):             return self.v >= (o.v if hasattr(o, 'v') else o)
+        def __eq__(self, o):             return self.v == (o.v if hasattr(o, 'v') else o)
+        def __ne__(self, o):             return self.v != (o.v if hasattr(o, 'v') else o)
     # ----------- end class Parameter -----------------------------------------
     
     # ------------------------------------------------------------------------
@@ -208,6 +271,19 @@ class Component:
             except:
                     pass
         return allnames
+
+    def __setattr__(self, name, value):
+        # Override setattr to allow setting the value of an input or parameter directly, while 
+        # still allowing assignment of new attributes. If the attribute being set already 
+        # exists and is an Input or Parameter, update its value instead of replacing the attribute.
+        try:
+            existing = object.__getattribute__(self, name)
+        except AttributeError:
+            existing = None
+        if isinstance(existing, (Component.Input, Component.Output, Component.Parameter)):
+            existing.v = value.v if isinstance(value, (Component.Input, Component.Output, Component.Parameter)) else value
+        else:
+            object.__setattr__(self, name, value)
 
     def presim_setup(self, **kwargs):
         """
