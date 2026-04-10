@@ -470,7 +470,7 @@ class Model:
             Model.OnlinePlotter.tab_widget.addTab(self.win, tab_label)
 
             # Create primary plot
-            self.ax1 = self.win.addPlot()
+            self.ax1 = self.win.addPlot(viewBox=_AxisLockedViewBox())
             self.ax1.setLabel('bottom', 'Time')
             self.ax1.setLabel('left', y1label)
             self.legend_y1 = self.ax1.addLegend(offset=(10, 10))
@@ -493,7 +493,7 @@ class Model:
             # Create secondary y-axis if needed
             self.y2_lines = []
             if y2 != None:
-                self.ax2 = qtg.ViewBox()
+                self.ax2 = _AxisLockedViewBox()
                 self.ax1.showAxis('right')
                 self.ax1.scene().addItem(self.ax2)
                 self.ax1.getAxis('right').linkToView(self.ax2)
@@ -847,4 +847,20 @@ class Model:
             sys.stdout.flush()
 
         return 
+
+
+# =========================================================================================
+class _AxisLockedViewBox(qtg.ViewBox):
+    """ViewBox with modifier-key-constrained scroll zoom.
+    Ctrl+scroll  → x-axis only
+    Shift+scroll → y-axis only
+    plain scroll → both axes (default)
+    """
+    def wheelEvent(self, ev, axis=None):
+        mods = ev.modifiers()
+        if mods & QtCore.Qt.ControlModifier:
+            axis = 0
+        elif mods & QtCore.Qt.ShiftModifier:
+            axis = 1
+        super().wheelEvent(ev, axis=axis)
 
