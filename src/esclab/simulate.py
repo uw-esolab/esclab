@@ -284,6 +284,7 @@ class Model:
         app = None
         main_window = None
         tab_widget = None
+        follow_button = None
         instances = []
         n_plotters = 0
         font_size_pt = 10
@@ -299,6 +300,8 @@ class Model:
             assert isinstance(y2, type([])) or y2 == None
 
             self.current_step = -1
+            self._fill_idx = 0
+            self._auto_follow = True
             self.y1label = y1label
             self.y2label = y2label
 
@@ -342,6 +345,11 @@ class Model:
                 font_down_button.setFixedSize(30, 30)
                 controls_layout.addWidget(font_up_button)
                 controls_layout.addWidget(font_down_button)
+                follow_button = QtWidgets.QPushButton("\u2BC8 Follow")
+                follow_button.setCheckable(True)
+                follow_button.setChecked(True)
+                follow_button.setFixedSize(80, 30)
+                controls_layout.addWidget(follow_button)
                 controls_layout.addStretch()
 
                 container = QtWidgets.QWidget()
@@ -354,6 +362,8 @@ class Model:
 
                 font_down_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(-1))
                 font_up_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(1))
+                follow_button.clicked.connect(lambda checked: Model.OnlinePlotter.set_auto_follow(checked))
+                Model.OnlinePlotter.follow_button = follow_button
 
                 # Handle plotter size. If fractions are given, resize based on screen size. If absolute values are
                 # given, use those. If None, use default size.
@@ -437,17 +447,14 @@ class Model:
                     self.y2_lines.append(line)
                     c += 1
 
-            # Initialize data containers
-            self.x_data =  np.zeros((self.nmax_points))
-            self.y1_data = np.zeros((len(y1), self.nmax_points))
-            if y2 != None:
-                y2len = len(y2)
-            else:
-                y2len = 1
-            self.y2_data = np.zeros((y2len, self.nmax_points))
+            # Data arrays are pre-allocated in preallocate(), called from Model.initialize()
+            self.x_data  = None
+            self.y1_data = None
+            self.y2_data = None
 
             Model.OnlinePlotter.instances.append(self)
             self.apply_font_size()
+            self.ax1.vb.sigRangeChangedManually.connect(self._on_range_changed_manually)
             return 
 
         @classmethod
@@ -491,44 +498,79 @@ class Model:
                         label_item.setText(label_item.text, size=f'{Model.OnlinePlotter.font_size_pt}pt')
         
         def log_step(self, time):
-            
+
             self.current_step += 1
+            idx = self._fill_idx
 
-            self.x_data = np.roll(self.x_data, -1)
-            self.x_data[-1] = time
+            self.x_data[idx] = time
 
-            y1vals = np.zeros(len(self.y1_items))
+            # Write y1 values directly into pre-allocated array
+            for j, yval in enumerate(self.y1_items):
+                self.y1_data[j, idx] = yval.v
+
             if self.y2_items != None:
-                y2vals = np.zeros(len(self.y2_items))
-            # Append new data
-            for j,yval in enumerate(self.y1_items):
-                y1vals[j] = yval.v
-            self.y1_data = np.roll(self.y1_data, -1, axis=1)
-            self.y1_data[:,-1] = y1vals[:]
-            
-            if self.y2_items != None:
-                for j,yval in enumerate(self.y2_items):
-                    y2vals[j] = yval.v
-                self.y2_data = np.roll(self.y2_data, -1, axis=1)
-                self.y2_data[:,-1] = y2vals[:]
+                for j, yval in enumerate(self.y2_items):
+                    self.y2_data[j, idx] = yval.v
+
+            self._fill_idx += 1
 
             if self.current_step % self.update_every == 0:
                 self.__refresh_plot()
 
         def __refresh_plot(self):
             """
-            Fast update using pyqtgraph setData
+            Fast update using pyqtgraph setData.  All accumulated history is passed
+            as a NumPy view slice (no copy).  The x-axis is constrained to the last
+            nmax_points so older data remains accessible by panning.
             """
+            n = self._fill_idx
+            if n == 0:
+                return
+            x_view = self.x_data[:n]
+
             # Update y1 lines
             for i in range(len(self.y1_lines)):
-                self.y1_lines[i].setData(self.x_data, self.y1_data[i,:])
-            
+                self.y1_lines[i].setData(x_view, self.y1_data[i, :n])
+
             # Update y2 lines
             for i in range(len(self.y2_lines)):
-                self.y2_lines[i].setData(self.x_data, self.y2_data[i,:])
+                self.y2_lines[i].setData(x_view, self.y2_data[i, :n])
+
+            # Auto-follow: keep the view window on the most recent nmax_points
+            if self._auto_follow:
+                x_start = self.x_data[max(0, n - self.nmax_points)]
+                x_end   = self.x_data[n - 1]
+                self.ax1.setXRange(x_start, x_end, padding=0.02)
 
             # Process GUI events (much faster than matplotlib canvas.draw)
             self.app.processEvents()
+
+        def preallocate(self, n_steps):
+            """
+            Allocate contiguous NumPy arrays for the full simulation duration.
+            Called once from Model.initialize() before the simulation loop begins;
+            no further allocation or data movement occurs during the simulation.
+            """
+            self._fill_idx = 0
+            self.x_data  = np.empty(n_steps)
+            self.y1_data = np.empty((len(self.y1_items), n_steps))
+            n_y2 = len(self.y2_items) if self.y2_items is not None else 1
+            self.y2_data = np.empty((n_y2, n_steps))
+
+        def _on_range_changed_manually(self, viewRange):
+            """Called when the user pans or zooms; disables auto-follow."""
+            self._auto_follow = False
+            if Model.OnlinePlotter.follow_button is not None:
+                Model.OnlinePlotter.follow_button.setChecked(False)
+
+        @classmethod
+        def set_auto_follow(cls, value):
+            """Enable or disable auto-follow on all plotter instances."""
+            for plotter in cls.instances:
+                plotter._auto_follow = value
+            if cls.follow_button is not None:
+                cls.follow_button.setChecked(value)
+
     # ------- end OnlinePlotter --------------------------------------------------
 
     # ----------------------------------------------------------------------------
@@ -538,6 +580,7 @@ class Model:
         self.__components = []
         self.settings = Model.Settings()
         self.is_initialized = False
+        self.plotters_initialized = False
         self.is_first_step = True
         self.is_first_iteration = True
         self.is_converged = False
@@ -639,7 +682,7 @@ class Model:
         # Construct the historian database
         nstep = int((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)
         self.historian = dict([[n,np.ones(nstep)*float('nan')] for n in output_names])
-        
+
         # Mark the model as initialized
         self.is_initialized = True
         return 
@@ -649,7 +692,14 @@ class Model:
         # Check overall initialization for the model
         if not self.is_initialized:
             self.initialize()
-        
+
+        # Pre-allocate plotter arrays on the first step, after all plotters have been added
+        if not self.plotters_initialized:
+            nstep = int((self.settings.stop_time - self.settings.start_time) / self.settings.timestep)
+            for plotter in self.plotters:
+                plotter.preallocate(nstep)
+            self.plotters_initialized = True
+
         self.iteration = -1  # reset the current iteration
         self.is_first_iteration = True
         self.is_converged = False
