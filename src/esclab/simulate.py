@@ -59,11 +59,11 @@ class Connection:
 
 class Component:
     # ------------------------------------------------------------------------
-    class __io_base:
+    class __iop_base:
         """
         Base for Input, Parameter, and Output classes.
 
-        Contains the value (v), units, name, and connection status.
+        Contains the value (v), units, name, but no connection status.
         """
         def __init__(self):
             self.name = ''
@@ -103,6 +103,8 @@ class Component:
         def __rtruediv__(self, o):       return o / self.v
         def __floordiv__(self, o):       return self.v // o
         def __rfloordiv__(self, o):      return o // self.v
+        def __mod__(self, o):            return self.v % o
+        def __rmod__(self, o):           return o % self.v
         def __pow__(self, o):            return self.v ** o
         def __rpow__(self, o):           return o ** self.v
 
@@ -112,7 +114,23 @@ class Component:
         def __ge__(self, o):             return self.v >= (o.v if hasattr(o, 'v') else o)
         def __eq__(self, o):             return self.v == (o.v if hasattr(o, 'v') else o)
         def __ne__(self, o):             return self.v != (o.v if hasattr(o, 'v') else o)
+
+        def __len__(self):               return len(self.v)
+        def __getitem__(self, idx):      return self.v[idx]
+        def __setitem__(self, idx, val): self.v[idx] = val
     # ------------ end class __io_base ----------------------------------------
+    class __io_base(__iop_base):
+        """
+        Base for Input and Output classes.
+
+        Contains connection status and logic for updating from connections.
+        """
+        def __init__(self):
+            super().__init__()
+            self.connection = None  #instance of class Connection()
+            return
+    # ------------ end class __io_base ----------------------------------------
+
     # -------------------------------------------------------------------------
     class Input(__io_base):
         def __init__(self, initial_value=1.):
@@ -138,40 +156,12 @@ class Component:
             super().__init__()
     # ----------- end class Output ------------------------------------------
     # ------------------------------------------------------------------------
-    class Parameter:
+    class Parameter(__iop_base):
         def __init__(self, value=float('nan'), units='', std_dev = None):
-            self.v = value 
+            super().__init__()
+            self.v = value
             self.units = units
             self.std_dev = std_dev
-
-        # Numeric protocol — mirrors __io_base so Parameters also work in expressions
-        def __float__(self):             return float(self.v)
-        def __int__(self):               return int(self.v)
-        def __array__(self, dtype=None): return np.asarray(self.v) if dtype is None else np.asarray(self.v, dtype=dtype)
-
-        def __neg__(self):               return -self.v
-        def __pos__(self):               return +self.v
-        def __abs__(self):               return abs(self.v)
-
-        def __add__(self, o):            return self.v + o
-        def __radd__(self, o):           return o + self.v
-        def __sub__(self, o):            return self.v - o
-        def __rsub__(self, o):           return o - self.v
-        def __mul__(self, o):            return self.v * o
-        def __rmul__(self, o):           return o * self.v
-        def __truediv__(self, o):        return self.v / o
-        def __rtruediv__(self, o):       return o / self.v
-        def __floordiv__(self, o):       return self.v // o
-        def __rfloordiv__(self, o):      return o // self.v
-        def __pow__(self, o):            return self.v ** o
-        def __rpow__(self, o):           return o ** self.v
-
-        def __lt__(self, o):             return self.v <  (o.v if hasattr(o, 'v') else o)
-        def __le__(self, o):             return self.v <= (o.v if hasattr(o, 'v') else o)
-        def __gt__(self, o):             return self.v >  (o.v if hasattr(o, 'v') else o)
-        def __ge__(self, o):             return self.v >= (o.v if hasattr(o, 'v') else o)
-        def __eq__(self, o):             return self.v == (o.v if hasattr(o, 'v') else o)
-        def __ne__(self, o):             return self.v != (o.v if hasattr(o, 'v') else o)
     # ----------- end class Parameter -----------------------------------------
     
     # ------------------------------------------------------------------------
