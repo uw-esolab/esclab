@@ -35,28 +35,28 @@ model.initialize()
 
 # Set parameters and initial values 
 # turbine
-model.turbine.eta_s.v   = 0.9
-model.turbine.mdot_in.v = model.design.mdot
-model.turbine.T_in.v    = model.design.T_turb_in
-model.turbine.P_in.v    = model.design.P_low*model.design.PR
+model.turbine.eta_s   = 0.9
+model.turbine.mdot_in = model.design.mdot
+model.turbine.T_in    = model.design.T_turb_in
+model.turbine.P_in    = model.design.P_low*model.design.PR
 model.turbine.fluid = 'Air'
 # Compressor
-model.compressor.eta_s.v   = 0.85
-model.compressor.PR.v      = 4.
-model.compressor.mdot_in.v = model.design.mdot
-model.compressor.T_in.v    = model.design.T_amb+20
-model.compressor.P_in.v    = model.design.P_low
+model.compressor.eta_s   = 0.85
+model.compressor.PR      = 4.
+model.compressor.mdot_in = model.design.mdot
+model.compressor.T_in    = model.design.T_amb+20
+model.compressor.P_in    = model.design.P_low
 model.compressor.fluid = model.turbine.fluid
 # Cooler 
-model.cooler.mdot_in.v    = model.design.mdot
-model.cooler.T_in.v       = model.design.T_amb+100
-model.cooler.P_in.v       = model.design.P_low
-model.cooler.T_amb.v      = model.design.T_amb
+model.cooler.mdot_in    = model.design.mdot
+model.cooler.T_in       = model.design.T_amb+100
+model.cooler.P_in       = model.design.P_low
+model.cooler.T_amb      = model.design.T_amb
 # Combustor
 # initial value
-model.combustor.P_in.v = model.design.P_low*model.design.PR
-model.combustor.T_in.v = model.design.T_turb_in - 300
-model.combustor.mdot_in.v  = model.design.mdot
+model.combustor.P_in = model.design.P_low*model.design.PR
+model.combustor.T_in = model.design.T_turb_in - 300
+model.combustor.mdot_in  = model.design.mdot
 
 # ---------------------------------------------
 # Connections
@@ -78,8 +78,8 @@ model.connect(model.turbine.W,            model.summary.W_turbine    , )
 model.connect(model.compressor.W,         model.summary.W_compressor , )
 model.connect(model.combustor.qdot,       model.summary.Q_combustor  , )
 
-model.add_plotter([model.compressor.T_out, model.weather.T_amb, model.turbine.T_in, model.cooler.T_in],[model.compressor.W], y1label='Temperature', y2label='Work', update_every=30, nmax_points=300)
-# model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=10, nmax_points=100)
+model.add_plotter([model.compressor.T_out, model.weather.T_amb, model.turbine.T_in, model.cooler.T_in],[model.compressor.W], y1label='Temperature', y2label='Work', update_every=2, nmax_points=300)
+model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=10, nmax_points=100)
 # model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=100, nmax_points=100)
 
 
@@ -95,3 +95,4 @@ while model.time < model.settings.stop_time:
     model.step()
 
 print(f'\nRun time: {time.time()-start:.2f} sec')
+model.wait_for_plots()

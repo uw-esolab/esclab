@@ -17,14 +17,14 @@ class Turbine(Component):
     fluid = 'Air'
 
     def calculate(self):
-        self.mdot_out.v = self.mdot_in.v
-        h_in = fluid_properties.enthalpy(self.fluid, T=self.T_in.v, P=self.P_in.v)
-        s_in = fluid_properties.entropy(self.fluid, T=self.T_in.v, P=self.P_in.v)
-        self.P_out.v = self.P_in.v / self.model.design.PR
-        h_out_s = fluid_properties.enthalpy(self.fluid,P=self.P_out.v, s=s_in)
-        self.h_out.v = h_in - (h_in-h_out_s)*self.eta_s.v
-        self.T_out.v = fluid_properties.temperature(self.fluid, P=self.P_out.v, h=self.h_out.v)
-        self.W.v = (h_in - self.h_out.v)*self.mdot_in.v        
+        self.mdot_out = self.mdot_in
+        h_in = fluid_properties.enthalpy(self.fluid, T=self.T_in, P=self.P_in)
+        s_in = fluid_properties.entropy(self.fluid, T=self.T_in, P=self.P_in)
+        self.P_out = self.P_in / self.model.design.PR
+        h_out_s = fluid_properties.enthalpy(self.fluid,P=self.P_out, s=s_in)
+        self.h_out = h_in - (h_in-h_out_s)*self.eta_s
+        self.T_out = fluid_properties.temperature(self.fluid, P=self.P_out, h=self.h_out)
+        self.W = (h_in - self.h_out)*self.mdot_in        
         return 
     
 # -------------------------------------------
@@ -45,14 +45,14 @@ class Compressor(Component):
     fluid = 'Air'
         
     def calculate(self):
-        self.mdot_out.v = self.mdot_in.v
-        h_in = fluid_properties.enthalpy(self.fluid, T=self.T_in.v, P=self.P_in.v)
-        s_in = fluid_properties.entropy(self.fluid, T=self.T_in.v, P=self.P_in.v)
-        self.P_out.v = self.P_in.v * self.PR.v
-        h_out_s = fluid_properties.enthalpy(self.fluid,P=self.P_out.v, s=s_in)
-        self.h_out.v = h_in + (h_out_s - h_in)/self.eta_s.v
-        self.T_out.v = fluid_properties.temperature(self.fluid, P=self.P_out.v, h=self.h_out.v)
-        self.W.v = (h_in - self.h_out.v)*self.mdot_in.v  
+        self.mdot_out = self.mdot_in
+        h_in = fluid_properties.enthalpy(self.fluid, T=self.T_in, P=self.P_in)
+        s_in = fluid_properties.entropy(self.fluid, T=self.T_in, P=self.P_in)
+        self.P_out = self.P_in * self.PR
+        h_out_s = fluid_properties.enthalpy(self.fluid,P=self.P_out, s=s_in)
+        self.h_out = h_in + (h_out_s - h_in)/self.eta_s
+        self.T_out = fluid_properties.temperature(self.fluid, P=self.P_out, h=self.h_out)
+        self.W = (h_in - self.h_out)*self.mdot_in  
         return 
     
 # -------------------------------------------
@@ -75,12 +75,12 @@ class Combustor(Component):
 
     def calculate(self):
         super().calculate()
-        self.mdot_out.v = self.mdot_in.v 
-        self.P_out.v = self.P_in.v 
-        self.T_out.v = self.model.design.T_turb_in
-        h_in = fluid_properties.enthalpy(self.model.design.fluid, T=self.T_in.v, P=self.P_in.v)
-        self.h_out.v = fluid_properties.enthalpy(self.model.design.fluid, T=self.T_out.v, P=self.P_out.v)
-        self.qdot.v = (self.h_out.v - h_in)*self.mdot_in.v
+        self.mdot_out = self.mdot_in 
+        self.P_out = self.P_in 
+        self.T_out = self.model.design.T_turb_in
+        h_in = fluid_properties.enthalpy(self.model.design.fluid, T=self.T_in, P=self.P_in)
+        self.h_out = fluid_properties.enthalpy(self.model.design.fluid, T=self.T_out, P=self.P_out)
+        self.qdot = (self.h_out - h_in)*self.mdot_in
         return 
     
 # -------------------------------------------
@@ -99,12 +99,12 @@ class Cooler(Component):
     qdot = Component.Output()
     
     def calculate(self):
-        self.mdot_out.v = self.mdot_in.v 
-        self.P_out.v = self.P_in.v
-        h_in = fluid_properties.enthalpy(self.model.design.fluid, T=self.T_in.v, P=self.P_in.v)
-        self.T_out.v = self.T_amb.v + self.dT_approach.v
-        self.h_out.v = fluid_properties.enthalpy(self.model.design.fluid, P=self.model.design.P_low, T=self.T_out.v)
-        self.qdot.v = (self.h_out.v - h_in)*self.mdot_in.v
+        self.mdot_out = self.mdot_in
+        self.P_out = self.P_in
+        h_in = fluid_properties.enthalpy(self.model.design.fluid, T=self.T_in, P=self.P_in)
+        self.T_out = self.T_amb + self.dT_approach
+        self.h_out = fluid_properties.enthalpy(self.model.design.fluid, P=self.model.design.P_low, T=self.T_out)
+        self.qdot = (self.h_out - h_in)*self.mdot_in
         return 
 
 class Summary(Component):
@@ -114,7 +114,7 @@ class Summary(Component):
     eta_cycle = Component.Output()
     
     def calculate(self):
-        self.eta_cycle.v = (self.W_turbine.v + self.W_compressor.v)/self.Q_combustor.v
+        self.eta_cycle = (self.W_turbine + self.W_compressor)/self.Q_combustor
 
 class Weather(Component):
     def presim_setup(self):
@@ -123,4 +123,4 @@ class Weather(Component):
 
     def calculate(self):
         super().calculate()
-        self.T_amb.v = self.model.design.T_amb + 15*np.sin(self.model.time/5/np.pi)
+        self.T_amb = self.model.design.T_amb + 15*np.sin(self.model.time/1e5/np.pi) + 15*np.sin(self.model.time/1e5/np.pi*2+.5)

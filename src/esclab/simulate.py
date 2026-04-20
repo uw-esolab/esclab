@@ -59,11 +59,11 @@ class Connection:
 
 class Component:
     # ------------------------------------------------------------------------
-    class __io_base:
+    class __iop_base:
         """
         Base for Input, Parameter, and Output classes.
 
-        Contains the value (v), units, name, and connection status.
+        Contains the value (v), units, name, but no connection status.
         """
         def __init__(self):
             self.name = ''
@@ -71,6 +71,10 @@ class Component:
             self.v = float('nan')
             self.is_connected = False
             return
+        def __repr__(self):
+            return f'{self.name} = {self.v} {self.units}'
+        
+        
         def set(self, value=None, units=None, name=None):
             if value is not None: 
                 self.v = value
@@ -78,7 +82,57 @@ class Component:
                 self.units = units
             if name is not None:
                 self.name = name
+
+        # Numeric protocol — forward arithmetic and comparisons to self.v so
+        # instances can be used directly in expressions without .v
+        # Note that assignment (itema.v = itemb.v) is handled in the component
+        # __setattr__ method. 
+        def __float__(self):             return float(self.v)
+        def __int__(self):               return int(self.v)
+        def __array__(self, dtype=None): return np.asarray(self.v) if dtype is None else np.asarray(self.v, dtype=dtype)
+
+        def __neg__(self):               return -self.v
+        def __pos__(self):               return +self.v
+        def __abs__(self):               return abs(self.v)
+
+        def __add__(self, o):            return self.v + o
+        def __radd__(self, o):           return o + self.v
+        def __sub__(self, o):            return self.v - o
+        def __rsub__(self, o):           return o - self.v
+        def __mul__(self, o):            return self.v * o
+        def __rmul__(self, o):           return o * self.v
+        def __truediv__(self, o):        return self.v / o
+        def __rtruediv__(self, o):       return o / self.v
+        def __floordiv__(self, o):       return self.v // o
+        def __rfloordiv__(self, o):      return o // self.v
+        def __mod__(self, o):            return self.v % o
+        def __rmod__(self, o):           return o % self.v
+        def __pow__(self, o):            return self.v ** o
+        def __rpow__(self, o):           return o ** self.v
+
+        def __lt__(self, o):             return self.v <  (o.v if hasattr(o, 'v') else o)
+        def __le__(self, o):             return self.v <= (o.v if hasattr(o, 'v') else o)
+        def __gt__(self, o):             return self.v >  (o.v if hasattr(o, 'v') else o)
+        def __ge__(self, o):             return self.v >= (o.v if hasattr(o, 'v') else o)
+        def __eq__(self, o):             return self.v == (o.v if hasattr(o, 'v') else o)
+        def __ne__(self, o):             return self.v != (o.v if hasattr(o, 'v') else o)
+
+        def __len__(self):               return len(self.v)
+        def __getitem__(self, idx):      return self.v[idx]
+        def __setitem__(self, idx, val): self.v[idx] = val
     # ------------ end class __io_base ----------------------------------------
+    class __io_base(__iop_base):
+        """
+        Base for Input and Output classes.
+
+        Contains connection status and logic for updating from connections.
+        """
+        def __init__(self):
+            super().__init__()
+            self.connection = None  #instance of class Connection()
+            return
+    # ------------ end class __io_base ----------------------------------------
+
     # -------------------------------------------------------------------------
     class Input(__io_base):
         def __init__(self, initial_value=1.):
@@ -104,9 +158,10 @@ class Component:
             super().__init__()
     # ----------- end class Output ------------------------------------------
     # ------------------------------------------------------------------------
-    class Parameter:
+    class Parameter(__iop_base):
         def __init__(self, value=float('nan'), units='', std_dev = None):
-            self.v = value 
+            super().__init__()
+            self.v = value
             self.units = units
             self.std_dev = std_dev
     # ----------- end class Parameter -----------------------------------------
@@ -210,6 +265,19 @@ class Component:
                     pass
         return allnames
 
+    def __setattr__(self, name, value):
+        # Override setattr to allow setting the value of an input or parameter directly, while 
+        # still allowing assignment of new attributes. If the attribute being set already 
+        # exists and is an Input or Parameter, update its value instead of replacing the attribute.
+        try:
+            existing = object.__getattribute__(self, name)
+        except AttributeError:
+            existing = None
+        if isinstance(existing, (Component.Input, Component.Output, Component.Parameter)):
+            existing.v = value.v if isinstance(value, (Component.Input, Component.Output, Component.Parameter)) else value
+        else:
+            object.__setattr__(self, name, value)
+
     def presim_setup(self, **kwargs):
         """
         Do initial calculations.
@@ -285,6 +353,7 @@ class Model:
         app = None
         main_window = None
         tab_widget = None
+        follow_button = None
         instances = []
         n_plotters = 0
         font_size_pt = 10
@@ -300,6 +369,8 @@ class Model:
             assert isinstance(y2, type([])) or y2 == None
 
             self.current_step = -1
+            self._fill_idx = 0
+            self._auto_follow = True
             self.y1label = y1label
             self.y2label = y2label
 
@@ -343,6 +414,11 @@ class Model:
                 font_down_button.setFixedSize(30, 30)
                 controls_layout.addWidget(font_up_button)
                 controls_layout.addWidget(font_down_button)
+                follow_button = QtWidgets.QPushButton("\u2BC8 Follow")
+                follow_button.setCheckable(True)
+                follow_button.setChecked(True)
+                follow_button.setFixedSize(80, 30)
+                controls_layout.addWidget(follow_button)
                 controls_layout.addStretch()
 
                 container = QtWidgets.QWidget()
@@ -355,6 +431,8 @@ class Model:
 
                 font_down_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(-1))
                 font_up_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(1))
+                follow_button.clicked.connect(lambda checked: Model.OnlinePlotter.set_auto_follow(checked))
+                Model.OnlinePlotter.follow_button = follow_button
 
                 # Handle plotter size. If fractions are given, resize based on screen size. If absolute values are
                 # given, use those. If None, use default size.
@@ -385,7 +463,7 @@ class Model:
             Model.OnlinePlotter.tab_widget.addTab(self.win, tab_label)
 
             # Create primary plot
-            self.ax1 = self.win.addPlot()
+            self.ax1 = self.win.addPlot(viewBox=_AxisLockedViewBox())
             self.ax1.setLabel('bottom', 'Time')
             self.ax1.setLabel('left', y1label)
             self.legend_y1 = self.ax1.addLegend(offset=(10, 10))
@@ -408,7 +486,7 @@ class Model:
             # Create secondary y-axis if needed
             self.y2_lines = []
             if y2 != None:
-                self.ax2 = qtg.ViewBox()
+                self.ax2 = _AxisLockedViewBox()
                 self.ax1.showAxis('right')
                 self.ax1.scene().addItem(self.ax2)
                 self.ax1.getAxis('right').linkToView(self.ax2)
@@ -438,17 +516,14 @@ class Model:
                     self.y2_lines.append(line)
                     c += 1
 
-            # Initialize data containers
-            self.x_data =  np.zeros((self.nmax_points))
-            self.y1_data = np.zeros((len(y1), self.nmax_points))
-            if y2 != None:
-                y2len = len(y2)
-            else:
-                y2len = 1
-            self.y2_data = np.zeros((y2len, self.nmax_points))
+            # Data arrays are pre-allocated in preallocate(), called from Model.initialize()
+            self.x_data  = None
+            self.y1_data = None
+            self.y2_data = None
 
             Model.OnlinePlotter.instances.append(self)
             self.apply_font_size()
+            self.ax1.vb.sigRangeChangedManually.connect(self._on_range_changed_manually)
             return 
 
         @classmethod
@@ -492,44 +567,79 @@ class Model:
                         label_item.setText(label_item.text, size=f'{Model.OnlinePlotter.font_size_pt}pt')
         
         def log_step(self, time):
-            
+
             self.current_step += 1
+            idx = self._fill_idx
 
-            self.x_data = np.roll(self.x_data, -1)
-            self.x_data[-1] = time
+            self.x_data[idx] = time
 
-            y1vals = np.zeros(len(self.y1_items))
+            # Write y1 values directly into pre-allocated array
+            for j, yval in enumerate(self.y1_items):
+                self.y1_data[j, idx] = yval.v
+
             if self.y2_items != None:
-                y2vals = np.zeros(len(self.y2_items))
-            # Append new data
-            for j,yval in enumerate(self.y1_items):
-                y1vals[j] = yval.v
-            self.y1_data = np.roll(self.y1_data, -1, axis=1)
-            self.y1_data[:,-1] = y1vals[:]
-            
-            if self.y2_items != None:
-                for j,yval in enumerate(self.y2_items):
-                    y2vals[j] = yval.v
-                self.y2_data = np.roll(self.y2_data, -1, axis=1)
-                self.y2_data[:,-1] = y2vals[:]
+                for j, yval in enumerate(self.y2_items):
+                    self.y2_data[j, idx] = yval.v
+
+            self._fill_idx += 1
 
             if self.current_step % self.update_every == 0:
                 self.__refresh_plot()
 
         def __refresh_plot(self):
             """
-            Fast update using pyqtgraph setData
+            Fast update using pyqtgraph setData.  All accumulated history is passed
+            as a NumPy view slice (no copy).  The x-axis is constrained to the last
+            nmax_points so older data remains accessible by panning.
             """
+            n = self._fill_idx
+            if n == 0:
+                return
+            x_view = self.x_data[:n]
+
             # Update y1 lines
             for i in range(len(self.y1_lines)):
-                self.y1_lines[i].setData(self.x_data, self.y1_data[i,:])
-            
+                self.y1_lines[i].setData(x_view, self.y1_data[i, :n])
+
             # Update y2 lines
             for i in range(len(self.y2_lines)):
-                self.y2_lines[i].setData(self.x_data, self.y2_data[i,:])
+                self.y2_lines[i].setData(x_view, self.y2_data[i, :n])
+
+            # Auto-follow: keep the view window on the most recent nmax_points
+            if self._auto_follow:
+                x_start = self.x_data[max(0, n - self.nmax_points)]
+                x_end   = self.x_data[n - 1]
+                self.ax1.setXRange(x_start, x_end, padding=0.02)
 
             # Process GUI events (much faster than matplotlib canvas.draw)
             self.app.processEvents()
+
+        def preallocate(self, n_steps):
+            """
+            Allocate contiguous NumPy arrays for the full simulation duration.
+            Called once from Model.initialize() before the simulation loop begins;
+            no further allocation or data movement occurs during the simulation.
+            """
+            self._fill_idx = 0
+            self.x_data  = np.empty(n_steps)
+            self.y1_data = np.empty((len(self.y1_items), n_steps))
+            n_y2 = len(self.y2_items) if self.y2_items is not None else 1
+            self.y2_data = np.empty((n_y2, n_steps))
+
+        def _on_range_changed_manually(self, viewRange):
+            """Called when the user pans or zooms; disables auto-follow."""
+            self._auto_follow = False
+            if Model.OnlinePlotter.follow_button is not None:
+                Model.OnlinePlotter.follow_button.setChecked(False)
+
+        @classmethod
+        def set_auto_follow(cls, value):
+            """Enable or disable auto-follow on all plotter instances."""
+            for plotter in cls.instances:
+                plotter._auto_follow = value
+            if cls.follow_button is not None:
+                cls.follow_button.setChecked(value)
+
     # ------- end OnlinePlotter --------------------------------------------------
 
     # ----------------------------------------------------------------------------
@@ -539,6 +649,7 @@ class Model:
         self.__components = []
         self.settings = Model.Settings()
         self.is_initialized = False
+        self.plotters_initialized = False
         self.is_first_step = True
         self.is_first_iteration = True
         self.is_converged = False
@@ -640,7 +751,7 @@ class Model:
         # Construct the historian database
         nstep = int((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)
         self.historian = dict([[n,np.ones(nstep)*float('nan')] for n in output_names])
-        
+
         # Mark the model as initialized
         self.is_initialized = True
         return 
@@ -650,7 +761,14 @@ class Model:
         # Check overall initialization for the model
         if not self.is_initialized:
             self.initialize()
-        
+
+        # Pre-allocate plotter arrays on the first step, after all plotters have been added
+        if not self.plotters_initialized:
+            nstep = int((self.settings.stop_time - self.settings.start_time) / self.settings.timestep)
+            for plotter in self.plotters:
+                plotter.preallocate(nstep)
+            self.plotters_initialized = True
+
         self.iteration = -1  # reset the current iteration
         self.is_first_iteration = True
         self.is_converged = False
@@ -722,4 +840,20 @@ class Model:
             sys.stdout.flush()
 
         return 
+
+
+# =========================================================================================
+class _AxisLockedViewBox(qtg.ViewBox):
+    """ViewBox with modifier-key-constrained scroll zoom.
+    Ctrl+scroll  → x-axis only
+    Shift+scroll → y-axis only
+    plain scroll → both axes (default)
+    """
+    def wheelEvent(self, ev, axis=None):
+        mods = ev.modifiers()
+        if mods & QtCore.Qt.ControlModifier:
+            axis = 0
+        elif mods & QtCore.Qt.ShiftModifier:
+            axis = 1
+        super().wheelEvent(ev, axis=axis)
 
