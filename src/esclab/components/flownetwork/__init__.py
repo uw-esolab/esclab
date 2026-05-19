@@ -3,7 +3,7 @@
 from .SimplePipe import FricFactor_IC, SimplePipe
 from .TeeOut import TeeOut
 from .TeeReturn import TeeReturn
-from .Valve import CV_data, Valve
+from .valve import CV_data, Valve
 from .VarSpeedPump import VarSpeedPump
 from .sf_piping_helpers import (
     FricFactor_piping,
