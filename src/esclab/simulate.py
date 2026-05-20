@@ -1082,6 +1082,17 @@ class Model:
             all_converged = True 
             self.iteration += 1
 
+            # Call the network solver here to update all coupled components before each 
+            # iteration. This allows guess propagation to occur across the entire coupled 
+            # network, which can improve convergence in cases where simple sequential 
+            # updates are not sufficient. Note that the network solver will only update 
+            # components for which registered equation builders and semantic role hints 
+            # provide enough equations for a solve. Coefficients used in the matrix 
+            # inversion are based on the values of connections at the start of the iteration, 
+            # so the network iteration is effectively a "Jacobi" style update that does not 
+            # interfere with the main loop's sequential update logic.
+            self._apply_network_iteration()
+
             # Run through list of components, gathering and updating inputs 
             max_abs_err = 0.
             max_rel_err = 0.
@@ -1094,8 +1105,6 @@ class Model:
 
                 # Calculate
                 component.calculate()
-
-            self._apply_network_iteration()
             
             if all_converged and not self.is_first_iteration:
                 # print(f'Iterations: {i}')
