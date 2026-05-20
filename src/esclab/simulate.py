@@ -1,11 +1,12 @@
 import pyqtgraph as qtg
 from pyqtgraph.Qt import QtCore, QtWidgets, QtGui
+from collections import deque
 import numpy as np
 import sys
 
 # ------------------------------------------------------------------------
 class Connection:
-    def __init__(self, source, tol_rel, tol_abs, log_n_iter, learn_rate):
+    def __init__(self, source, tol_rel, tol_abs, log_n_iter, learn_rate, semantic_role=None):
 
         self.tol_rel = tol_rel
         self.tol_abs = tol_abs 
@@ -17,6 +18,7 @@ class Connection:
 
         self.source = source
         self.source_last_value = float('nan')
+        self.semantic_role = semantic_role
 
         self.log_n_iter = log_n_iter
 
@@ -655,6 +657,9 @@ class Model:
         self.is_converged = False
         self.time = 0
         self.plotters = []
+        self._output_owner_by_id = {}
+        self._input_owner_by_id = {}
+        self._network_analysis = None
         return
     
     def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None):
@@ -688,7 +693,7 @@ class Model:
         # start the Qt event loop to display the plot window and allow interaction
         app.exec()
 
-    def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = 1.):
+    def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = 1., semantic_role=None):
         
         # In order for connections to be established correctly, the model 
         # must be initialized first to assign names to all inputs and outputs. 
@@ -701,10 +706,176 @@ class Model:
         if not isinstance(destination, Component.Input):
             raise RuntimeError(f"Destination connection object must be of type 'Component.Input'")
 
-        destination.connection = Connection(source, tol_rel, tol_abs, log_n_iter, learn_rate)
+        destination.connection = Connection(source, tol_rel, tol_abs, log_n_iter, learn_rate, semantic_role=semantic_role)
         destination.is_connected = True
         source.is_connected = True
         return
+
+    def _index_component_ios(self):
+        """Build fast lookup tables that map I/O objects back to their owning component."""
+        self._output_owner_by_id = {}
+        self._input_owner_by_id = {}
+
+        for component in self.__components:
+            for output in component.get_outputs():
+                self._output_owner_by_id[id(output)] = component
+            for input_item in component.get_inputs():
+                self._input_owner_by_id[id(input_item)] = component
+
+    def _build_component_graph(self):
+        """Return adjacency maps for the component-level connection graph."""
+        adjacency = {component: set() for component in self.__components}
+        reverse_adjacency = {component: set() for component in self.__components}
+        edges = []
+
+        for destination_component in self.__components:
+            for input_item in destination_component.get_inputs(connected_only=True):
+                connection = input_item.connection
+                source_component = self._output_owner_by_id.get(id(connection.source))
+                if source_component is None:
+                    continue
+
+                adjacency[source_component].add(destination_component)
+                reverse_adjacency[destination_component].add(source_component)
+                edges.append((source_component, destination_component, connection.source, input_item))
+
+        return adjacency, reverse_adjacency, edges
+
+    def _find_connected_subnetworks(self, adjacency, reverse_adjacency):
+        """Group components into weakly connected subnetworks."""
+        unvisited = set(self.__components)
+        subnetworks = []
+
+        while unvisited:
+            start_component = unvisited.pop()
+            queue = deque([start_component])
+            subnetwork = {start_component}
+
+            while queue:
+                component = queue.popleft()
+                neighbors = adjacency[component] | reverse_adjacency[component]
+                for neighbor in neighbors:
+                    if neighbor in unvisited:
+                        unvisited.remove(neighbor)
+                        subnetwork.add(neighbor)
+                        queue.append(neighbor)
+
+            subnetworks.append(subnetwork)
+
+        return subnetworks
+
+    def _has_directed_cycle(self, subnetwork, adjacency):
+        """
+        Detect a directed cycle using a depth-first color walk.
+        
+        White: nodes not visited yet.
+        Gray: nodes currently on the active recursion stack
+        
+        The logic is as follows:
+        * Start from a white node.
+        * Move it to gray when entering visit().
+        * Traverse each outgoing neighbor.
+        * If a neighbor is already gray, you found a back-edge to an ancestor 
+          in the current path, which means a directed cycle exists.
+        * When done exploring a node, remove it from gray and return.
+        
+        A directed cycle is a strong indicator that simple one-pass guess propagation 
+        is not enough and an inversion solve is needed. Cycle presence contributes to
+        making the network "coupled" in the classification logic, which is where matrix-
+        based solving becomes relevant.
+        """
+        white = set(subnetwork)
+        gray = set()
+
+        def visit(component):
+            white.discard(component)
+            gray.add(component)
+
+            for neighbor in adjacency[component]:
+                if neighbor not in subnetwork:
+                    continue
+                if neighbor in gray:
+                    return True
+                if neighbor in white and visit(neighbor):
+                    return True
+
+            gray.discard(component)
+            return False
+
+        while white:
+            component = next(iter(white))
+            if visit(component):
+                return True
+
+        return False
+
+    def _classify_subnetwork(self, subnetwork, adjacency, reverse_adjacency):
+        """Classify a connected subnetwork as sequential or coupled."""
+        in_degree = {}
+        out_degree = {}
+
+        for component in subnetwork:
+            out_degree[component] = sum(1 for neighbor in adjacency[component] if neighbor in subnetwork)
+            in_degree[component] = sum(1 for neighbor in reverse_adjacency[component] if neighbor in subnetwork)
+
+        has_branching = any(degree > 1 for degree in out_degree.values())
+        has_merging = any(degree > 1 for degree in in_degree.values())
+        has_cycle = self._has_directed_cycle(subnetwork, adjacency)
+
+        if has_cycle or has_branching or has_merging:
+            mode = "coupled"
+        else:
+            mode = "sequential"
+
+        return {
+            "mode": mode,
+            "components": tuple(subnetwork),
+            "in_degree": in_degree,
+            "out_degree": out_degree,
+            "has_cycle": has_cycle,
+            "has_branching": has_branching,
+            "has_merging": has_merging,
+        }
+
+    def build_network_analysis(self):
+        """Analyze the current model topology and cache a solve plan for each subnetwork."""
+        if not self.is_initialized:
+            return []
+
+        self._index_component_ios()
+        adjacency, reverse_adjacency, edges = self._build_component_graph()
+        subnetworks = self._find_connected_subnetworks(adjacency, reverse_adjacency)
+        plans = []
+
+        for subnetwork in subnetworks:
+            plans.append(self._classify_subnetwork(subnetwork, adjacency, reverse_adjacency))
+
+        self._network_analysis = {
+            "adjacency": adjacency,
+            "reverse_adjacency": reverse_adjacency,
+            "edges": edges,
+            "subnetworks": subnetworks,
+            "plans": plans,
+        }
+
+        return plans
+
+    def _apply_network_iteration(self):
+        """Apply one network-level iteration update inside the existing step() loop.
+
+        The first implementation keeps this as a no-op for sequential subnetworks and as
+        a clear insertion point for future matrix-based updates on coupled subnetworks.
+        """
+        if self._network_analysis is None:
+            return False
+
+        has_coupled_network = any(plan["mode"] == "coupled" for plan in self._network_analysis["plans"])
+        if not has_coupled_network:
+            return False
+
+        # Matrix assembly and solve will be inserted here so the updated guesses are
+        # available before the next iteration of the existing step() loop.
+        return False
 
     def initialize(self):
         """
@@ -747,6 +918,8 @@ class Model:
                 self.__components.append(itemobj)
                 # Record all output data names for the historian
                 output_names += cnames
+
+        self.build_network_analysis()
 
         # Construct the historian database
         nstep = int((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)
@@ -792,6 +965,8 @@ class Model:
 
                 # Calculate
                 component.calculate()
+
+            self._apply_network_iteration()
             
             if all_converged and not self.is_first_iteration:
                 # print(f'Iterations: {i}')
