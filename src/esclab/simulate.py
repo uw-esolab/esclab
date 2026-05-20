@@ -662,6 +662,7 @@ class Model:
         self._input_owner_by_id = {}
         self._network_analysis = None
         self._network_equation_builders = {}
+        self._default_equation_builders_registered = False
         self._network_solver_warned = False
         return
     
@@ -740,7 +741,56 @@ class Model:
 
     def _get_network_equation_builder(self, component):
         cname = type(component).__name__
-        return self._network_equation_builders.get(cname)
+        equation_builder = self._network_equation_builders.get(cname)
+        if equation_builder is not None:
+            return equation_builder
+        return self._network_equation_builders.get("*")
+
+    def _register_default_network_equation_builders(self):
+        """Register baseline equation builders when no type-specific builder is provided."""
+        if self._default_equation_builders_registered:
+            return
+
+        self.register_network_equation_builder("*", self._equation_builder_passthrough)
+        self._default_equation_builders_registered = True
+
+    def _equation_builder_passthrough(self, component, context):
+        """Default builder for simple pass-through flow/potential relations.
+
+        For each semantic role (flow/potential), if a component has exactly one incoming
+        connection and one or more outgoing unknown outputs in the current subnetwork,
+        this stamps x_out = x_in for each outgoing unknown.
+        """
+        edges = context["edges"]
+        add_row = context["add_row"]
+        unknown_index = context["unknown_index"]
+
+        for role in ("flow", "potential"):
+            incoming_outputs = []
+            outgoing_outputs = []
+
+            for source_component, destination_component, source_output, destination_input in edges:
+                edge_role = self._normalize_semantic_role(destination_input.connection.semantic_role)
+                if edge_role != role:
+                    continue
+
+                if destination_component is component:
+                    incoming_outputs.append(source_output)
+                if source_component is component and source_output in unknown_index and source_output not in outgoing_outputs:
+                    outgoing_outputs.append(source_output)
+
+            if len(incoming_outputs) != 1 or len(outgoing_outputs) == 0:
+                continue
+
+            upstream_output = incoming_outputs[0]
+            for output in outgoing_outputs:
+                coeffs = {output: 1.0}
+                rhs = 0.0
+                if upstream_output in unknown_index:
+                    coeffs[upstream_output] = coeffs.get(upstream_output, 0.0) - 1.0
+                else:
+                    rhs = float(upstream_output.v)
+                add_row(coeffs, rhs)
 
     def _normalize_semantic_role(self, role):
         if role is None:
@@ -1061,6 +1111,7 @@ class Model:
             self.initialize()
 
         if not self._has_started_stepping:
+            self._register_default_network_equation_builders()
             self._build_network_analysis()
             self._has_started_stepping = True
 
