@@ -171,11 +171,12 @@ class Component:
     # ------------------------------------------------------------------------
     #  Component class methods
     # ------------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, name='', trnsys_type=''):
         """
         Define inputs, outputs, and parameters. 
         """
-        self.trnsys_type = ""     # TRNSYS type number, if applicable <string>
+        self.trnsys_type = trnsys_type     # TRNSYS type number, if applicable <string>
+        self.name = name
         return 
     
     def __get_io_items(self, item_type, connected_only=False):
@@ -1057,7 +1058,6 @@ class Model:
             if isinstance(itemobj, Component):
                 # Give all of the component instances access to the model
                 itemobj.model = self
-                itemobj.name = ''
 
                 # Handle component presim_setup here
                 itemobj.presim_setup()
