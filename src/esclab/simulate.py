@@ -651,6 +651,7 @@ class Model:
         self.__components = []
         self.settings = Model.Settings()
         self.is_initialized = False
+        self._has_started_stepping = False
         self.plotters_initialized = False
         self.is_first_step = True
         self.is_first_iteration = True
@@ -694,6 +695,8 @@ class Model:
         app.exec()
 
     def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = 1., semantic_role=None):
+        if self._has_started_stepping:
+            raise RuntimeError("Cannot add new connections after step() has started.")
         
         # In order for connections to be established correctly, the model 
         # must be initialized first to assign names to all inputs and outputs. 
@@ -837,7 +840,7 @@ class Model:
             "has_merging": has_merging,
         }
 
-    def build_network_analysis(self):
+    def _build_network_analysis(self):
         """Analyze the current model topology and cache a solve plan for each subnetwork."""
         if not self.is_initialized:
             return []
@@ -919,8 +922,6 @@ class Model:
                 # Record all output data names for the historian
                 output_names += cnames
 
-        self.build_network_analysis()
-
         # Construct the historian database
         nstep = int((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)
         self.historian = dict([[n,np.ones(nstep)*float('nan')] for n in output_names])
@@ -934,6 +935,10 @@ class Model:
         # Check overall initialization for the model
         if not self.is_initialized:
             self.initialize()
+
+        if not self._has_started_stepping:
+            self._build_network_analysis()
+            self._has_started_stepping = True
 
         # Pre-allocate plotter arrays on the first step, after all plotters have been added
         if not self.plotters_initialized:
