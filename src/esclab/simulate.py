@@ -1003,8 +1003,9 @@ class Model:
     def _apply_network_iteration(self):
         """Apply one network-level iteration update inside the existing step() loop.
 
-        Coupled subnetworks are solved only when semantic roles and registered equation builders
-        provide enough equations for a stable linear solve.
+        Coupled subnetworks are solved when components implement get_network_equations()
+        and connections are marked with semantic_role, providing enough equations for a
+        stable linear solve.
         """
         if self._network_analysis is None:
             return False
@@ -1106,12 +1107,12 @@ class Model:
             # Call the network solver here to update all coupled components before each 
             # iteration. This allows guess propagation to occur across the entire coupled 
             # network, which can improve convergence in cases where simple sequential 
-            # updates are not sufficient. Note that the network solver will only update 
-            # components for which registered equation builders and semantic role hints 
-            # provide enough equations for a solve. Coefficients used in the matrix 
-            # inversion are based on the values of connections at the start of the iteration, 
-            # so the network iteration is effectively a "Jacobi" style update that does not 
-            # interfere with the main loop's sequential update logic.
+            # updates are not sufficient. The network solver calls get_network_equations() 
+            # on each component; components that do not implement it contribute no equations.
+            # Coefficients used in the matrix inversion are based on the values of connections 
+            # at the start of the iteration, so the network iteration is effectively a 
+            # "Jacobi" style update that does not interfere with the main loop's sequential 
+            # update logic.
             network_updated = self._apply_network_iteration()
             if network_updated:
                 all_converged = False
