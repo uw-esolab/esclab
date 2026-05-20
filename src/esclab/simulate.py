@@ -1091,7 +1091,9 @@ class Model:
             # inversion are based on the values of connections at the start of the iteration, 
             # so the network iteration is effectively a "Jacobi" style update that does not 
             # interfere with the main loop's sequential update logic.
-            self._apply_network_iteration()
+            network_updated = self._apply_network_iteration()
+            if network_updated:
+                all_converged = False
 
             # Run through list of components, gathering and updating inputs 
             max_abs_err = 0.
