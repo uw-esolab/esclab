@@ -311,6 +311,78 @@ class Component:
     def postsim_calcs(self):
         pass
 
+    def get_network_equations(self, context):
+        """
+        Optional. Implement in a subclass to participate in coupled network solving.
+
+        Called when this component is part of a coupled subnetwork (cycle, branching, or merging).
+        Stamp one or more linear equations describing this component's physical behavior using
+        context.add_equation().
+
+        Parameters
+        ----------
+        context : NetworkEquationContext
+            Provides:
+            - add_equation(terms, rhs=0.0): add one equation. terms maps Output objects to
+              float coefficients. Outputs not in the unknown set are automatically moved to
+              the right-hand side using their current .v value.
+            - is_unknown(output): True if the given Output is a network unknown.
+            - source(input_port): the source Output connected to an Input port.
+            - unknowns: frozenset of all unknown Output objects in this subnetwork.
+        """
+        pass
+
+
+# =========================================================================================
+class NetworkEquationContext:
+    """Context object passed to Component.get_network_equations().
+
+    Provides a clean API for components to stamp linear equations into the coupled
+    subnetwork solve without interacting with numpy or the matrix directly.
+    """
+
+    def __init__(self, unknown_index, n_unknown, _add_row_fn):
+        self._unknown_index = unknown_index
+        self._n_unknown = n_unknown
+        self._add_row_fn = _add_row_fn
+
+    def add_equation(self, terms, rhs=0.0):
+        """Add one equation to the linear system.
+
+        Parameters
+        ----------
+        terms : dict[Component.Output, float]
+            Maps Output objects to their coefficients in this equation. If an Output is
+            not part of the unknown set, its current .v value is substituted and moved
+            to the right-hand side automatically.
+        rhs : float
+            Right-hand side constant.
+        """
+        row = np.zeros(self._n_unknown)
+        adjusted_rhs = float(rhs)
+        for output, coeff in terms.items():
+            idx = self._unknown_index.get(output)
+            if idx is not None:
+                row[idx] += float(coeff)
+            else:
+                adjusted_rhs -= float(coeff) * float(output.v)
+        self._add_row_fn(row, adjusted_rhs)
+
+    def is_unknown(self, output):
+        """Return True if the given Output is an unknown in the current network solve."""
+        return output in self._unknown_index
+
+    def source(self, input_port):
+        """Return the source Output connected to the given Input port, or None."""
+        if input_port.connection is not None:
+            return input_port.connection.source
+        return None
+
+    @property
+    def unknowns(self):
+        """Frozenset of all unknown Output objects in this subnetwork."""
+        return frozenset(self._unknown_index)
+
 
 # =========================================================================================        
 class Model:
@@ -661,8 +733,6 @@ class Model:
         self._output_owner_by_id = {}
         self._input_owner_by_id = {}
         self._network_analysis = None
-        self._network_equation_builders = {}
-        self._default_equation_builders_registered = False
         self._network_solver_warned = False
         return
     
@@ -717,89 +787,6 @@ class Model:
         source.is_connected = True
         return
 
-    def register_network_equation_builder(self, component_type, equation_builder):
-        """Register an equation-builder callback for a component class or type name.
-
-        Parameters
-        ----------
-        component_type : type | str
-            Component class object or class name string.
-        equation_builder : callable
-            Callback with signature equation_builder(component, context).
-            The context dictionary includes:
-            - add_row: callable(coeff_by_output, rhs)
-            - unknown_index: dict[Component.Output, int]
-            - unknown_outputs: tuple[Component.Output, ...]
-            - edges: tuple of graph edges within the current subnetwork
-            - plan: current subnetwork solve plan
-        """
-        if not callable(equation_builder):
-            raise RuntimeError("equation_builder must be callable")
-
-        key = component_type if isinstance(component_type, str) else component_type.__name__
-        self._network_equation_builders[key] = equation_builder
-
-    def _get_network_equation_builder(self, component):
-        cname = type(component).__name__
-        equation_builder = self._network_equation_builders.get(cname)
-        if equation_builder is not None:
-            return equation_builder
-        return self._network_equation_builders.get("*")
-
-    def _register_default_network_equation_builders(self):
-        """Register baseline equation builders when no type-specific builder is provided."""
-        if self._default_equation_builders_registered:
-            return
-
-        self.register_network_equation_builder("*", self._equation_builder_passthrough)
-        self._default_equation_builders_registered = True
-
-    def _equation_builder_passthrough(self, component, context):
-        """Default builder for simple pass-through flow/potential relations.
-
-        For each semantic role (flow/potential), if a component has exactly one incoming
-        connection and one or more outgoing unknown outputs in the current subnetwork,
-        this stamps x_out = x_in for each outgoing unknown.
-        """
-        edges = context["edges"]
-        add_row = context["add_row"]
-        unknown_index = context["unknown_index"]
-
-        for role in ("flow", "potential"):
-            incoming_outputs = []
-            outgoing_outputs = []
-
-            for source_component, destination_component, source_output, destination_input in edges:
-                edge_role = self._normalize_semantic_role(destination_input.connection.semantic_role)
-                if edge_role != role:
-                    continue
-
-                if destination_component is component:
-                    incoming_outputs.append(source_output)
-                if source_component is component and source_output in unknown_index and source_output not in outgoing_outputs:
-                    outgoing_outputs.append(source_output)
-
-            if len(incoming_outputs) != 1 or len(outgoing_outputs) == 0:
-                continue
-
-            upstream_output = incoming_outputs[0]
-            for output in outgoing_outputs:
-                coeffs = {output: 1.0}
-                rhs = 0.0
-                if upstream_output in unknown_index:
-                    coeffs[upstream_output] = coeffs.get(upstream_output, 0.0) - 1.0
-                else:
-                    rhs = float(upstream_output.v)
-                add_row(coeffs, rhs)
-
-    def _normalize_semantic_role(self, role):
-        if role is None:
-            return None
-        role_norm = str(role).strip().lower()
-        if role_norm in ("flow", "potential"):
-            return role_norm
-        return None
-
     def _collect_subnetwork_edges(self, plan):
         plan_components = set(plan["components"])
         edges = []
@@ -811,8 +798,7 @@ class Model:
     def _collect_unknown_outputs(self, subnetwork_edges):
         unknown_outputs = []
         for _, _, source_output, destination_input in subnetwork_edges:
-            role = self._normalize_semantic_role(destination_input.connection.semantic_role)
-            if role is None:
+            if destination_input.connection.semantic_role is None:
                 continue
             if source_output not in unknown_outputs:
                 unknown_outputs.append(source_output)
@@ -830,29 +816,13 @@ class Model:
         A_rows = []
         b_rows = []
 
-        def add_row(coeff_by_output, rhs):
-            row = np.zeros(n_unknown)
-            for output, coeff in coeff_by_output.items():
-                idx = unknown_index.get(output)
-                if idx is None:
-                    continue
-                row[idx] += coeff
+        def _add_row(row, rhs):
             A_rows.append(row)
             b_rows.append(float(rhs))
 
-        context = {
-            "add_row": add_row,
-            "unknown_index": unknown_index,
-            "unknown_outputs": unknown_outputs,
-            "edges": subnetwork_edges,
-            "plan": plan,
-        }
-
+        eq_context = NetworkEquationContext(unknown_index, n_unknown, _add_row)
         for component in plan["components"]:
-            equation_builder = self._get_network_equation_builder(component)
-            if equation_builder is None:
-                continue
-            equation_builder(component, context)
+            component.get_network_equations(eq_context)
 
         if not A_rows:
             return False
@@ -1048,8 +1018,9 @@ class Model:
             solved_any = self._solve_coupled_subnetwork(plan) or solved_any
 
         if coupled_count > 0 and not solved_any and not self._network_solver_warned:
-            print("Network solver: coupled networks detected but no valid equation builders available. "
-                "Register equation builders and semantic_role hints (flow/potential) to enable solving.")
+            print("Network solver: coupled networks detected but no equations were stamped. "
+                "Implement get_network_equations() on component classes and mark connections "
+                "with semantic_role to enable solving.")
             self._network_solver_warned = True
 
         return solved_any
@@ -1111,7 +1082,6 @@ class Model:
             self.initialize()
 
         if not self._has_started_stepping:
-            self._register_default_network_equation_builders()
             self._build_network_analysis()
             self._has_started_stepping = True
 
