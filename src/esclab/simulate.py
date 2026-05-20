@@ -661,6 +661,8 @@ class Model:
         self._output_owner_by_id = {}
         self._input_owner_by_id = {}
         self._network_analysis = None
+        self._network_equation_builders = {}
+        self._network_solver_warned = False
         return
     
     def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None):
@@ -713,6 +715,121 @@ class Model:
         destination.is_connected = True
         source.is_connected = True
         return
+
+    def register_network_equation_builder(self, component_type, equation_builder):
+        """Register an equation-builder callback for a component class or type name.
+
+        Parameters
+        ----------
+        component_type : type | str
+            Component class object or class name string.
+        equation_builder : callable
+            Callback with signature equation_builder(component, context).
+            The context dictionary includes:
+            - add_row: callable(coeff_by_output, rhs)
+            - unknown_index: dict[Component.Output, int]
+            - unknown_outputs: tuple[Component.Output, ...]
+            - edges: tuple of graph edges within the current subnetwork
+            - plan: current subnetwork solve plan
+        """
+        if not callable(equation_builder):
+            raise RuntimeError("equation_builder must be callable")
+
+        key = component_type if isinstance(component_type, str) else component_type.__name__
+        self._network_equation_builders[key] = equation_builder
+
+    def _get_network_equation_builder(self, component):
+        cname = type(component).__name__
+        return self._network_equation_builders.get(cname)
+
+    def _normalize_semantic_role(self, role):
+        if role is None:
+            return None
+        role_norm = str(role).strip().lower()
+        if role_norm in ("flow", "potential"):
+            return role_norm
+        return None
+
+    def _collect_subnetwork_edges(self, plan):
+        plan_components = set(plan["components"])
+        edges = []
+        for source_component, destination_component, source_output, destination_input in self._network_analysis["edges"]:
+            if source_component in plan_components and destination_component in plan_components:
+                edges.append((source_component, destination_component, source_output, destination_input))
+        return tuple(edges)
+
+    def _collect_unknown_outputs(self, subnetwork_edges):
+        unknown_outputs = []
+        for _, _, source_output, destination_input in subnetwork_edges:
+            role = self._normalize_semantic_role(destination_input.connection.semantic_role)
+            if role is None:
+                continue
+            if source_output not in unknown_outputs:
+                unknown_outputs.append(source_output)
+        return tuple(unknown_outputs)
+
+    def _solve_coupled_subnetwork(self, plan):
+        """Solve one coupled subnetwork if equation builders and semantic roles provide enough equations."""
+        subnetwork_edges = self._collect_subnetwork_edges(plan)
+        unknown_outputs = self._collect_unknown_outputs(subnetwork_edges)
+        n_unknown = len(unknown_outputs)
+        if n_unknown == 0:
+            return False
+
+        unknown_index = {output: idx for idx, output in enumerate(unknown_outputs)}
+        A_rows = []
+        b_rows = []
+
+        def add_row(coeff_by_output, rhs):
+            row = np.zeros(n_unknown)
+            for output, coeff in coeff_by_output.items():
+                idx = unknown_index.get(output)
+                if idx is None:
+                    continue
+                row[idx] += coeff
+            A_rows.append(row)
+            b_rows.append(float(rhs))
+
+        context = {
+            "add_row": add_row,
+            "unknown_index": unknown_index,
+            "unknown_outputs": unknown_outputs,
+            "edges": subnetwork_edges,
+            "plan": plan,
+        }
+
+        for component in plan["components"]:
+            equation_builder = self._get_network_equation_builder(component)
+            if equation_builder is None:
+                continue
+            equation_builder(component, context)
+
+        if not A_rows:
+            return False
+
+        A = np.vstack(A_rows)
+        b = np.asarray(b_rows)
+        if A.shape[0] < n_unknown:
+            return False
+
+        try:
+            if A.shape[0] == n_unknown and np.linalg.matrix_rank(A) == n_unknown:
+                x_new = np.linalg.solve(A, b)
+            else:
+                x_new = np.linalg.lstsq(A, b, rcond=None)[0]
+        except np.linalg.LinAlgError:
+            return False
+
+        updated_any = False
+        relax = 0.25
+        for output, idx in unknown_index.items():
+            old_value = output.v
+            new_value = old_value + (x_new[idx] - old_value) * relax
+            output.v = new_value
+            if np.abs(new_value - old_value) > self.settings.tol_abs_global:
+                updated_any = True
+
+        return updated_any
 
     def _index_component_ios(self):
         """Build fast lookup tables that map I/O objects back to their owning component."""
@@ -866,19 +983,26 @@ class Model:
     def _apply_network_iteration(self):
         """Apply one network-level iteration update inside the existing step() loop.
 
-        The first implementation keeps this as a no-op for sequential subnetworks and as
-        a clear insertion point for future matrix-based updates on coupled subnetworks.
+        Coupled subnetworks are solved only when semantic roles and registered equation builders
+        provide enough equations for a stable linear solve.
         """
         if self._network_analysis is None:
             return False
 
-        has_coupled_network = any(plan["mode"] == "coupled" for plan in self._network_analysis["plans"])
-        if not has_coupled_network:
-            return False
+        solved_any = False
+        coupled_count = 0
+        for plan in self._network_analysis["plans"]:
+            if plan["mode"] != "coupled":
+                continue
+            coupled_count += 1
+            solved_any = self._solve_coupled_subnetwork(plan) or solved_any
 
-        # Matrix assembly and solve will be inserted here so the updated guesses are
-        # available before the next iteration of the existing step() loop.
-        return False
+        if coupled_count > 0 and not solved_any and not self._network_solver_warned:
+            print("Network solver: coupled networks detected but no valid equation builders available. "
+                "Register equation builders and semantic_role hints (flow/potential) to enable solving.")
+            self._network_solver_warned = True
+
+        return solved_any
 
     def initialize(self):
         """
