@@ -1,3 +1,4 @@
+import copy
 import pyqtgraph as qtg
 from pyqtgraph.Qt import QtCore, QtWidgets, QtGui
 from collections import deque
@@ -171,12 +172,21 @@ class Component:
     # ------------------------------------------------------------------------
     #  Component class methods
     # ------------------------------------------------------------------------
-    def __init__(self, name='', trnsys_type=''):
+    def __init__(self):
         """
         Define inputs, outputs, and parameters. 
         """
-        self.trnsys_type = trnsys_type     # TRNSYS type number, if applicable <string>
-        self.name = name
+        # Create per-instance copies of all Input/Output/Parameter **class** attributes.
+        # Without this, subclass instances that don't manually instantiate new members of the 
+        # same name will share the same mutable objects, causing auto_assign_names() and 
+        # value assignments share between multiple class instances.
+        for cls in type(self).__mro__:
+            for attr_name, attr_val in vars(cls).items():
+                if isinstance(attr_val, (Component.Input, Component.Output, Component.Parameter)):
+                    if attr_name not in self.__dict__:
+                        object.__setattr__(self, attr_name, copy.copy(attr_val))
+        self.trnsys_type = ''     # TRNSYS type number, if applicable <string>
+        self.name = ''
         return 
     
     def __get_io_items(self, item_type, connected_only=False):
@@ -256,16 +266,16 @@ class Component:
         for member in dir(self):
             try:
                 mo = getattr(self, member)
-                if isinstance(mo, Component.Input) or isinstance(mo, Component.Output):
-                    if self.name == '':
-                        cname = type(self).__name__ 
-                    else: 
-                        cname = self.name
-                    mo.name = cname + '.' + member
-                    if isinstance(mo, Component.Output):
-                        allnames.append(mo.name)
-            except:
-                    pass
+            except Exception:
+                continue
+            if isinstance(mo, Component.Input) or isinstance(mo, Component.Output):
+                if self.name == '':
+                    cname = type(self).__name__ 
+                else: 
+                    cname = self.name
+                mo.name = cname + '.' + member
+                if isinstance(mo, Component.Output):
+                    allnames.append(mo.name)
         return allnames
 
     def __setattr__(self, name, value):
@@ -418,6 +428,7 @@ class Model:
         tol_rel_global = 1.e-6
         tol_abs_global = 1.e-6
         max_iterations = 50 
+        learn_rate = None  # if not None, replaces individual connection learn rates when connecting components
         
         def __init__(self):
             pass
@@ -721,7 +732,7 @@ class Model:
     # Model class methods --------------------------------------------------------
     # ----------------------------------------------------------------------------
     def __init__(self):
-        self.__components = []
+        self._components = []
         self.settings = Model.Settings()
         self.is_initialized = False
         self._has_started_stepping = False
@@ -768,7 +779,7 @@ class Model:
         # start the Qt event loop to display the plot window and allow interaction
         app.exec()
 
-    def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = 1., semantic_role=None):
+    def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = None, semantic_role=None):
         if self._has_started_stepping:
             raise RuntimeError("Cannot add new connections after step() has started.")
         
@@ -782,8 +793,14 @@ class Model:
             raise RuntimeError(f"Source connection object must be of type 'Component.Output'")
         if not isinstance(destination, Component.Input):
             raise RuntimeError(f"Destination connection object must be of type 'Component.Input'")
+        
+        # override learn_rate with the model default if that's provided and learn_rate is default
+        if learn_rate == None and self.settings.learn_rate is not None:
+            learn_rate_temp = self.settings.learn_rate
+        else:
+            learn_rate_temp = 1.0 if learn_rate is None else learn_rate
 
-        destination.connection = Connection(source, tol_rel, tol_abs, log_n_iter, learn_rate, semantic_role=semantic_role)
+        destination.connection = Connection(source, tol_rel, tol_abs, log_n_iter, learn_rate_temp, semantic_role=semantic_role)
         destination.is_connected = True
         source.is_connected = True
         return
@@ -857,7 +874,7 @@ class Model:
         self._output_owner_by_id = {}
         self._input_owner_by_id = {}
 
-        for component in self.__components:
+        for component in self._components:
             for output in component.get_outputs():
                 self._output_owner_by_id[id(output)] = component
             for input_item in component.get_inputs():
@@ -865,11 +882,11 @@ class Model:
 
     def _build_component_graph(self):
         """Return adjacency maps for the component-level connection graph."""
-        adjacency = {component: set() for component in self.__components}
-        reverse_adjacency = {component: set() for component in self.__components}
+        adjacency = {component: set() for component in self._components}
+        reverse_adjacency = {component: set() for component in self._components}
         edges = []
 
-        for destination_component in self.__components:
+        for destination_component in self._components:
             for input_item in destination_component.get_inputs(connected_only=True):
                 connection = input_item.connection
                 source_component = self._output_owner_by_id.get(id(connection.source))
@@ -884,7 +901,7 @@ class Model:
 
     def _find_connected_subnetworks(self, adjacency, reverse_adjacency):
         """Group components into weakly connected subnetworks."""
-        unvisited = set(self.__components)
+        unvisited = set(self._components)
         subnetworks = []
 
         while unvisited:
@@ -1064,12 +1081,13 @@ class Model:
                 # Automatically assign names to all inputs and outputs of this component 
                 cnames = itemobj.auto_assign_names()
                 # Add this component to the model's list of components
-                self.__components.append(itemobj)
+                self._components.append(itemobj)
                 # Record all output data names for the historian
                 output_names += cnames
 
         # Construct the historian database
-        nstep = int((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)
+        # Use round()+1 to guard against floating-point accumulation causing one extra step
+        nstep = int(round((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)) + 1
         self.historian = dict([[n,np.ones(nstep)*float('nan')] for n in output_names])
 
         # Mark the model as initialized
@@ -1083,12 +1101,19 @@ class Model:
             self.initialize()
 
         if not self._has_started_stepping:
+            assert self.settings.timestep > 0, \
+                "Invalid time settings. Ensure that timestep is positive."
+            assert self.settings.stop_time > self.settings.start_time, \
+                "Invalid time settings. Ensure that stop_time is greater than start_time."
+            assert self.settings.stop_time >= self.settings.timestep, \
+                "Invalid time settings. Ensure that stop_time is greater than the timestep."
+
             self._build_network_analysis()
             self._has_started_stepping = True
 
         # Pre-allocate plotter arrays on the first step, after all plotters have been added
         if not self.plotters_initialized:
-            nstep = int((self.settings.stop_time - self.settings.start_time) / self.settings.timestep)
+            nstep = int(round((self.settings.stop_time - self.settings.start_time) / self.settings.timestep)) + 1
             for plotter in self.plotters:
                 plotter.preallocate(nstep)
             self.plotters_initialized = True
@@ -1120,7 +1145,7 @@ class Model:
             # Run through list of components, gathering and updating inputs 
             max_abs_err = 0.
             max_rel_err = 0.
-            for component in self.__components:
+            for component in self._components:
                 # Update connections first
                 for input in component.get_inputs(connected_only=True):
                     all_converged = all_converged & input.update_from_connection()
@@ -1134,10 +1159,10 @@ class Model:
                 # print(f'Iterations: {i}')
                 break
             if i == self.settings.max_iterations-1:
-                for component in self.__components:
+                for component in self._components:
                     for input in component.get_inputs(connected_only=True):
                         if not input.connection.is_converged:
-                            ps = f'{self.time} | {input.connection.source.name} not converged after {input.connection.n_iter} iterations.'
+                            ps = f'{self.time:<10.5f} | {input.connection.source.name} not converged after {input.connection.n_iter} iterations.'
                             if input.connection.log_n_iter > 0:
                                 ps += ' Iter log: ' + ' '.join(input.connection.iter_log[:,0].astype(str))
                             print(ps)
@@ -1148,8 +1173,8 @@ class Model:
 
         # Convergence complete for this step, now do post-convergence calculations and logging
         self.is_converged = True
-        current_step = int( (self.time - self.settings.start_time)/self.settings.timestep )
-        for component in self.__components:
+        current_step = int(round((self.time - self.settings.start_time)/self.settings.timestep))
+        for component in self._components:
             component.calculate()
             for input in component.get_inputs(connected_only=True):
                 input.connection.reset_for_step()
