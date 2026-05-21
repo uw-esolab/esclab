@@ -66,10 +66,7 @@ class Combustor(Component):
     P_out = Component.Output()
     mdot_out = Component.Output()
     qdot = Component.Output()
-        
-    def __init__(self):
-        return 
-    
+
     def presim_setup(self, **kwargs):
         return super().presim_setup(**kwargs)
 
