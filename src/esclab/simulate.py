@@ -602,6 +602,19 @@ class Model:
                     self.y2_lines.append(line)
                     c += 1
 
+            # Convergence indicator strip — thin row below the main plot, x-axis linked to ax1
+            self.win.nextRow()
+            self.ax_conv = self.win.addPlot()
+            self.ax_conv.setMaximumHeight(18)
+            self.ax_conv.setMinimumHeight(18)
+            for _axis in ('left', 'bottom', 'right', 'top'):
+                self.ax_conv.hideAxis(_axis)
+            self.ax_conv.hideButtons()
+            self.ax_conv.setMouseEnabled(x=False, y=False)
+            self.ax_conv.setYRange(0, 1, padding=0)
+            self.ax_conv.setXLink(self.ax1)
+            self._conv_bar_item = None
+
             # Data arrays are pre-allocated in preallocate(), called from Model.initialize()
             self.x_data  = None
             self.y1_data = None
@@ -651,13 +664,31 @@ class Model:
                 if self.legend_y2 is not None:
                     for _, label_item in self.legend_y2.items:
                         label_item.setText(label_item.text, size=f'{Model.OnlinePlotter.font_size_pt}pt')
-        
-        def log_step(self, time):
+
+        @staticmethod
+        def _fraction_to_brush(f):
+            """Map a convergence failure fraction [0, 1] to a QBrush.
+            0        → transparent
+            0 .. 0.5 → yellow (255, 255, 0) → orange (255, 165, 0)
+            0.5 .. 1 → orange (255, 165, 0) → red   (200,   0, 0)
+            """
+            if f <= 0.0:
+                return QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
+            if f <= 0.5:
+                t = f * 2.0
+                r, g, b = 255, int(255 - t * (255 - 165)), 0
+            else:
+                t = (f - 0.5) * 2.0
+                r, g, b = int(255 - t * (255 - 200)), int(165 * (1.0 - t)), 0
+            return QtGui.QBrush(QtGui.QColor(r, g, b, 220))
+
+        def log_step(self, time, conv_fraction=0.0):
 
             self.current_step += 1
             idx = self._fill_idx
 
             self.x_data[idx] = time
+            self.conv_data[idx] = conv_fraction
 
             # Write y1 values directly into pre-allocated array
             for j, yval in enumerate(self.y1_items):
@@ -697,20 +728,35 @@ class Model:
                 x_end   = self.x_data[n - 1]
                 self.ax1.setXRange(x_start, x_end, padding=0.02)
 
+            # Convergence indicator strip
+            if self._conv_bar_item is not None:
+                self.ax_conv.removeItem(self._conv_bar_item)
+                self._conv_bar_item = None
+            nc_mask = self.conv_data[:n] > 0
+            if np.any(nc_mask):
+                nc_x = x_view[nc_mask]
+                brushes = [self._fraction_to_brush(f) for f in self.conv_data[:n][nc_mask]]
+                self._conv_bar_item = qtg.BarGraphItem(
+                    x=nc_x, height=1, width=self._timestep, brushes=brushes,
+                    pen=qtg.mkPen(None))
+                self.ax_conv.addItem(self._conv_bar_item)
+
             # Process GUI events (much faster than matplotlib canvas.draw)
             self.app.processEvents()
 
-        def preallocate(self, n_steps):
+        def preallocate(self, n_steps, timestep):
             """
             Allocate contiguous NumPy arrays for the full simulation duration.
             Called once from Model.initialize() before the simulation loop begins;
             no further allocation or data movement occurs during the simulation.
             """
             self._fill_idx = 0
+            self._timestep = timestep
             self.x_data  = np.empty(n_steps)
             self.y1_data = np.empty((len(self.y1_items), n_steps))
             n_y2 = len(self.y2_items) if self.y2_items is not None else 1
             self.y2_data = np.empty((n_y2, n_steps))
+            self.conv_data = np.zeros(n_steps)
 
         def _on_range_changed_manually(self, viewRange):
             """Called when the user pans or zooms; disables auto-follow."""
@@ -1115,7 +1161,7 @@ class Model:
         if not self.plotters_initialized:
             nstep = int(round((self.settings.stop_time - self.settings.start_time) / self.settings.timestep)) + 1
             for plotter in self.plotters:
-                plotter.preallocate(nstep)
+                plotter.preallocate(nstep, self.settings.timestep)
             self.plotters_initialized = True
 
         self.iteration = -1  # reset the current iteration
@@ -1171,6 +1217,17 @@ class Model:
             err_abs_history.append(max_abs_err)
             self.is_first_iteration = False
 
+        # Count non-converged connections to derive a fractional indicator for the plotter.
+        # Must be done before reset_for_step() clears connection.is_converged.
+        n_total = 0
+        n_not_converged = 0
+        for _comp in self._components:
+            for _inp in _comp.get_inputs(connected_only=True):
+                n_total += 1
+                if not _inp.connection.is_converged:
+                    n_not_converged += 1
+        conv_fraction = n_not_converged / n_total if n_total > 0 else 0.0
+
         # Convergence complete for this step, now do post-convergence calculations and logging
         self.is_converged = True
         current_step = int(round((self.time - self.settings.start_time)/self.settings.timestep))
@@ -1190,7 +1247,7 @@ class Model:
         
         # Plotters 
         for plotter in self.plotters:
-            plotter.log_step(self.time)
+            plotter.log_step(self.time, conv_fraction)
 
         self.time += self.settings.timestep
 
