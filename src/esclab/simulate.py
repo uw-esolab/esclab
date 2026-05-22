@@ -826,7 +826,7 @@ class Model:
         # start the Qt event loop to display the plot window and allow interaction
         app.exec()
 
-    def connect(self, source, destination, tol_rel = 1.e-6, tol_abs=1.e-6, log_n_iter = 0, learn_rate = None, semantic_role=None):
+    def connect(self, source, destination, tol_rel = None, tol_abs=None, log_n_iter = 0, learn_rate = None, semantic_role=None):
         if self._has_started_stepping:
             raise RuntimeError("Cannot add new connections after step() has started.")
         
@@ -846,8 +846,15 @@ class Model:
             learn_rate_temp = self.settings.learn_rate
         else:
             learn_rate_temp = 1.0 if learn_rate is None else learn_rate
+        # Override tol_rel and tol_abs with model defaults if not provided
+        tol_rel_temp = self.settings.tol_rel_global if tol_rel is None else tol_rel
+        if tol_rel_temp is None:
+            tol_rel_temp = 1.e-6
+        tol_abs_temp = self.settings.tol_abs_global if tol_abs is None else tol_abs
+        if tol_abs_temp is None:
+            tol_abs_temp = 1.e-6
 
-        destination.connection = Connection(source, tol_rel, tol_abs, log_n_iter, learn_rate_temp, semantic_role=semantic_role)
+        destination.connection = Connection(source, tol_rel_temp, tol_abs_temp, log_n_iter, learn_rate_temp, semantic_role=semantic_role)
         destination.is_connected = True
         source.is_connected = True
         return
@@ -1251,6 +1258,7 @@ class Model:
             plotter.log_step(self.time, conv_fraction)
 
         self.time += self.settings.timestep
+        self.is_first_step = False
 
         # Terminal update
         percent = (self.time / (self.settings.stop_time - self.settings.start_time)) * 100
