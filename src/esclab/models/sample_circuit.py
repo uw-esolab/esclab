@@ -300,7 +300,8 @@ model.settings.stop_time = 15  #seconds
 model.settings.timestep = 5e-2  # seconds
 model.settings.max_iterations = 200
 model.settings.tol_rel_global = 1e-8
-model.settings.learn_rate = .95
+model.settings.tol_abs_global = 1e-6  
+model.settings.learn_rate = 1.  # rely on learning rates in the component calculations for stability
 
 # ----------------------------------------------------------
 # Make connections

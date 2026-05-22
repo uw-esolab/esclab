@@ -153,7 +153,7 @@ model.initialize()
 
 # Choose a damping ratio
 # https://en.wikipedia.org/wiki/RLC_circuit#/media/File:RLC_transient_plot.svg
-zeta = 3  # damping ratio
+zeta = 0.5  # damping ratio
 
 # Set component values
 model.vs.V = 1
@@ -167,7 +167,8 @@ model.time = model.settings.start_time
 model.settings.stop_time = 15  #seconds
 model.settings.timestep = 5e-2  # seconds
 model.settings.max_iterations = 100
-model.settings.tol_rel_global = 1e-8
+model.settings.tol_rel_global = 1e-6
+model.settings.tol_abs_global = 1  # relax absolute tolerance - matrix solve is more stable
 
 # Connect the circuit
 
