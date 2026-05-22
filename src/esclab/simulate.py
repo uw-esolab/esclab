@@ -4,6 +4,7 @@ from pyqtgraph.Qt import QtCore, QtWidgets, QtGui
 from collections import deque
 import numpy as np
 import sys
+import time 
 
 # ------------------------------------------------------------------------
 class Connection:
@@ -1155,6 +1156,9 @@ class Model:
             self.initialize()
 
         if not self._has_started_stepping:
+            # Track the clock time at the start of the first step for performance measurement
+            self._start_time_wall_clock = time.time()
+
             assert self.settings.timestep > 0, \
                 "Invalid time settings. Ensure that timestep is positive."
             assert self.settings.stop_time > self.settings.start_time, \
@@ -1264,7 +1268,7 @@ class Model:
         percent = (self.time / (self.settings.stop_time - self.settings.start_time)) * 100
         if int(percent*1000) % 10 == 0:
             bar = '█' * int(percent // 2) + '-' * (50 - int(percent // 2))
-            sys.stdout.write(f'\r|{bar}| {percent:.1f}% ({self.time:.2f} sec)')
+            sys.stdout.write(f'\r|{bar}| {percent:.1f}% (Sim: {self.time:.2f} sec | Clock: {time.time() - self._start_time_wall_clock:.2f} sec)   ')
             sys.stdout.flush()
 
         return 
