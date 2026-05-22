@@ -34,6 +34,11 @@ class Connection:
         self.iter_log = np.zeros((max(self.log_n_iter,1),3))
 
     def compute_new_value(self):
+        # For network-solved variables, propagate the solved source value directly.
+        # Applying connection learn_rate here would make calculate() recompute outputs
+        # from lagged inputs, partially undoing the matrix solve every iteration.
+        if self.semantic_role is not None:
+            return self.source.v
         if not np.any(np.isnan(self.source_last_value)):
             return self.source_last_value + (self.source.v - self.source_last_value)*self.learn_rate
         else: 
@@ -45,8 +50,9 @@ class Connection:
         old_value = self.source_last_value
             
         self.err_abs = np.abs(new_value-old_value)
-        self.err_rel = self.err_abs/np.maximum(np.abs(old_value),1.e-19)
-        self.is_converged = np.all(self.err_abs < self.tol_abs) and np.all(self.err_rel < self.tol_rel)
+        scale = np.maximum(np.maximum(np.abs(old_value), np.abs(new_value)), 1.e-19)
+        self.err_rel = self.err_abs/scale
+        self.is_converged = np.all(self.err_abs <= (self.tol_abs + self.tol_rel * scale))
 
         if self.log_n_iter > 0:
             la = np.array([self.source.v, self.err_abs, self.err_rel])
@@ -923,7 +929,7 @@ class Model:
         unknown_outputs = self._collect_unknown_outputs(subnetwork_edges)
         n_unknown = len(unknown_outputs)
         if n_unknown == 0:
-            return False
+            return False, False
 
         unknown_index = {output: idx for idx, output in enumerate(unknown_outputs)}
         A_rows = []
@@ -938,12 +944,12 @@ class Model:
             component.get_network_equations(eq_context)
 
         if not A_rows:
-            return False
+            return False, False
 
         A = np.vstack(A_rows)
         b = np.asarray(b_rows)
         if A.shape[0] < n_unknown:
-            return False
+            return False, True
 
         try:
             if A.shape[0] == n_unknown and np.linalg.matrix_rank(A) == n_unknown:
@@ -951,18 +957,21 @@ class Model:
             else:
                 x_new = np.linalg.lstsq(A, b, rcond=None)[0]
         except np.linalg.LinAlgError:
-            return False
+            return False, True
 
         updated_any = False
         relax = 0.25
         for output, idx in unknown_index.items():
             old_value = output.v
-            new_value = old_value + (x_new[idx] - old_value) * relax
+            if np.any(np.isnan(old_value)):
+                new_value = x_new[idx]
+            else:
+                new_value = old_value + (x_new[idx] - old_value) * relax
             output.v = new_value
-            if np.abs(new_value - old_value) > self.settings.tol_abs_global:
+            if np.any(np.isnan(old_value)) or np.abs(new_value - old_value) > self.settings.tol_abs_global:
                 updated_any = True
 
-        return updated_any
+        return updated_any, True
 
     def _index_component_ios(self):
         """Build fast lookup tables that map I/O objects back to their owning component."""
@@ -1191,14 +1200,17 @@ class Model:
             return False
 
         solved_any = False
+        equations_added_any = False
         coupled_count = 0
         for plan in self._network_analysis["plans"]:
             if plan["mode"] != "coupled":
                 continue
             coupled_count += 1
-            solved_any = self._solve_coupled_subnetwork(plan) or solved_any
+            plan_updated, plan_has_equations = self._solve_coupled_subnetwork(plan)
+            solved_any = plan_updated or solved_any
+            equations_added_any = plan_has_equations or equations_added_any
 
-        if coupled_count > 0 and not solved_any and not self._network_solver_warned:
+        if coupled_count > 0 and not equations_added_any and not self._network_solver_warned:
             print("Network solver: coupled networks detected but no equations were added. "
                 "Implement get_network_equations() on component classes and mark connections "
                 "with semantic_role to enable solving.")
