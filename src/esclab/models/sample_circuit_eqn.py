@@ -1,5 +1,39 @@
+"""
+This example demonstrates how to solve the simple RLC circuit example 
+using a set of linear equations with matrix inversion. The matrix
+is constructed using dedicated equation collectors inside each component, 
+and this means the system of equation defining flow and potential 
+relationships is explicitly defined and solved at each timestep. This is 
+in contrast to the first example in which the current was determined within
+the voltage source component using a bracketed solver technique. 
+
+In principle, the matrix inversion method should be more reliable and 
+faster than the bracketed solver approach, but it is also more complex to
+set up.
+
+Series RLC circuit
+--------------------------
+|        ---->           |
+|                       \\\
+|                  R    ///
+|                       \\\
+xx +                    ///
+xxx   U                  |
+xx -                     |
+|                       |i|
+|                  L    |i|
+|                       |i|
+|                        |
+|                       ---
+|                  C     c
+|                       ---
+|      GGGGG             |
+--------GGG---------------
+"""
+
+
+
 from esclab.simulate import *
-from eeslib.functions import convert, converttemp
 
 class CircuitElement(Component):
     """Base class for circuit elements."""
@@ -11,50 +45,26 @@ class CircuitElement(Component):
 
     def get_network_equations(self, context):
         # All series elements pass current straight through: i_out = i_in
+        # This must be called in child classes using super().get_network_equations(context) 
         context.add_equation({
             self.i_out: 1.0,
             context.source(self.i_in): -1.0,
         }, rhs=0.0)
 
-# Series RLC circuit
-# --------------------------
-# |        ---->           |
-# |                       \\\
-# |                  R    ///
-# |                       \\\
-# xx +                    ///
-# xxx   U                  |
-# xx -                     |
-# |                       |i|
-# |                  L    |i|
-# |                       |i|
-# |                        |
-# |                        |
-# |                       ---
-# |                  C     c
-# |                       ---
-# |                        |
-# |      GGGGG             |
-# --------GGG---------------
-
-
 class VoltageSource(CircuitElement):
     """Ideal voltage source element."""
     V = Component.Parameter()  # source voltage
 
-    def __init__(self):
-        super().__init__()
-
     def get_network_equations(self, context):
-        # KVL loop closure: u_out - source(u_in) = V
-        # Purely local — no knowledge of other component parameters needed.
+        # Set the voltage rise across the source: u_out - u_in = V.
         context.add_equation({
             self.u_out: 1.0,
             context.source(self.u_in): -1.0,
-        }, rhs=float(self.V))
+        }, rhs=self.V)
+        # Ground the source input node so the circuit has a fixed 0 V reference.
         context.add_equation({
             context.source(self.u_in): 1.0,
-        }, rhs=0.0)  # ensure voltage source input node is grounded for reference
+        }, rhs=0.0)
         super().get_network_equations(context)  # current pass-through
 
     def calculate(self):
@@ -66,17 +76,15 @@ class Resistor(CircuitElement):
 
     def get_network_equations(self, context):
         super().get_network_equations(context)  # current pass-through
-        # u_out = u_in - R·i_in  →  u_out - u_in + R·i_in = 0
+        # u_out = u_in - R*i_in    u_out - u_in + R*i_in = 0
         context.add_equation({
             self.u_out: 1.0,
             context.source(self.u_in): -1.0,
-            context.source(self.i_in): float(self.R),
+            context.source(self.i_in): self.R,
         }, rhs=0.0)
 
     def calculate(self):
-        # if self.model.is_converged:
-        #     self.u_out = self.u_in - self.i_in * self.R
-        #     self.i_out = self.i_in
+        # The network solve already sets the resistor voltage and current.
         return 
 
 class Capacitor(CircuitElement):
@@ -89,22 +97,19 @@ class Capacitor(CircuitElement):
 
     def get_network_equations(self, context):
         super().get_network_equations(context)  # current pass-through
-        # Backward Euler: u_out = u_in - U_C_prev - (dt/C)·i_in
-        # →  u_out - u_in + (dt/C)·i_in = -U_C_prev
+        # Backward Euler: u_out = u_in - U_C_prev - (dt/C)*i_in
+        # u_out - u_in + (dt/C)*i_in = -U_C_prev
         dt = self.model.settings.timestep
         context.add_equation({
             self.u_out: 1.0,
             context.source(self.u_in): -1.0,
-            context.source(self.i_in): dt / float(self.C),
-        }, rhs=-float(self.U_C_prev))
+            context.source(self.i_in): dt / self.C,
+        }, rhs=-self.U_C_prev)
 
     def calculate(self):
-
         if self.model.is_converged:
-            # Backward Euler: U_C[n] = U_C[n-1] + i_in * dt / C
+            # After convergence, store the capacitor voltage for the next timestep.
             U_C = self.U_C_prev + self.i_in * self.model.settings.timestep / self.C
-            # self.u_out = self.u_in - U_C
-            # self.i_out = self.i_in  # series element: current passes through
             self.U_C_prev = U_C
         return 
 
@@ -118,62 +123,21 @@ class Inductor(CircuitElement):
 
     def get_network_equations(self, context):
         super().get_network_equations(context)  # current pass-through
-        # Backward Euler: u_out = u_in - (L/dt)·i_in + (L/dt)·I_L_prev
-        # →  u_out - u_in + (L/dt)·i_in = (L/dt)·I_L_prev
+        # Backward Euler: u_out = u_in - (L/dt)*i_in + (L/dt)*I_L_prev
+        # u_out - u_in + (L/dt)*i_in = (L/dt)*I_L_prev
         dt = self.model.settings.timestep
-        L = float(self.L)
+        L = self.L
         context.add_equation({
             self.u_out: 1.0,
             context.source(self.u_in): -1.0,
             context.source(self.i_in): L / dt,
-        }, rhs=(L / dt) * float(self.I_L_prev))
+        }, rhs=(L / dt) * self.I_L_prev)
 
     def calculate(self):
         if self.model.is_converged:
-            # self.u_out = self.u_in - self.L * didt
-            # self.i_out = self.i_in  # series element: current passes through
+            # After convergence, store the inductor current for the next timestep.
             self.I_L_prev = self.i_in
         return 
-
-class TeeOut(Component):
-    """Tee element for splitting voltage and current."""
-    u_in = Component.Input()   # voltage
-    i_in = Component.Input()   # current
-    u_branch_1 = Component.Input()  # voltage at the terminus of branch 1
-    u_branch_2 = Component.Input()  # voltage at the terminus of branch 2
-
-    u_out = Component.Output()  # voltage output
-    i_out_1 = Component.Output()  # current output 1
-    i_out_2 = Component.Output()  # current output 2
-
-    def calculate(self):
-        self.u_out = self.u_in
-        dU1 = max(0., float(self.u_in - self.u_branch_1))
-        dU2 = max(0., float(self.u_in - self.u_branch_2))
-        total_dU = dU1 + dU2
-        f = dU1 / total_dU if total_dU > 1e-12 else 0.5  # equal split when voltages are indeterminate
-        self.i_out_1 = self.i_in * f
-        self.i_out_2 = self.i_in - self.i_out_1
-        return
-
-class TeeReturn(Component):
-    """Tee element for combining voltage and current."""
-    u_in_1 = Component.Input()  # voltage from branch 1
-    i_in_1 = Component.Input()  # current from branch 1
-    u_in_2 = Component.Input()  # voltage from branch 2
-    i_in_2 = Component.Input()  # current from branch 2
-
-    u_out = Component.Output()  # voltage output
-    i_out = Component.Output()  # current output
-
-    def calculate(self):
-        self.i_out = self.i_in_1 + self.i_in_2
-        i_total = abs(float(self.i_out))
-        if i_total > 1e-12:
-            self.u_out = (self.u_in_1 * self.i_in_1 + self.u_in_2 * self.i_in_2) / float(self.i_out)
-        else:
-            self.u_out = (self.u_in_1 + self.u_in_2) / 2
-        return
 
 # Set up the circuit
 model = Model()
@@ -187,37 +151,25 @@ model.l = Inductor()
 # Initialize
 model.initialize()
 
-# Intermediate parameters
-zeta = 0.5  # damping ratio
+# Choose a damping ratio
+# https://en.wikipedia.org/wiki/RLC_circuit#/media/File:RLC_transient_plot.svg
+zeta = 3  # damping ratio
 
-# Set any parameters
+# Set component values
 model.vs.V = 1
 model.l.L = 1
 model.c.C = 1
 model.r.R = 2 * zeta * np.sqrt(model.l.L / model.c.C)  # critical damping
 
-# Set initial values
-# model.r.u_in = 0
-# model.l.u_in = 0
-# model.c.u_in = 0
-# model.vs.u_in = 0
-# model.r.i_in = 0
-# model.l.i_in = 0
-# model.c.i_in = 0
-# model.vs.i_in = 0
-
-# Configure simulation settings
+# Set simulation options
 model.settings.start_time = 0
 model.time = model.settings.start_time
 model.settings.stop_time = 15  #seconds
 model.settings.timestep = 5e-2  # seconds
 model.settings.max_iterations = 100
 model.settings.tol_rel_global = 1e-8
-# model.settings.learn_rate = .9
 
-# ----------------------------------------------------------
-# Make connections
-# ----------------------------------------------------------
+# Connect the circuit
 
 # Voltages
 model.connect( model.vs.u_out, model.r.u_in,  semantic_role="potential")
@@ -231,13 +183,13 @@ model.connect( model.r.i_out,  model.l.i_in,  semantic_role="flow")
 model.connect( model.l.i_out,  model.c.i_in,  semantic_role="flow")
 model.connect( model.c.i_out,  model.vs.i_in, semantic_role="flow")
 
-# ----------------------------------------------------------
-
-# Set up the simulation
+# Plot the results
 model.add_plotter([model.vs.u_out, model.r.u_out, model.l.u_out, model.c.u_out, model.vs.u_in],
-                  [model.vs.i_out, model.r.i_out, model.l.i_out, model.c.i_out, model.vs.i_in], 
                   y1label="Voltage (V)", 
-                  y2label="Current (A)", 
+                  update_every=4, 
+                  nmax_points=1000)
+model.add_plotter([model.vs.i_out, model.r.i_out, model.l.i_out, model.c.i_out, model.vs.i_in], 
+                  y1label="Current (A)", 
                   update_every=4, 
                   nmax_points=1000)
 
