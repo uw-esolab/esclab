@@ -448,6 +448,7 @@ class Model:
         main_window = None
         tab_widget = None
         follow_button = None
+        tooltip_button = None
         instances = []
         n_plotters = 0
         font_size_pt = 10
@@ -513,6 +514,11 @@ class Model:
                 follow_button.setChecked(True)
                 follow_button.setFixedSize(80, 30)
                 controls_layout.addWidget(follow_button)
+                tooltip_button = QtWidgets.QPushButton("Tooltip")
+                tooltip_button.setCheckable(True)
+                tooltip_button.setChecked(False)
+                tooltip_button.setFixedSize(70, 30)
+                controls_layout.addWidget(tooltip_button)
                 controls_layout.addStretch()
 
                 container = QtWidgets.QWidget()
@@ -526,7 +532,9 @@ class Model:
                 font_down_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(-1))
                 font_up_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(1))
                 follow_button.clicked.connect(lambda checked: Model.OnlinePlotter.set_auto_follow(checked))
+                tooltip_button.clicked.connect(lambda checked: Model.OnlinePlotter.set_plot_tooltip(checked))
                 Model.OnlinePlotter.follow_button = follow_button
+                Model.OnlinePlotter.tooltip_button = tooltip_button
 
                 # Handle plotter size. If fractions are given, resize based on screen size. If absolute values are
                 # given, use those. If None, use default size.
@@ -815,6 +823,7 @@ class Model:
                 slot=self._on_strip_mouse_move,
             )
             self._tooltip_last_idx = -1
+            self._plot_tooltip_enabled = False
             # Custom floating label replaces QToolTip to avoid Windows' system-wide
             # cap on tooltip display duration (SPI_GETMESSAGEDURATION, often ~1 s).
             self._tip_label = QtWidgets.QLabel()
@@ -831,7 +840,7 @@ class Model:
             self._tip_label.hide()
 
         def _on_strip_mouse_move(self, args):
-            """Show a custom floating label when the cursor is over either colorbar strip."""
+            """Show a custom floating label when the cursor is over the plot or either colorbar strip."""
             scene_pos = args[0]
 
             if self.x_data is None or self._fill_idx == 0:
@@ -841,14 +850,24 @@ class Model:
 
             in_conv = self.ax_conv.vb.sceneBoundingRect().contains(scene_pos)
             in_iter = self.ax_iter.vb.sceneBoundingRect().contains(scene_pos)
+            in_plot = self.ax1.vb.sceneBoundingRect().contains(scene_pos)
+            in_y2   = (self.y2_items is not None
+                       and hasattr(self, 'ax2')
+                       and self.ax2.sceneBoundingRect().contains(scene_pos))
 
-            if not in_conv and not in_iter:
+            if not in_conv and not in_iter and not in_plot and not in_y2:
                 self._tip_label.hide()
                 self._tooltip_last_idx = -1
                 return
 
-            # Map x scene coordinate to data coordinate via whichever strip was hit
-            vb = self.ax_conv.vb if in_conv else self.ax_iter.vb
+            # Hide and bail when hovering the main plot with tooltip disabled.
+            if (in_plot or in_y2) and not in_conv and not in_iter and not self._plot_tooltip_enabled:
+                self._tip_label.hide()
+                self._tooltip_last_idx = -1
+                return
+
+            # x is shared across all zones; use ax1.vb for the mapping in all cases
+            vb = self.ax_conv.vb if in_conv else (self.ax_iter.vb if in_iter else self.ax1.vb)
             x_val = vb.mapSceneToView(scene_pos).x()
 
             n = self._fill_idx
@@ -862,19 +881,30 @@ class Model:
             cursor_pos = QtGui.QCursor.pos()
             self._tip_label.move(cursor_pos.x() + 16, cursor_pos.y() + 16)
 
-            # Only update text when moving to a new bar.
+            # Only rebuild and re-show when the timestep index changes.
             if idx == self._tooltip_last_idx and self._tip_label.isVisible():
                 return
             self._tooltip_last_idx = idx
 
             t = x_slice[idx]
-            conv_frac = self.conv_data[idx]
-            iter_frac = self.iter_data[idx]
-            text = (
-                f"t = {t:.1f} s\n"
-                f"Conv failures: {conv_frac:.1%}\n"
-                f"Iter fraction: {iter_frac:.1%}"
-            )
+
+            if in_conv or in_iter:
+                text = (
+                    f"t = {t:.1f} s\n"
+                    f"Conv failures: {self.conv_data[idx]:.1%}\n"
+                    f"Iter fraction: {self.iter_data[idx]:.1%}"
+                )
+            else:
+                lines = [f"t = {t:.1f} s"]
+                for j, item in enumerate(self.y1_items):
+                    unit_str = f" {item.units}" if item.units else ""
+                    lines.append(f"{item.name} = {self.y1_data[j, idx]:.4g}{unit_str}")
+                if self.y2_items is not None:
+                    for j, item in enumerate(self.y2_items):
+                        unit_str = f" {item.units}" if item.units else ""
+                        lines.append(f"{item.name} = {self.y2_data[j, idx]:.4g}{unit_str}")
+                text = "\n".join(lines)
+
             self._tip_label.setText(text)
             self._tip_label.adjustSize()
             self._tip_label.show()
@@ -892,6 +922,17 @@ class Model:
                 plotter._auto_follow = value
             if cls.follow_button is not None:
                 cls.follow_button.setChecked(value)
+
+        @classmethod
+        def set_plot_tooltip(cls, value):
+            """Enable or disable the main-plot hover tooltip on all plotter instances."""
+            for plotter in cls.instances:
+                plotter._plot_tooltip_enabled = value
+                if not value:
+                    plotter._tip_label.hide()
+                    plotter._tooltip_last_idx = -1
+            if cls.tooltip_button is not None:
+                cls.tooltip_button.setChecked(value)
 
     # ------- end OnlinePlotter --------------------------------------------------
 
