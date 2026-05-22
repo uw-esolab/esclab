@@ -120,6 +120,7 @@ class Component:
         def __ge__(self, o):             return self.v >= (o.v if hasattr(o, 'v') else o)
         def __eq__(self, o):             return self.v == (o.v if hasattr(o, 'v') else o)
         def __ne__(self, o):             return self.v != (o.v if hasattr(o, 'v') else o)
+        __hash__ = object.__hash__  # restore identity hash (Python sets it to None when __eq__ is defined)
 
         def __len__(self):               return len(self.v)
         def __getitem__(self, idx):      return self.v[idx]
