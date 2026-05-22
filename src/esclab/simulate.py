@@ -617,6 +617,19 @@ class Model:
             self.ax_conv.setXLink(self.ax1)
             self._conv_bar_item = None
 
+            # Iteration fraction strip — thin row below the convergence strip
+            self.win.nextRow()
+            self.ax_iter = self.win.addPlot()
+            self.ax_iter.setMaximumHeight(18)
+            self.ax_iter.setMinimumHeight(18)
+            for _axis in ('left', 'bottom', 'right', 'top'):
+                self.ax_iter.hideAxis(_axis)
+            self.ax_iter.hideButtons()
+            self.ax_iter.setMouseEnabled(x=False, y=False)
+            self.ax_iter.setYRange(0, 1, padding=0)
+            self.ax_iter.setXLink(self.ax1)
+            self._iter_bar_item = None
+
             # Data arrays are pre-allocated in preallocate(), called from Model.initialize()
             self.x_data  = None
             self.y1_data = None
@@ -685,13 +698,28 @@ class Model:
                 r, g, b = int(255 - t * (255 - 200)), int(165 * (1.0 - t)), 0
             return QtGui.QBrush(QtGui.QColor(r, g, b, 220))
 
-        def log_step(self, time, conv_fraction=0.0):
+        @staticmethod
+        def _iter_fraction_to_brush(f):
+            """Map an iteration fraction [0, 1] to a QBrush.
+            0 → transparent (white at zero)
+            1 → solid blue (0, 100, 220)
+            """
+            if f <= 0.0:
+                return QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
+            alpha = int(f * 220)
+            r = int(255 * (1.0 - f))
+            g = int(255 * (1.0 - f))
+            b = 220
+            return QtGui.QBrush(QtGui.QColor(r, g, b, alpha))
+
+        def log_step(self, time, conv_fraction=0.0, iter_fraction=0.0):
 
             self.current_step += 1
             idx = self._fill_idx
 
             self.x_data[idx] = time
             self.conv_data[idx] = conv_fraction
+            self.iter_data[idx] = iter_fraction
 
             # Write y1 values directly into pre-allocated array
             for j, yval in enumerate(self.y1_items):
@@ -744,6 +772,16 @@ class Model:
                     pen=qtg.mkPen(None))
                 self.ax_conv.addItem(self._conv_bar_item)
 
+            # Iteration fraction strip
+            if self._iter_bar_item is not None:
+                self.ax_iter.removeItem(self._iter_bar_item)
+                self._iter_bar_item = None
+            iter_brushes = [self._iter_fraction_to_brush(f) for f in self.iter_data[:n]]
+            self._iter_bar_item = qtg.BarGraphItem(
+                x=x_view, height=1, width=self._timestep, brushes=iter_brushes,
+                pen=qtg.mkPen(None))
+            self.ax_iter.addItem(self._iter_bar_item)
+
             # Process GUI events (much faster than matplotlib canvas.draw)
             self.app.processEvents()
 
@@ -760,6 +798,7 @@ class Model:
             n_y2 = len(self.y2_items) if self.y2_items is not None else 1
             self.y2_data = np.empty((n_y2, n_steps))
             self.conv_data = np.zeros(n_steps)
+            self.iter_data = np.zeros(n_steps)
 
         def _on_range_changed_manually(self, viewRange):
             """Called when the user pans or zooms; disables auto-follow."""
@@ -1326,9 +1365,10 @@ class Model:
                 except ValueError:
                     pass
         
-        # Plotters 
+        # Plotters
+        iter_fraction = (self.iteration + 1) / self.settings.max_iterations
         for plotter in self.plotters:
-            plotter.log_step(self.time, conv_fraction)
+            plotter.log_step(self.time, conv_fraction, iter_fraction)
 
         self.time += self.settings.timestep
         self.is_first_step = False
