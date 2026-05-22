@@ -638,6 +638,7 @@ class Model:
         def apply_font_size(self):
             tick_font = QtGui.QFont()
             tick_font.setPointSize(Model.OnlinePlotter.font_size_pt)
+            label_color = '#c0c0c0'
             label_style = {'font-size': f"{Model.OnlinePlotter.font_size_pt + 2}pt"}
 
             left_axis = self.ax1.getAxis('left')
@@ -645,8 +646,8 @@ class Model:
             left_axis.setStyle(tickFont=tick_font)
             bottom_axis.setStyle(tickFont=tick_font)
 
-            self.ax1.setLabel('left', self.y1label, **label_style)
-            self.ax1.setLabel('bottom', 'Time', **label_style)
+            self.ax1.setLabel('left', self.y1label, color=label_color, **label_style)
+            self.ax1.setLabel('bottom', 'Time', color=label_color, **label_style)
 
             if self.legend_y1 is not None:
                 label_font = self.legend_y1.font()
@@ -659,7 +660,7 @@ class Model:
             if self.y2_items is not None:
                 right_axis = self.ax1.getAxis('right')
                 right_axis.setStyle(tickFont=tick_font)
-                right_axis.setLabel(self.y2label, color='#c0c0c0', **label_style)
+                right_axis.setLabel(self.y2label, color=label_color, **label_style)
 
                 if self.legend_y2 is not None:
                     for _, label_item in self.legend_y2.items:
