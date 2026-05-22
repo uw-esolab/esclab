@@ -31,7 +31,7 @@ class CircuitElement(Component):
 # --------GGG---------------
 
 
-class VoltageSource(CircuitElement):
+class VoltageSourceRLC(CircuitElement):
     """Voltage source element."""
     V = Component.Parameter()  # voltage
 
@@ -60,6 +60,121 @@ class VoltageSource(CircuitElement):
         alpha = 0.8
         self.i_out = float(self.i_in) + alpha * (i_target - float(self.i_in))
         return 
+
+class VoltageSource(CircuitElement):
+    """Voltage source element."""
+    V = Component.Parameter()  # voltage
+
+    def __init__(self):
+        super().__init__()
+
+    def presim_setup(self, **kwargs):
+        # Topology-agnostic root solving method on u_in = 0.
+        self.i_cmd = 0.0
+        self.i_prev_step = 0.0
+        self.i_obs_prev = None
+        self.r_obs_prev = None
+        self.i_lo = None
+        self.r_lo = None
+        self.i_hi = None
+        self.r_hi = None
+        self.probe_step = None
+        self.best_i = 0.0
+        self.best_abs_r = float('inf')
+
+    def calculate(self):
+        self.u_out = self.V
+
+        # Observed point from the current network state.
+        i_obs = float(self.i_in)
+        r_obs = float(self.u_in)  # target is 0 at source return node
+
+        if self.model.is_first_iteration:
+            # Warm-start each timestep from the last converged current.
+            self.i_cmd = float(self.i_prev_step)
+            self.i_obs_prev = None
+            self.r_obs_prev = None
+            self.i_lo = None
+            self.r_lo = None
+            self.i_hi = None
+            self.r_hi = None
+            self.probe_step = max(0.01 * abs(self.i_cmd), 1e-4)
+            self.best_i = i_obs
+            self.best_abs_r = abs(r_obs)
+        else:
+            abs_r = abs(r_obs)
+            if abs_r < self.best_abs_r:
+                self.best_abs_r = abs_r
+                self.best_i = i_obs
+
+            # Update bracket from sign changes in residual.
+            if r_obs <= 0.0:
+                if self.r_lo is None or abs(r_obs) < abs(self.r_lo):
+                    self.i_lo = i_obs
+                    self.r_lo = r_obs
+            if r_obs >= 0.0:
+                if self.r_hi is None or abs(r_obs) < abs(self.r_hi):
+                    self.i_hi = i_obs
+                    self.r_hi = r_obs
+
+            i_next = self.i_cmd
+
+            # If bracket is valid, use a regula-falsi step.
+            has_bracket = (
+                self.i_lo is not None
+                and self.i_hi is not None
+                and self.r_lo is not None
+                and self.r_hi is not None
+                and (self.r_lo < 0.0 < self.r_hi)
+                and abs(self.i_hi - self.i_lo) > 1e-14
+            )
+
+            if has_bracket:
+                denom = self.r_hi - self.r_lo
+                if abs(denom) > 1e-14:
+                    i_rf = (self.i_lo * self.r_hi - self.i_hi * self.r_lo) / denom
+                else:
+                    i_rf = 0.5 * (self.i_lo + self.i_hi)
+                i_mid = 0.5 * (self.i_lo + self.i_hi)
+                f = 0.7
+                i_next = f * i_rf + (1 - f) * i_mid
+                i_next = float(np.clip(i_next, min(self.i_lo, self.i_hi), max(self.i_lo, self.i_hi)))
+            else:
+                # No bracket yet: estimate local slope, otherwise probe with increasing radius.
+                used_slope = False
+                if self.i_obs_prev is not None and self.r_obs_prev is not None:
+                    di = i_obs - self.i_obs_prev
+                    dr = r_obs - self.r_obs_prev
+                    if abs(di) > 1e-14 and abs(dr) > 1e-14:
+                        slope = dr / di
+                        if np.isfinite(slope) and abs(slope) > 1e-10:
+                            newton_step = -r_obs / slope
+                            max_step = max(self.probe_step, 0.2 * max(abs(i_obs), 1e-6))
+                            i_next = i_obs + float(np.clip(newton_step, -max_step, max_step))
+                            used_slope = True
+
+                if not used_slope:
+                    # Typical passive networks have dr/di < 0 near the solution.
+                    direction = 1.0 if r_obs > 0.0 else -1.0
+                    i_next = i_obs + direction * self.probe_step
+                    self.probe_step = min(self.probe_step * 1.5, max(1.0, 2.0 * abs(i_obs) + 1e-3))
+
+            # Deadband to avoid chattering around the root.
+            if abs(r_obs) < 1e-12:
+                i_next = i_obs
+
+            # Command relaxation to handle one-iteration lag in loop response.
+            f = 0.5
+            self.i_cmd = f * float(self.i_cmd) + (1 - f) * float(i_next)
+
+        self.i_out = self.i_cmd
+        self.i_obs_prev = i_obs
+        self.r_obs_prev = r_obs
+
+        if self.model.is_converged:
+            self.i_prev_step = float(self.i_in)
+        return 
+
 
 class Resistor(CircuitElement):
     """Resistor element."""
@@ -151,6 +266,7 @@ model = Model()
 
 # Create components
 model.vs = VoltageSource()
+# model.vs = VoltageSourceRLC()
 model.r = Resistor()
 model.c = Capacitor()
 model.l = Inductor()
@@ -182,9 +298,9 @@ model.settings.start_time = 0
 model.time = model.settings.start_time
 model.settings.stop_time = 15  #seconds
 model.settings.timestep = 5e-2  # seconds
-model.settings.max_iterations = 50
-# model.settings.tol_rel_global = 1e-12
-# model.settings.learn_rate = .98
+model.settings.max_iterations = 200
+model.settings.tol_rel_global = 1e-8
+model.settings.learn_rate = .95
 
 # ----------------------------------------------------------
 # Make connections
@@ -209,7 +325,7 @@ model.add_plotter([model.vs.u_out, model.r.u_out, model.l.u_out, model.c.u_out, 
                   [model.vs.i_out, model.r.i_out, model.l.i_out, model.c.i_out, model.vs.i_in], 
                   y1label="Voltage (V)", 
                   y2label="Current (A)", 
-                  update_every=10, 
+                  update_every=4, 
                   nmax_points=1000)
 
 
