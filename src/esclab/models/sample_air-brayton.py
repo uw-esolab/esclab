@@ -1,6 +1,5 @@
 from esclab.simulate import *
 from eeslib.functions import convert, converttemp
-import time 
 from esclab.components.brayton_simple import *
 
 class AirBraytonModel(Model):
@@ -78,13 +77,12 @@ model.connect(model.turbine.W,            model.summary.W_turbine    , )
 model.connect(model.compressor.W,         model.summary.W_compressor , )
 model.connect(model.combustor.qdot,       model.summary.Q_combustor  , )
 
-model.add_plotter([model.compressor.T_out, model.weather.T_amb, model.turbine.T_in, model.cooler.T_in],[model.compressor.W], y1label='Temperature', y2label='Work', update_every=2, nmax_points=300)
+model.add_plotter([model.compressor.T_out, model.weather.T_amb, model.turbine.T_in, model.cooler.T_in],[model.compressor.W], y1label='Temperature', y2label='Work', update_every=10, nmax_points=300)
 model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=10, nmax_points=100)
 # model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=100, nmax_points=100)
 
 
 
-start = time.time()
 
 model.settings.stop_time = 8760*3600*1/12
 model.settings.start_time = 0
@@ -94,5 +92,4 @@ model.settings.timestep = 3600
 while model.time < model.settings.stop_time:
     model.step()
 
-print(f'\nRun time: {time.time()-start:.2f} sec')
 model.wait_for_plots()
