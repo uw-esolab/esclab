@@ -52,6 +52,9 @@ class VoltageSource(CircuitElement):
             self.u_out: 1.0,
             context.source(self.u_in): -1.0,
         }, rhs=float(self.V))
+        context.add_equation({
+            context.source(self.u_in): 1.0,
+        }, rhs=0.0)  # ensure voltage source input node is grounded for reference
         super().get_network_equations(context)  # current pass-through
 
     def calculate(self):
