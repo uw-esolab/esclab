@@ -644,6 +644,7 @@ class Model:
             Model.OnlinePlotter.instances.append(self)
             self.apply_font_size()
             self.ax1.vb.sigRangeChangedManually.connect(self._on_range_changed_manually)
+            self._setup_strip_tooltip()
             return 
 
         @classmethod
@@ -805,6 +806,78 @@ class Model:
             self.y2_data = np.empty((n_y2, n_steps))
             self.conv_data = np.zeros(n_steps)
             self.iter_data = np.zeros(n_steps)
+
+        def _setup_strip_tooltip(self):
+            """Connect a rate-limited mouse-move handler for the colorbar strips."""
+            self._strip_proxy = qtg.SignalProxy(
+                self.ax1.scene().sigMouseMoved,
+                rateLimit=20,
+                slot=self._on_strip_mouse_move,
+            )
+            self._tooltip_last_idx = -1
+            # Custom floating label replaces QToolTip to avoid Windows' system-wide
+            # cap on tooltip display duration (SPI_GETMESSAGEDURATION, often ~1 s).
+            self._tip_label = QtWidgets.QLabel()
+            self._tip_label.setWindowFlags(
+                QtCore.Qt.ToolTip |
+                QtCore.Qt.FramelessWindowHint |
+                QtCore.Qt.WindowStaysOnTopHint
+            )
+            self._tip_label.setStyleSheet(
+                "QLabel { background-color: #ffffdc; color: #000000; "
+                "border: 1px solid #aaaaaa; padding: 4px 8px; }"
+            )
+            self._tip_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            self._tip_label.hide()
+
+        def _on_strip_mouse_move(self, args):
+            """Show a custom floating label when the cursor is over either colorbar strip."""
+            scene_pos = args[0]
+
+            if self.x_data is None or self._fill_idx == 0:
+                self._tip_label.hide()
+                self._tooltip_last_idx = -1
+                return
+
+            in_conv = self.ax_conv.vb.sceneBoundingRect().contains(scene_pos)
+            in_iter = self.ax_iter.vb.sceneBoundingRect().contains(scene_pos)
+
+            if not in_conv and not in_iter:
+                self._tip_label.hide()
+                self._tooltip_last_idx = -1
+                return
+
+            # Map x scene coordinate to data coordinate via whichever strip was hit
+            vb = self.ax_conv.vb if in_conv else self.ax_iter.vb
+            x_val = vb.mapSceneToView(scene_pos).x()
+
+            n = self._fill_idx
+            x_slice = self.x_data[:n]
+            idx = int(np.searchsorted(x_slice, x_val, side='left'))
+            idx = max(0, min(idx, n - 1))
+            if idx > 0 and abs(x_slice[idx - 1] - x_val) < abs(x_slice[idx] - x_val):
+                idx -= 1
+
+            # Keep the label positioned near the cursor on every event (cheap move call).
+            cursor_pos = QtGui.QCursor.pos()
+            self._tip_label.move(cursor_pos.x() + 16, cursor_pos.y() + 16)
+
+            # Only update text when moving to a new bar.
+            if idx == self._tooltip_last_idx and self._tip_label.isVisible():
+                return
+            self._tooltip_last_idx = idx
+
+            t = x_slice[idx]
+            conv_frac = self.conv_data[idx]
+            iter_frac = self.iter_data[idx]
+            text = (
+                f"t = {t:.1f} s\n"
+                f"Conv failures: {conv_frac:.1%}\n"
+                f"Iter fraction: {iter_frac:.1%}"
+            )
+            self._tip_label.setText(text)
+            self._tip_label.adjustSize()
+            self._tip_label.show()
 
         def _on_range_changed_manually(self, viewRange):
             """Called when the user pans or zooms; disables auto-follow."""
