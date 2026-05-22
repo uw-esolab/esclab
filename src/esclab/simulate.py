@@ -34,11 +34,8 @@ class Connection:
         self.iter_log = np.zeros((max(self.log_n_iter,1),3))
 
     def compute_new_value(self):
-        # For network-solved variables, propagate the solved source value directly.
-        # Applying connection learn_rate here would make calculate() recompute outputs
-        # from lagged inputs, partially undoing the matrix solve every iteration.
-        if self.semantic_role is not None:
-            return self.source.v
+        # Check if previous source value is nan, if not, use it to compute a new value with the learn rate. 
+        # If it is nan, return the current source value.
         if not np.any(np.isnan(self.source_last_value)):
             return self.source_last_value + (self.source.v - self.source_last_value)*self.learn_rate
         else: 
@@ -434,8 +431,8 @@ class Model:
         start_time = 0  #sec
         stop_time = 24*3600 #sec
         tol_rel_global = 1.e-6
-        tol_abs_global = 1.e-6
-        max_iterations = 50 
+        tol_abs_global = 1.e-4
+        max_iterations = 100 
         learn_rate = None  # if not None, replaces individual connection learn rates when connecting components
         
         def __init__(self):
