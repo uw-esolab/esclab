@@ -1073,6 +1073,73 @@ class Model:
 
         return plans
 
+    def _compute_execution_order(self):
+        """Reorder self._components in topological order of the connection graph.
+
+        For sequential (acyclic) subnetworks this produces an exact ordering so
+        that each component's inputs are already computed before it is called,
+        enabling single-pass convergence.  For coupled subnetworks, back-edges
+        that close cycles are identified and removed from the graph first; the
+        remaining directed acyclic graph (DAG) is then sorted topologically, 
+        minimising the number of stale inputs at the start of each iteration.
+        """
+        if self._network_analysis is None:
+            return
+
+        adjacency = self._network_analysis["adjacency"]
+
+        # Identify back-edges with an iterative depth-first search, 
+        # avoiding recursion-depth limits
+        back_edges = set()
+        white = set(self._components)
+        gray = set()
+
+        for start in list(self._components):
+            if start not in white:
+                continue
+            white.discard(start)
+            gray.add(start)
+            stack = [(start, iter(adjacency[start]))]
+            while stack:
+                node, children = stack[-1]
+                try:
+                    child = next(children)
+                    if child in gray:
+                        back_edges.add((node, child))
+                    elif child in white:
+                        white.discard(child)
+                        gray.add(child)
+                        stack.append((child, iter(adjacency[child])))
+                except StopIteration:
+                    gray.discard(node)
+                    stack.pop()
+
+        # Build reduced adjacency and in-degree map, omitting back-edges.
+        reduced_in_degree = {c: 0 for c in self._components}
+        reduced_adjacency = {c: [] for c in self._components}
+        for src in self._components:
+            for dst in adjacency[src]:
+                if (src, dst) not in back_edges:
+                    reduced_adjacency[src].append(dst)
+                    reduced_in_degree[dst] += 1
+
+        # Kahn's topological sort on the reduced DAG.
+        queue = deque(c for c in self._components if reduced_in_degree[c] == 0)
+        ordered = []
+        while queue:
+            component = queue.popleft()
+            ordered.append(component)
+            for neighbor in reduced_adjacency[component]:
+                reduced_in_degree[neighbor] -= 1
+                if reduced_in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+
+        # Safety net: append any node not yet emitted (should not occur).
+        ordered_set = set(ordered)
+        ordered.extend(c for c in self._components if c not in ordered_set)
+
+        self._components = ordered
+
     def _apply_network_iteration(self):
         """Apply one network-level iteration update inside the existing step() loop.
 
@@ -1092,7 +1159,7 @@ class Model:
             solved_any = self._solve_coupled_subnetwork(plan) or solved_any
 
         if coupled_count > 0 and not solved_any and not self._network_solver_warned:
-            print("Network solver: coupled networks detected but no equations were stamped. "
+            print("Network solver: coupled networks detected but no equations were added. "
                 "Implement get_network_equations() on component classes and mark connections "
                 "with semantic_role to enable solving.")
             self._network_solver_warned = True
@@ -1167,6 +1234,7 @@ class Model:
                 "Invalid time settings. Ensure that stop_time is greater than the timestep."
 
             self._build_network_analysis()
+            self._compute_execution_order()
             self._has_started_stepping = True
 
         # Pre-allocate plotter arrays on the first step, after all plotters have been added
