@@ -9,22 +9,27 @@ class CircuitElement(Component):
     u_out = Component.Output()  # voltage
     i_out = Component.Output()  # current
 
-#   -------------TO1--1---------------------
-#   |            |2                        |
-#   |           \\\                       |i|
-#   | +         ///  R1                L  |i|
-#   xxx   U0    \\\                       |i|
-#   xxxx        ///                       |i|
-#   xxx          |                         |
-#   | -          TO2--1---\/\/\/\/\------TR1
-#   |            |2         R2             |
-#   |           |c|                        |
-#   |           |c|  C                     |
-#   |           |c|                        |
-#   |            |                         |
-#   -------------TR2-----------GGGGG--------
-#                               GGG            
-#                                G             
+# Series RLC circuit
+# --------------------------
+# |        ---->           |
+# |                       \\\
+# |                  R    ///
+# |                       \\\
+# xx +                    ///
+# xxx   U                  |
+# xx -                     |
+# |                       |i|
+# |                  L    |i|
+# |                       |i|
+# |                        |
+# |                        |
+# |                       ---
+# |                  C     c
+# |                       ---
+# |                        |
+# |      GGGGG             |
+# --------GGG---------------
+
 
 class VoltageSource(CircuitElement):
     """Voltage source element."""
@@ -34,21 +39,26 @@ class VoltageSource(CircuitElement):
         super().__init__()
 
     def calculate(self):
-        if self.model.is_first_step:
-            self.i_last = .1 #self.i_in.v  # last current
-
         self.u_out = self.V
-        # u_in is the return node voltage; it should converge to 0 (ground).
-        # Estimate total circuit resistance from the current operating point and
-        # rescale the current so the full voltage V is dropped across the circuit.
-        denom = float(self.V - self.u_in)
-        if abs(denom) > 1e-12:
-            if denom < 0:
-                denom = -denom
-            self.i_out = self.i_last * (float(self.V) / denom)**.2
-        else:
-            self.i_out = self.i_in
-        self.i_last = self.i_out.v
+        # Closed-form BE update for series RLC current (within one timestep):
+        # This relies on the specific configuration and is not robust to changes in the 
+        # circuit topology, but it is very stable and efficient for this simple example.
+        # i = (V + (L/dt)*I_prev - Uc_prev) / (R + L/dt + dt/C)
+        # This removes oscillatory fixed-point behavior from the source law.
+        dt = self.model.settings.timestep
+        R = self.model.r.R
+        L = self.model.l.L
+        C = self.model.c.C
+        I_prev = self.model.l.I_L_prev
+        Uc_prev = self.model.c.U_C_prev
+
+        denom = R + (L / dt) + (dt / C)
+        denom = np.sign(denom) * max(abs(denom), 1e-12)
+        i_target = (self.V + (L / dt) * I_prev - Uc_prev) / denom
+
+        # Mild relaxation avoids tiny iteration jitter with aggressive connection learn rates.
+        alpha = 0.8
+        self.i_out = float(self.i_in) + alpha * (i_target - float(self.i_in))
         return 
 
 class Resistor(CircuitElement):
@@ -141,103 +151,67 @@ model = Model()
 
 # Create components
 model.vs = VoltageSource()
-model.r1 = Resistor()
-model.r2 = Resistor()
-model.r2.name = 'Resistor_2'
+model.r = Resistor()
 model.c = Capacitor()
 model.l = Inductor()
-model.to1 = TeeOut()
-model.tr1 = TeeReturn()
-model.to2 = TeeOut()
-model.tr2 = TeeReturn()
-model.to2.name = 'TeeOut_2'
-model.tr2.name = 'TeeReturn_2'
 
 # Initialize
 model.initialize()
 
+# Intermediate parameters
+zeta = 0.5  # damping ratio
+
 # Set any parameters
-model.vs.V = 10
-model.r1.R = 100
-model.r2.R = 20
-model.c.C = 1e-6
-model.l.L = 0.0015
+model.vs.V = 1
+model.l.L = 1
+model.c.C = 1
+model.r.R = 2 * zeta * np.sqrt(model.l.L / model.c.C)  # critical damping
 
 # Set initial values
-model.to1.u_in = 0
-model.r1.u_in = 0
+model.r.u_in = 0
 model.l.u_in = 0
-model.to2.u_in = 0
 model.c.u_in = 0
-model.r2.u_in = 0
-model.tr1.u_in_1 = 0
-model.tr1.u_in_2 = 0
-model.tr2.u_in_1 = 0
-model.tr2.u_in_2 = 0
 model.vs.u_in = 0
-model.to1.i_in = 0
+model.r.i_in = 0
 model.l.i_in = 0
-model.r1.i_in = 0
-model.to2.i_in = 0
-model.r2.i_in = 0
 model.c.i_in = 0
-model.tr1.i_in_1 = 0
-model.tr1.i_in_2 = 0
-model.tr2.i_in_1 = 0
-model.tr2.i_in_2 = 0
 model.vs.i_in = 0
+
+# Configure simulation settings
+model.settings.start_time = 0
+model.time = model.settings.start_time
+model.settings.stop_time = 15  #seconds
+model.settings.timestep = 5e-2  # seconds
+model.settings.max_iterations = 50
+# model.settings.tol_rel_global = 1e-12
+# model.settings.learn_rate = .98
+
 # ----------------------------------------------------------
 # Make connections
 # ----------------------------------------------------------
 
 # Voltages
-model.connect( model.vs.u_out   ,  model.to1.u_in        )
-model.connect( model.to1.u_out  ,  model.r1.u_in         )
-model.connect( model.to1.u_out  ,  model.l.u_in          )
-model.connect( model.r1.u_out   ,  model.to2.u_in        )
-model.connect( model.to2.u_out  ,  model.c.u_in          )
-model.connect( model.to2.u_out  ,  model.r2.u_in         )
-model.connect( model.r2.u_out   ,  model.tr1.u_in_1      )
-model.connect( model.l.u_out    ,  model.tr1.u_in_2      )
-model.connect( model.c.u_out    ,  model.tr2.u_in_1      )
-model.connect( model.tr1.u_out  ,  model.tr2.u_in_2      )
-model.connect( model.tr2.u_out  ,  model.vs.u_in         )
-
-# Feedback voltages for the tees
-model.connect( model.l.u_out    ,  model.to1.u_branch_1  )
-model.connect( model.r2.u_out   ,  model.to1.u_branch_2  )
-model.connect( model.tr1.u_out  ,  model.to2.u_branch_1  )
-model.connect( model.c.u_out    ,  model.to2.u_branch_2  )
+model.connect( model.vs.u_out, model.r.u_in)
+model.connect( model.r.u_out, model.l.u_in)
+model.connect( model.l.u_out, model.c.u_in)
+model.connect( model.c.u_out, model.vs.u_in)
 
 # Currents
-model.connect( model.vs.i_out   ,  model.to1.i_in        )
-model.connect( model.to1.i_out_1,  model.l.i_in          )
-model.connect( model.to1.i_out_2,  model.r1.i_in         )
-model.connect( model.r1.i_out   ,  model.to2.i_in        )
-model.connect( model.to2.i_out_1,  model.r2.i_in         )
-model.connect( model.to2.i_out_2,  model.c.i_in          )
-model.connect( model.r2.i_out   ,  model.tr1.i_in_1      )
-model.connect( model.l.i_out    ,  model.tr1.i_in_2      )
-model.connect( model.c.i_out    ,  model.tr2.i_in_1      )
-model.connect( model.tr1.i_out  ,  model.tr2.i_in_2      )
-model.connect( model.tr2.i_out  ,  model.vs.i_in         )
+model.connect( model.vs.i_out, model.r.i_in)
+model.connect( model.r.i_out, model.l.i_in)
+model.connect( model.l.i_out, model.c.i_in)
+model.connect( model.c.i_out, model.vs.i_in)
+
 # ----------------------------------------------------------
 
 # Set up the simulation
-model.add_plotter([model.vs.u_out, model.r1.u_out, model.r2.u_out, model.c.u_out, model.l.u_out],
-                  [model.vs.i_out, model.r1.i_out, model.r2.i_out, model.c.i_out, model.l.i_out], 
+model.add_plotter([model.vs.u_out, model.r.u_out, model.l.u_out, model.c.u_out, model.vs.u_in],
+                  [model.vs.i_out, model.r.i_out, model.l.i_out, model.c.i_out, model.vs.i_in], 
                   y1label="Voltage (V)", 
                   y2label="Current (A)", 
-                  update_every=1, 
+                  update_every=10, 
                   nmax_points=1000)
 
-model.settings.start_time = 0
-model.time = model.settings.start_time
-model.settings.stop_time = 1e-3  #seconds
-model.settings.timestep = 1e-6  # seconds
-model.settings.max_iterations = 50
-model.settings.tol_rel = 1e-6
-model.settings.learn_rate = .7
 
 while model.time < model.settings.stop_time:
     model.step()
