@@ -286,6 +286,8 @@ if __name__ == "__main__":
     model.add_plotter([model.consumer.revenue], [model.consumer.price], update_every=12, nmax_points=24*7)
     model.add_plotter([model.scheduler.num_iter], update_every=24, tab_title="sim info")
 
+    model.add_network_graph()
+
     start = time.time()
     while model.time < model.settings.stop_time:
         model.step()

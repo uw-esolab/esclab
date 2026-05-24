@@ -1,6 +1,7 @@
 import math
 from html import escape
 
+import numpy as np
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from esclab.plotting.online_plotter import OnlinePlotter
@@ -465,6 +466,31 @@ class NetworkTopologyView:
         return "\n".join(kept)
 
     @staticmethod
+    def _scalar_from_value(value):
+        """Return a scalar from scalar/array-like input; for arrays use the last element."""
+        if value is None:
+            return None
+
+        arr = np.asarray(value)
+        if arr.size == 0:
+            return None
+        last = arr.reshape(-1)[-1]
+        return last.item() if hasattr(last, "item") else last
+
+    @classmethod
+    def _format_rel_err_text(cls, rel_err):
+        rel_err_scalar = cls._scalar_from_value(rel_err)
+        if rel_err_scalar is None:
+            return "-"
+        try:
+            rel_err_float = float(rel_err_scalar)
+        except Exception:
+            return "-"
+        if not np.isfinite(rel_err_float):
+            return "-"
+        return f"{rel_err_float:.2e}"
+
+    @staticmethod
     def _build_tooltip_html(src_object_label, dst_object_label, full_connections):
         src_header = escape(str(src_object_label))
         dst_header = escape(str(dst_object_label))
@@ -485,17 +511,16 @@ class NetworkTopologyView:
                 n_iter = current_iter if current_iter > 0 else None
                 rel_err = connection.err_rel if current_iter > 0 else None
 
+            status = NetworkTopologyView._scalar_from_value(status)
+            n_iter = NetworkTopologyView._scalar_from_value(n_iter)
+
             if status is None:
                 status_text = "n/a"
             else:
                 status_text = "yes" if bool(status) else "no"
 
             n_iter_text = "-" if n_iter is None else str(n_iter)
-
-            if rel_err is None:
-                rel_err_text = "-"
-            else:
-                rel_err_text = f"{float(rel_err):.2e}"
+            rel_err_text = NetworkTopologyView._format_rel_err_text(rel_err)
 
             solve_group = connection.solve_group
             group_text = "-" if solve_group is None else str(solve_group)
