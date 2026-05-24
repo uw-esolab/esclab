@@ -60,6 +60,7 @@ class NetworkTopologyView:
     LEADER_MID_BAND_MAX = 0.60
     LEADER_BIAS_T_LOW = 0.35
     LEADER_BIAS_T_HIGH = 0.65
+    LABEL_LINE_OVERLAP_PENALTY = 900.0
 
     def __init__(self, model, tab_title="Network", include_subnetworks=True, show_connection_labels=True):
         self.model = model
@@ -73,6 +74,7 @@ class NetworkTopologyView:
         self._node_rects = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
+        self._connector_segments = []
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
         OnlinePlotter.tab_widget.addTab(self.view, tab_title)
@@ -87,6 +89,7 @@ class NetworkTopologyView:
         self._node_rects = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
+        self._connector_segments = []
         analysis = self.model._network_analysis
         if analysis is None:
             return
@@ -106,15 +109,34 @@ class NetworkTopologyView:
             color = plan_colors.get(comp, QtGui.QColor(60, 120, 180))
             self._draw_node(comp, positions[comp], label_map[comp], color)
 
+        edge_draw_data = []
         for src, dst in edge_set:
+            segment = self._compute_edge_segment(src, dst, positions[src], positions[dst])
+            if segment is None:
+                continue
+            start, end = segment
+            edge_draw_data.append(
+                (
+                    src,
+                    dst,
+                    start,
+                    end,
+                    edge_connections_by_pair.get((src, dst), ()),
+                    label_map[src],
+                    label_map[dst],
+                )
+            )
+            self._connector_segments.append((start, end))
+
+        for src, dst, start, end, edge_connections, src_label, dst_label in edge_draw_data:
             self._draw_edge(
                 src,
                 dst,
-                positions[src],
-                positions[dst],
-                edge_connections_by_pair.get((src, dst), ()),
-                label_map[src],
-                label_map[dst],
+                start,
+                end,
+                edge_connections,
+                src_label,
+                dst_label,
             )
 
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
@@ -235,23 +257,26 @@ class NetworkTopologyView:
         text_rect = text.boundingRect()
         text.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
 
-    def _draw_edge(self, src_component, dst_component, src, dst, edge_connections, src_object_label, dst_object_label):
-        line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
-        line_pen.setWidth(2)
-
+    def _compute_edge_segment(self, src_component, dst_component, src, dst):
         line = QtCore.QLineF(src, dst)
         if line.length() < 1.0:
-            return
+            return None
 
         src_rect = self._node_rects.get(src_component)
         dst_rect = self._node_rects.get(dst_component)
         if src_rect is None or dst_rect is None:
-            return
+            return None
 
         start = self._ray_exit_rect(src_rect, src, dst)
         end = self._ray_exit_rect(dst_rect, dst, src)
         if QtCore.QLineF(start, end).length() < 1.0:
-            return
+            return None
+
+        return start, end
+
+    def _draw_edge(self, src_component, dst_component, start, end, edge_connections, src_object_label, dst_object_label):
+        line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
+        line_pen.setWidth(2)
 
         self.scene.addLine(QtCore.QLineF(start, end), line_pen)
         self._draw_arrowhead(start, end)
@@ -294,7 +319,7 @@ class NetworkTopologyView:
         center = QtCore.QPointF(mid.x() + nx * offset, mid.y() + ny * offset)
 
         text_rect = text_item.boundingRect()
-        placed_rect = self._place_label_rect(center, text_rect, nx, ny)
+        placed_rect = self._place_label_rect(center, text_rect, nx, ny, own_segment=(start, end))
         text_item.setPos(placed_rect.left(), placed_rect.top())
         self._register_edge_leader(text_item, start, end)
         self._label_occupied_rects.append(self._expand_rect(placed_rect, 4.0))
@@ -423,7 +448,7 @@ class NetworkTopologyView:
             "</html>"
         )
 
-    def _place_label_rect(self, center, text_rect, nx, ny):
+    def _place_label_rect(self, center, text_rect, nx, ny, own_segment=None):
         base_offset = 12.0
         step = 12.0
         max_tries = 12
@@ -447,7 +472,7 @@ class NetworkTopologyView:
                 text_rect.width(),
                 text_rect.height(),
             )
-            penalty = self._placement_penalty(rect)
+            penalty = self._placement_penalty(rect, own_segment=own_segment)
             if penalty < best_penalty:
                 best_penalty = penalty
                 best_rect = rect
@@ -456,7 +481,7 @@ class NetworkTopologyView:
 
         return best_rect
 
-    def _placement_penalty(self, rect):
+    def _placement_penalty(self, rect, own_segment=None):
         padded_rect = self._expand_rect(rect, 2.0)
         penalty = 0.0
 
@@ -468,7 +493,69 @@ class NetworkTopologyView:
             if padded_rect.intersects(used_rect):
                 penalty += self._intersection_area(padded_rect, used_rect) + 500.0
 
+        for seg_start, seg_end in self._connector_segments:
+            if own_segment is not None and self._segments_match(seg_start, seg_end, own_segment[0], own_segment[1]):
+                continue
+            if self._segment_intersects_rect(seg_start, seg_end, padded_rect):
+                penalty += self.LABEL_LINE_OVERLAP_PENALTY
+
         return penalty
+
+    @staticmethod
+    def _segments_match(a1, a2, b1, b2, tol=1e-9):
+        def _close(p, q):
+            return abs(p.x() - q.x()) <= tol and abs(p.y() - q.y()) <= tol
+
+        return (_close(a1, b1) and _close(a2, b2)) or (_close(a1, b2) and _close(a2, b1))
+
+    @staticmethod
+    def _segment_intersects_rect(seg_start, seg_end, rect):
+        if rect.contains(seg_start) or rect.contains(seg_end):
+            return True
+
+        p1 = QtCore.QPointF(rect.left(), rect.top())
+        p2 = QtCore.QPointF(rect.right(), rect.top())
+        p3 = QtCore.QPointF(rect.right(), rect.bottom())
+        p4 = QtCore.QPointF(rect.left(), rect.bottom())
+        rect_edges = ((p1, p2), (p2, p3), (p3, p4), (p4, p1))
+
+        for e1, e2 in rect_edges:
+            if NetworkTopologyView._segments_intersect(seg_start, seg_end, e1, e2):
+                return True
+        return False
+
+    @staticmethod
+    def _segments_intersect(a, b, c, d):
+        def orientation(p, q, r):
+            val = (q.y() - p.y()) * (r.x() - q.x()) - (q.x() - p.x()) * (r.y() - q.y())
+            if abs(val) < 1e-12:
+                return 0
+            return 1 if val > 0 else 2
+
+        def on_segment(p, q, r):
+            return (
+                min(p.x(), r.x()) - 1e-12 <= q.x() <= max(p.x(), r.x()) + 1e-12
+                and min(p.y(), r.y()) - 1e-12 <= q.y() <= max(p.y(), r.y()) + 1e-12
+            )
+
+        o1 = orientation(a, b, c)
+        o2 = orientation(a, b, d)
+        o3 = orientation(c, d, a)
+        o4 = orientation(c, d, b)
+
+        if o1 != o2 and o3 != o4:
+            return True
+
+        if o1 == 0 and on_segment(a, c, b):
+            return True
+        if o2 == 0 and on_segment(a, d, b):
+            return True
+        if o3 == 0 and on_segment(c, a, d):
+            return True
+        if o4 == 0 and on_segment(c, b, d):
+            return True
+
+        return False
 
     @staticmethod
     def _expand_rect(rect, margin):
