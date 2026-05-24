@@ -17,6 +17,10 @@ class _EdgeLabelItem(QtWidgets.QGraphicsTextItem):
 class NetworkTopologyView:
     NODE_WIDTH = 150
     NODE_HEIGHT = 56
+    LEADER_MID_BAND_MIN = 0.40
+    LEADER_MID_BAND_MAX = 0.60
+    LEADER_BIAS_T_LOW = 0.35
+    LEADER_BIAS_T_HIGH = 0.65
 
     def __init__(self, model, tab_title="Network", include_subnetworks=True, show_connection_labels=True):
         self.model = model
@@ -224,7 +228,49 @@ class NetworkTopologyView:
         text_rect = text_item.boundingRect()
         placed_rect = self._place_label_rect(center, text_rect, nx, ny)
         text_item.setPos(placed_rect.left(), placed_rect.top())
+        self._draw_label_leader(placed_rect, start, end)
         self._label_occupied_rects.append(self._expand_rect(placed_rect, 4.0))
+
+    def _draw_label_leader(self, label_rect, line_start, line_end):
+        """Draw a subtle line from a label box to its associated connector segment."""
+        label_center = label_rect.center()
+        anchor = self._leader_anchor_point(label_center, line_start, line_end)
+        leader_start = self._ray_exit_rect(label_rect, label_center, anchor)
+
+        if QtCore.QLineF(leader_start, anchor).length() < 3.0:
+            return
+
+        pen = QtGui.QPen(QtGui.QColor(150, 150, 150, 210))
+        pen.setWidth(1)
+        self.scene.addLine(QtCore.QLineF(leader_start, anchor), pen)
+
+    @classmethod
+    def _leader_anchor_point(cls, label_center, seg_start, seg_end):
+        """Pick a connector anchor point that avoids ambiguous center hotspots.
+
+        Start from the orthogonal projection on the segment. If that projection lands
+        near the segment midpoint, bias the anchor toward one side using the label's
+        side-of-line sign so opposing labels on crossing lines do not both point to
+        the same intersection point.
+        """
+        vx = seg_end.x() - seg_start.x()
+        vy = seg_end.y() - seg_start.y()
+        denom = vx * vx + vy * vy
+        if denom <= 1e-12:
+            return QtCore.QPointF(seg_start.x(), seg_start.y())
+
+        t = ((label_center.x() - seg_start.x()) * vx + (label_center.y() - seg_start.y()) * vy) / denom
+        t = max(0.0, min(1.0, t))
+
+        if cls.LEADER_MID_BAND_MIN <= t <= cls.LEADER_MID_BAND_MAX:
+            mid_x = (seg_start.x() + seg_end.x()) * 0.5
+            mid_y = (seg_start.y() + seg_end.y()) * 0.5
+            wx = label_center.x() - mid_x
+            wy = label_center.y() - mid_y
+            cross = vx * wy - vy * wx
+            t = cls.LEADER_BIAS_T_LOW if cross >= 0.0 else cls.LEADER_BIAS_T_HIGH
+
+        return QtCore.QPointF(seg_start.x() + t * vx, seg_start.y() + t * vy)
 
     @staticmethod
     def _build_smart_label_text(edge_labels, max_lines=2):
@@ -303,6 +349,19 @@ class NetworkTopologyView:
         if inter.isEmpty():
             return 0.0
         return inter.width() * inter.height()
+
+    @staticmethod
+    def _project_point_to_segment(point, seg_start, seg_end):
+        """Project a point onto a line segment and clamp to segment bounds."""
+        vx = seg_end.x() - seg_start.x()
+        vy = seg_end.y() - seg_start.y()
+        denom = vx * vx + vy * vy
+        if denom <= 1e-12:
+            return QtCore.QPointF(seg_start.x(), seg_start.y())
+
+        t = ((point.x() - seg_start.x()) * vx + (point.y() - seg_start.y()) * vy) / denom
+        t = max(0.0, min(1.0, t))
+        return QtCore.QPointF(seg_start.x() + t * vx, seg_start.y() + t * vy)
 
     @staticmethod
     def _ray_exit_rect(rect, center, toward):

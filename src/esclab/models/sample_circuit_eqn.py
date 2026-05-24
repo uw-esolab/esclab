@@ -194,6 +194,7 @@ model.add_plotter([model.vs.i_out, model.r.i_out, model.l.i_out, model.c.i_out, 
                   update_every=4, 
                   nmax_points=1000)
 
+model.add_network_graph()
 
 while model.time < model.settings.stop_time:
     model.step()
