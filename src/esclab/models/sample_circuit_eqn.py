@@ -173,16 +173,16 @@ model.settings.tol_abs_global = 1  # relax absolute tolerance - matrix solve is 
 # Connect the circuit
 
 # Voltages
-model.connect( model.vs.u_out, model.r.u_in,  semantic_role="potential")
-model.connect( model.r.u_out,  model.l.u_in,  semantic_role="potential")
-model.connect( model.l.u_out,  model.c.u_in,  semantic_role="potential")
-model.connect( model.c.u_out,  model.vs.u_in, semantic_role="potential")
+model.connect( model.vs.u_out, model.r.u_in,  solve_group="potential")
+model.connect( model.r.u_out,  model.l.u_in,  solve_group="potential")
+model.connect( model.l.u_out,  model.c.u_in,  solve_group="potential")
+model.connect( model.c.u_out,  model.vs.u_in, solve_group="potential")
 
 # Currents
-model.connect( model.vs.i_out, model.r.i_in,  semantic_role="flow")
-model.connect( model.r.i_out,  model.l.i_in,  semantic_role="flow")
-model.connect( model.l.i_out,  model.c.i_in,  semantic_role="flow")
-model.connect( model.c.i_out,  model.vs.i_in, semantic_role="flow")
+model.connect( model.vs.i_out, model.r.i_in,  solve_group="flow")
+model.connect( model.r.i_out,  model.l.i_in,  solve_group="flow")
+model.connect( model.l.i_out,  model.c.i_in,  solve_group="flow")
+model.connect( model.c.i_out,  model.vs.i_in, solve_group="flow")
 
 # Plot the results
 model.add_plotter([model.vs.u_out, model.r.u_out, model.l.u_out, model.c.u_out, model.vs.u_in],

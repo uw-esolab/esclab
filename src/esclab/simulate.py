@@ -8,7 +8,7 @@ import time
 
 # ------------------------------------------------------------------------
 class Connection:
-    def __init__(self, source, tol_rel, tol_abs, log_n_iter, learn_rate, semantic_role=None):
+    def __init__(self, source, tol_rel, tol_abs, log_n_iter, learn_rate, solve_group=None):
 
         self.tol_rel = tol_rel
         self.tol_abs = tol_abs 
@@ -20,7 +20,7 @@ class Connection:
 
         self.source = source
         self.source_last_value = float('nan')
-        self.semantic_role = semantic_role
+        self.solve_group = solve_group
 
         self.log_n_iter = log_n_iter
 
@@ -984,7 +984,7 @@ class Model:
         # start the Qt event loop to display the plot window and allow interaction
         app.exec()
 
-    def connect(self, source, destination, tol_rel = None, tol_abs=None, log_n_iter = 0, learn_rate = None, semantic_role=None):
+    def connect(self, source, destination, tol_rel = None, tol_abs=None, log_n_iter = 0, learn_rate = None, solve_group=None):
         if self._has_started_stepping:
             raise RuntimeError("Cannot add new connections after step() has started.")
         
@@ -1012,7 +1012,7 @@ class Model:
         if tol_abs_temp is None:
             tol_abs_temp = 1.e-6
 
-        destination.connection = Connection(source, tol_rel_temp, tol_abs_temp, log_n_iter, learn_rate_temp, semantic_role=semantic_role)
+        destination.connection = Connection(source, tol_rel_temp, tol_abs_temp, log_n_iter, learn_rate_temp, solve_group=solve_group)
         destination.is_connected = True
         source.is_connected = True
         return
@@ -1028,7 +1028,7 @@ class Model:
     def _collect_unknown_outputs(self, subnetwork_edges):
         unknown_outputs = []
         for _, _, source_output, destination_input in subnetwork_edges:
-            if destination_input.connection.semantic_role is None:
+            if destination_input.connection.solve_group is None:
                 continue
             if source_output not in unknown_outputs:
                 unknown_outputs.append(source_output)
@@ -1304,7 +1304,7 @@ class Model:
         """Apply one network-level iteration update inside the existing step() loop.
 
         Coupled subnetworks are solved when components implement get_network_equations()
-        and connections are marked with semantic_role, providing enough equations for a
+        and connections are marked with solve_group, providing enough equations for a
         stable linear solve.
         """
         if self._network_analysis is None:
@@ -1324,7 +1324,7 @@ class Model:
         if coupled_count > 0 and not equations_added_any and not self._network_solver_warned:
             print("Network solver: coupled networks detected but no equations were added. "
                 "Implement get_network_equations() on component classes and mark connections "
-                "with semantic_role to enable solving.")
+                "with solve_group to enable solving.")
             self._network_solver_warned = True
 
         return solved_any
