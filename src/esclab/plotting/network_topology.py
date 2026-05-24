@@ -1,4 +1,5 @@
 import math
+from html import escape
 
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
@@ -95,8 +96,8 @@ class NetworkTopologyView:
             return
 
         positions = self._component_positions(components)
-        edge_labels_by_pair = self._edge_label_groups(analysis)
-        edge_set = sorted(edge_labels_by_pair.keys(), key=lambda pair: (pair[0].name, pair[1].name))
+        edge_connections_by_pair = self._edge_connection_groups(analysis)
+        edge_set = sorted(edge_connections_by_pair.keys(), key=lambda pair: (pair[0].name, pair[1].name))
 
         plan_colors = self._plan_color_map(analysis) if self.include_subnetworks else {}
 
@@ -106,7 +107,15 @@ class NetworkTopologyView:
             self._draw_node(comp, positions[comp], label_map[comp], color)
 
         for src, dst in edge_set:
-            self._draw_edge(src, dst, positions[src], positions[dst], edge_labels_by_pair.get((src, dst), ()))
+            self._draw_edge(
+                src,
+                dst,
+                positions[src],
+                positions[dst],
+                edge_connections_by_pair.get((src, dst), ()),
+                label_map[src],
+                label_map[dst],
+            )
 
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
         self.view.fitInView(self.view.sceneRect(), QtCore.Qt.KeepAspectRatio)
@@ -169,20 +178,22 @@ class NetworkTopologyView:
                 color_map[comp] = base
         return color_map
 
-    def _edge_label_groups(self, analysis):
+    def _edge_connection_groups(self, analysis):
         grouped = {}
+        grouped_seen = {}
         for src, dst, source_output, destination_input in analysis.get("edges", []):
-            label = (
-                f"{self._short_port_name(source_output.name)} "
-                f"{self.CONNECTION_LABEL_SEPARATOR} "
-                f"{self._short_port_name(destination_input.name)}"
-            )
             key = (src, dst)
             if key not in grouped:
                 grouped[key] = []
-            if label not in grouped[key]:
-                grouped[key].append(label)
-        return {key: tuple(labels) for key, labels in grouped.items()}
+                grouped_seen[key] = set()
+
+            full_pair = (str(source_output.name), str(destination_input.name))
+            if full_pair in grouped_seen[key]:
+                continue
+            grouped_seen[key].add(full_pair)
+            grouped[key].append(full_pair)
+
+        return {key: tuple(connections) for key, connections in grouped.items()}
 
     @staticmethod
     def _short_port_name(full_name):
@@ -224,7 +235,7 @@ class NetworkTopologyView:
         text_rect = text.boundingRect()
         text.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
 
-    def _draw_edge(self, src_component, dst_component, src, dst, edge_labels):
+    def _draw_edge(self, src_component, dst_component, src, dst, edge_connections, src_object_label, dst_object_label):
         line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
         line_pen.setWidth(2)
 
@@ -244,13 +255,23 @@ class NetworkTopologyView:
 
         self.scene.addLine(QtCore.QLineF(start, end), line_pen)
         self._draw_arrowhead(start, end)
-        self._draw_edge_label(start, end, edge_labels)
+        self._draw_edge_label(start, end, edge_connections, src_object_label, dst_object_label)
 
-    def _draw_edge_label(self, start, end, edge_labels):
-        if not self.show_connection_labels or not edge_labels:
+    def _draw_edge_label(self, start, end, edge_connections, src_object_label, dst_object_label):
+        if not self.show_connection_labels or not edge_connections:
             return
 
-        display_text, tooltip_text = self._build_smart_label_text(edge_labels)
+        display_labels = [
+            (
+                f"{self._short_port_name(source_full)} "
+                f"{self.CONNECTION_LABEL_SEPARATOR} "
+                f"{self._short_port_name(dest_full)}"
+            )
+            for source_full, dest_full in edge_connections
+        ]
+
+        display_text = self._build_smart_label_text(display_labels)
+        tooltip_text = self._build_tooltip_html(src_object_label, dst_object_label, edge_connections)
         text_item = _EdgeLabelItem(display_text, tooltip_text)
         self.scene.addItem(text_item)
         text_item.setDefaultTextColor(QtGui.QColor(20, 20, 20))
@@ -361,9 +382,8 @@ class NetworkTopologyView:
 
     @staticmethod
     def _build_smart_label_text(edge_labels, max_lines=2):
-        full_text = "\n".join(edge_labels)
         if len(edge_labels) <= max_lines:
-            return full_text, full_text
+            return "\n".join(edge_labels)
 
         kept = list(edge_labels[:max_lines])
         omitted = len(edge_labels) - max_lines
@@ -371,8 +391,37 @@ class NetworkTopologyView:
             kept.append(f"... (+{omitted} more)")
         else:
             kept.append(edge_labels[max_lines])
-        display_text = "\n".join(kept)
-        return display_text, full_text
+        return "\n".join(kept)
+
+    @staticmethod
+    def _build_tooltip_html(src_object_label, dst_object_label, full_connections):
+        src_header = escape(str(src_object_label))
+        dst_header = escape(str(dst_object_label))
+
+        rows = []
+        for source_full, dest_full in full_connections:
+            source_short = NetworkTopologyView._short_port_name(source_full)
+            dest_short = NetworkTopologyView._short_port_name(dest_full)
+            rows.append(
+                "<tr>"
+                f"<td style='padding:2px 8px 2px 0;'>{escape(source_short)}</td>"
+                f"<td style='padding:2px 0 2px 8px;'>{escape(dest_short)}</td>"
+                "</tr>"
+            )
+        rows_html = "".join(rows)
+
+        return (
+            "<html>"
+            "<b><span style='color:#cc0000;'>Connections</span></b>"
+            "<table style='margin-top:4px; border-collapse:collapse;'>"
+            "<thead><tr>"
+            f"<th style='text-align:left; padding:0 8px 2px 0;'>{src_header}</th>"
+            f"<th style='text-align:left; padding:0 0 2px 8px;'>{dst_header}</th>"
+            "</tr></thead>"
+            f"<tbody>{rows_html}</tbody>"
+            "</table>"
+            "</html>"
+        )
 
     def _place_label_rect(self, center, text_rect, nx, ny):
         base_offset = 12.0
