@@ -153,6 +153,14 @@ class OnlinePlotter:
         self.legend_y1.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
         self.legend_y2 = None
         self.ax1.showGrid(x=True, y=True, alpha=0.3)
+        self._tooltip_vline = qtg.InfiniteLine(
+            angle=90,
+            movable=False,
+            pen=qtg.mkPen(QtGui.QColor(220, 40, 40, 220), width=1.5),
+        )
+        self._tooltip_vline.setZValue(1000)
+        self.ax1.addItem(self._tooltip_vline, ignoreBounds=True)
+        self._tooltip_vline.hide()
 
         if y1lim is not None:
             self.ax1.setYRange(*y1lim)
@@ -385,6 +393,7 @@ class OnlinePlotter:
 
         if self.x_data is None or self._fill_idx == 0:
             self._tip_label.hide()
+            self._tooltip_vline.hide()
             self._tooltip_last_idx = -1
             return
 
@@ -395,11 +404,13 @@ class OnlinePlotter:
 
         if not in_conv and not in_iter and not in_plot and not in_y2:
             self._tip_label.hide()
+            self._tooltip_vline.hide()
             self._tooltip_last_idx = -1
             return
 
         if (in_plot or in_y2) and not in_conv and not in_iter and not self._plot_tooltip_enabled:
             self._tip_label.hide()
+            self._tooltip_vline.hide()
             self._tooltip_last_idx = -1
             return
 
@@ -413,14 +424,19 @@ class OnlinePlotter:
         if idx > 0 and abs(x_slice[idx - 1] - x_val) < abs(x_slice[idx] - x_val):
             idx -= 1
 
+        t = x_slice[idx]
+        if self._plot_tooltip_enabled:
+            self._tooltip_vline.setPos(t)
+            self._tooltip_vline.show()
+        else:
+            self._tooltip_vline.hide()
+
         cursor_pos = QtGui.QCursor.pos()
         self._tip_label.move(cursor_pos.x() + 16, cursor_pos.y() + 16)
 
         if idx == self._tooltip_last_idx and self._tip_label.isVisible():
             return
         self._tooltip_last_idx = idx
-
-        t = x_slice[idx]
 
         if in_conv or in_iter:
             text = f"t = {t:.1f} s\nConv failures: {self.conv_data[idx]:.1%}\nIter fraction: {self.iter_data[idx]:.1%}"
@@ -457,6 +473,7 @@ class OnlinePlotter:
             plotter._plot_tooltip_enabled = value
             if not value:
                 plotter._tip_label.hide()
+                plotter._tooltip_vline.hide()
                 plotter._tooltip_last_idx = -1
         if cls.tooltip_button is not None:
             cls.tooltip_button.setChecked(value)
