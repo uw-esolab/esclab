@@ -12,6 +12,42 @@ class _EdgeLabelItem(QtWidgets.QGraphicsTextItem):
         super().__init__(display_text)
         self.setAcceptHoverEvents(True)
         self.setToolTip(tooltip_text)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+
+
+class _TopologyGraphicsView(QtWidgets.QGraphicsView):
+    """Interactive graphics view for topology: wheel zoom + drag pan."""
+
+    ZOOM_IN_FACTOR = 1.15
+    ZOOM_OUT_FACTOR = 1.0 / ZOOM_IN_FACTOR
+    MIN_SCALE = 0.02
+    MAX_SCALE = 50.0
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.transform_changed_callback = None
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setDragMode(QtWidgets.QGraphicsView.ScrollHandDrag)
+        self.setViewportUpdateMode(QtWidgets.QGraphicsView.SmartViewportUpdate)
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if delta == 0:
+            event.ignore()
+            return
+
+        factor = self.ZOOM_IN_FACTOR if delta > 0 else self.ZOOM_OUT_FACTOR
+        current_scale = self.transform().m11()
+        if current_scale <= 0.0:
+            current_scale = 1.0
+        target_scale = max(self.MIN_SCALE, min(self.MAX_SCALE, current_scale * factor))
+        scale_factor = target_scale / current_scale
+
+        self.scale(scale_factor, scale_factor)
+        if self.transform_changed_callback is not None:
+            self.transform_changed_callback()
+        event.accept()
 
 
 class NetworkTopologyView:
@@ -28,15 +64,17 @@ class NetworkTopologyView:
         self.show_connection_labels = show_connection_labels
         OnlinePlotter.ensure_window()
 
-        self.view = QtWidgets.QGraphicsView()
+        self.view = _TopologyGraphicsView()
         self.scene = QtWidgets.QGraphicsScene(self.view)
         self._label_items = []
         self._node_rects = {}
         self._label_occupied_rects = []
+        self._edge_label_links = []
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
         OnlinePlotter.tab_widget.addTab(self.view, tab_title)
         OnlinePlotter.register_font_target(self)
+        self.view.transform_changed_callback = self._update_edge_leaders
 
         self._draw_topology()
 
@@ -45,6 +83,7 @@ class NetworkTopologyView:
         self._label_items = []
         self._node_rects = {}
         self._label_occupied_rects = []
+        self._edge_label_links = []
         analysis = self.model._network_analysis
         if analysis is None:
             return
@@ -70,6 +109,7 @@ class NetworkTopologyView:
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
         self.view.fitInView(self.view.sceneRect(), QtCore.Qt.KeepAspectRatio)
         self._refresh_node_label_fonts()
+        self._update_edge_leaders()
 
     def apply_font_size(self):
         # Re-layout edge labels so collision avoidance stays valid after font changes.
@@ -173,6 +213,7 @@ class NetworkTopologyView:
 
         text = self.scene.addText(label)
         text.setDefaultTextColor(QtGui.QColor(255, 255, 255))
+        text.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
         self._label_items.append(text)
         text_rect = text.boundingRect()
         text.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
@@ -228,21 +269,61 @@ class NetworkTopologyView:
         text_rect = text_item.boundingRect()
         placed_rect = self._place_label_rect(center, text_rect, nx, ny)
         text_item.setPos(placed_rect.left(), placed_rect.top())
-        self._draw_label_leader(placed_rect, start, end)
+        self._register_edge_leader(text_item, start, end)
         self._label_occupied_rects.append(self._expand_rect(placed_rect, 4.0))
 
-    def _draw_label_leader(self, label_rect, line_start, line_end):
-        """Draw a subtle line from a label box to its associated connector segment."""
+    def _register_edge_leader(self, text_item, line_start, line_end):
+        pen = QtGui.QPen(QtGui.QColor(150, 150, 150, 210))
+        pen.setWidth(1)
+        leader_item = self.scene.addLine(QtCore.QLineF(line_start, line_start), pen)
+        self._edge_label_links.append(
+            {
+                "text_item": text_item,
+                "leader_item": leader_item,
+                "line_start": QtCore.QPointF(line_start.x(), line_start.y()),
+                "line_end": QtCore.QPointF(line_end.x(), line_end.y()),
+            }
+        )
+
+    def _update_edge_leaders(self):
+        for link in self._edge_label_links:
+            self._update_one_edge_leader(link)
+
+    def _update_one_edge_leader(self, link):
+        text_item = link["text_item"]
+        line_start = link["line_start"]
+        line_end = link["line_end"]
+
+        label_rect = self._label_visual_rect_in_scene(text_item)
         label_center = label_rect.center()
         anchor = self._leader_anchor_point(label_center, line_start, line_end)
         leader_start = self._ray_exit_rect(label_rect, label_center, anchor)
 
+        line_item = link["leader_item"]
         if QtCore.QLineF(leader_start, anchor).length() < 3.0:
+            line_item.setVisible(False)
             return
 
-        pen = QtGui.QPen(QtGui.QColor(150, 150, 150, 210))
-        pen.setWidth(1)
-        self.scene.addLine(QtCore.QLineF(leader_start, anchor), pen)
+        line_item.setVisible(True)
+        line_item.setLine(QtCore.QLineF(leader_start, anchor))
+
+    def _label_visual_rect_in_scene(self, text_item):
+        """Return the label's rendered scene rect accounting for ignore-transform mode."""
+        rect = text_item.boundingRect()
+        sx = abs(self.view.transform().m11())
+        sy = abs(self.view.transform().m22())
+        if sx < 1e-9:
+            sx = 1.0
+        if sy < 1e-9:
+            sy = 1.0
+
+        pos = text_item.scenePos()
+        return QtCore.QRectF(
+            pos.x(),
+            pos.y(),
+            rect.width() / sx,
+            rect.height() / sy,
+        )
 
     @classmethod
     def _leader_anchor_point(cls, label_center, seg_start, seg_end):
