@@ -341,7 +341,7 @@ class Component:
     def postsim_calcs(self):
         pass
 
-    def get_network_equations(self, context):
+    def add_network_equations(self, context):
         """
         Optional. Implement in a subclass to participate in coupled network solving.
 
@@ -365,7 +365,7 @@ class Component:
 
 # =========================================================================================
 class NetworkEquationContext:
-    """Context object passed to Component.get_network_equations().
+    """Context object passed to Component.add_network_equations().
 
     Provides a clean API for components to stamp linear equations into the coupled
     subnetwork solve without interacting with numpy or the matrix directly.
@@ -622,7 +622,7 @@ class Model:
 
         eq_context = NetworkEquationContext(unknown_index, n_unknown, _add_row)
         for component in plan["components"]:
-            component.get_network_equations(eq_context)
+            component.add_network_equations(eq_context)
 
         if not A_rows:
             return False, False
@@ -873,7 +873,7 @@ class Model:
     def _apply_network_iteration(self):
         """Apply one network-level iteration update inside the existing step() loop.
 
-        Coupled subnetworks are solved when components implement get_network_equations()
+        Coupled subnetworks are solved when components implement add_network_equations()
         and connections are marked with solve_group, providing enough equations for a
         stable linear solve.
         """
@@ -893,7 +893,7 @@ class Model:
 
         if coupled_count > 0 and not equations_added_any and not self._network_solver_warned:
             print("Network solver: coupled networks detected but no equations were added. "
-                "Implement get_network_equations() on component classes and mark connections "
+                "Implement add_network_equations() on component classes and mark connections "
                 "with solve_group to enable solving.")
             self._network_solver_warned = True
 
@@ -991,7 +991,7 @@ class Model:
             # Call the network solver here to update all coupled components before each 
             # iteration. This allows guess propagation to occur across the entire coupled 
             # network, which can improve convergence in cases where simple sequential 
-            # updates are not sufficient. The network solver calls get_network_equations() 
+            # updates are not sufficient. The network solver calls add_network_equations() 
             # on each component; components that do not implement it contribute no equations.
             # Coefficients used in the matrix inversion are based on the values of connections 
             # at the start of the iteration, so the network iteration is effectively a 

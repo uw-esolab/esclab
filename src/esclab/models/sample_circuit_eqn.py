@@ -43,9 +43,9 @@ class CircuitElement(Component):
     u_out = Component.Output()  # voltage
     i_out = Component.Output()  # current
 
-    def get_network_equations(self, context):
+    def add_network_equations(self, context):
         # All series elements pass current straight through: i_out = i_in
-        # This must be called in child classes using super().get_network_equations(context) 
+        # This must be called in child classes using super().add_network_equations(context) 
         context.add_equation({
             self.i_out: 1.0,
             context.source(self.i_in): -1.0,
@@ -55,7 +55,7 @@ class VoltageSource(CircuitElement):
     """Ideal voltage source element."""
     V = Component.Parameter()  # source voltage
 
-    def get_network_equations(self, context):
+    def add_network_equations(self, context):
         # Set the voltage rise across the source: u_out - u_in = V.
         context.add_equation({
             self.u_out: 1.0,
@@ -65,7 +65,7 @@ class VoltageSource(CircuitElement):
         context.add_equation({
             context.source(self.u_in): 1.0,
         }, rhs=0.0)
-        super().get_network_equations(context)  # current pass-through
+        super().add_network_equations(context)  # current pass-through
 
     def calculate(self):
         return 
@@ -74,8 +74,8 @@ class Resistor(CircuitElement):
     """Resistor element."""
     R = Component.Parameter()  # resistance
 
-    def get_network_equations(self, context):
-        super().get_network_equations(context)  # current pass-through
+    def add_network_equations(self, context):
+        super().add_network_equations(context)  # current pass-through
         # u_out = u_in - R*i_in    u_out - u_in + R*i_in = 0
         context.add_equation({
             self.u_out: 1.0,
@@ -95,8 +95,8 @@ class Capacitor(CircuitElement):
     def presim_setup(self, **kwargs):
         self.U_C_prev = self.U_C0  # stored capacitor voltage from previous timestep
 
-    def get_network_equations(self, context):
-        super().get_network_equations(context)  # current pass-through
+    def add_network_equations(self, context):
+        super().add_network_equations(context)  # current pass-through
         # Backward Euler: u_out = u_in - U_C_prev - (dt/C)*i_in
         # u_out - u_in + (dt/C)*i_in = -U_C_prev
         dt = self.model.settings.timestep
@@ -121,8 +121,8 @@ class Inductor(CircuitElement):
     def presim_setup(self, **kwargs):
         self.I_L_prev = self.I_L0  # stored inductor current from previous timestep
 
-    def get_network_equations(self, context):
-        super().get_network_equations(context)  # current pass-through
+    def add_network_equations(self, context):
+        super().add_network_equations(context)  # current pass-through
         # Backward Euler: u_out = u_in - (L/dt)*i_in + (L/dt)*I_L_prev
         # u_out - u_in + (L/dt)*i_in = (L/dt)*I_L_prev
         dt = self.model.settings.timestep
