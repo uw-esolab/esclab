@@ -1,10 +1,10 @@
 import copy
-import pyqtgraph as qtg
-from pyqtgraph.Qt import QtCore, QtWidgets, QtGui
 from collections import deque
 import numpy as np
 import sys
 import time 
+
+from esclab.plotting import OnlinePlotter as _OnlinePlotter, NetworkTopologyView
 
 # ------------------------------------------------------------------------
 class Connection:
@@ -440,496 +440,9 @@ class Model:
     # End class Settings -----------------------------------------------------
     
     # ------------------------------------------------------------------------
-    class OnlinePlotter:
-        app = None
-        main_window = None
-        tab_widget = None
-        follow_button = None
-        tooltip_button = None
-        instances = []
-        n_plotters = 0
-        font_size_pt = 10
-        min_font_size_pt = 6
-        max_font_size_pt = 30
-
-        """
-        y1 | [a, b, c, ...] component input or output values to be plotted on axis 1
-        y2 | [d, e, f, ...] component input or output values to be plotted on axis 2
-        """
-        def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(.9,.9), tab_title=None):
-            assert isinstance(y1, type([]))
-            assert isinstance(y2, type([])) or y2 == None
-
-            self.current_step = -1
-            self._fill_idx = 0
-            self._auto_follow = True
-            self.y1label = y1label
-            self.y2label = y2label
-
-            self.nmax_points = nmax_points
-            self.update_every = update_every
-            self.y1_items = y1 
-            self.y2_items = y2 
-            colors = [
-                '#377eb8', 
-                '#ff7f00', 
-                '#4daf4a',
-                '#f781bf', 
-                '#a65628', 
-                '#984ea3',
-                '#999999', 
-                '#e41a1c', 
-                '#dede00',
-                "#00ffe5",
-                "#5d0ab6",
-                ]
-            
-            # Create shared pyqtgraph application and tabbed window
-            self.app = Model.OnlinePlotter.app
-            if self.app is None:
-                self.app = qtg.mkQApp()
-                Model.OnlinePlotter.app = self.app
-
-            if Model.OnlinePlotter.main_window is None:
-                main_window = QtWidgets.QMainWindow()
-                main_window.setWindowTitle("Simulation Plot")
-                tab_widget = QtWidgets.QTabWidget()
-
-                controls_widget = QtWidgets.QWidget()
-                controls_layout = QtWidgets.QHBoxLayout(controls_widget)
-                controls_layout.setContentsMargins(6, 6, 6, 0)
-                controls_layout.setSpacing(6)
-
-                font_up_button = QtWidgets.QPushButton("🗚")
-                font_down_button = QtWidgets.QPushButton("🗛")
-                font_up_button.setFixedSize(30, 30)
-                font_down_button.setFixedSize(30, 30)
-                controls_layout.addWidget(font_up_button)
-                controls_layout.addWidget(font_down_button)
-                follow_button = QtWidgets.QPushButton("\u2BC8 Follow")
-                follow_button.setCheckable(True)
-                follow_button.setChecked(True)
-                follow_button.setFixedSize(80, 30)
-                controls_layout.addWidget(follow_button)
-                tooltip_button = QtWidgets.QPushButton("Tooltip")
-                tooltip_button.setCheckable(True)
-                tooltip_button.setChecked(False)
-                tooltip_button.setFixedSize(70, 30)
-                controls_layout.addWidget(tooltip_button)
-                controls_layout.addStretch()
-
-                container = QtWidgets.QWidget()
-                container_layout = QtWidgets.QVBoxLayout(container)
-                container_layout.setContentsMargins(0, 0, 0, 0)
-                container_layout.setSpacing(0)
-                container_layout.addWidget(controls_widget)
-                container_layout.addWidget(tab_widget)
-                main_window.setCentralWidget(container)
-
-                font_down_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(-1))
-                font_up_button.clicked.connect(lambda: Model.OnlinePlotter.adjust_font_size(1))
-                follow_button.clicked.connect(lambda checked: Model.OnlinePlotter.set_auto_follow(checked))
-                tooltip_button.clicked.connect(lambda checked: Model.OnlinePlotter.set_plot_tooltip(checked))
-                Model.OnlinePlotter.follow_button = follow_button
-                Model.OnlinePlotter.tooltip_button = tooltip_button
-
-                # Handle plotter size. If fractions are given, resize based on screen size. If absolute values are
-                # given, use those. If None, use default size.
-                screen = QtWidgets.QApplication.primaryScreen()
-                if screen is not None:
-                    screen_rect = screen.availableGeometry()
-                    if plotter_size is not None:
-                        if plotter_size[0] <= 1. and plotter_size[1] <= 1.:
-                            main_window.resize(int(screen_rect.width() * plotter_size[0]), int(screen_rect.height() * plotter_size[1]))
-                        else:
-                            main_window.resize(plotter_size[0], plotter_size[1])
-                    frame = main_window.frameGeometry()
-                    frame.moveCenter(screen_rect.center())
-                    main_window.move(frame.topLeft())
-                elif plotter_size is not None:
-                    if plotter_size[0] <= 1. and plotter_size[1] <= 1.:
-                        main_window.resize(1000, 600)
-                    else:
-                        main_window.resize(plotter_size[0], plotter_size[1])
-
-                main_window.show()
-                Model.OnlinePlotter.main_window = main_window
-                Model.OnlinePlotter.tab_widget = tab_widget
-
-            self.win = qtg.GraphicsLayoutWidget()
-            Model.OnlinePlotter.n_plotters += 1
-            tab_label = tab_title if tab_title not in [None, ''] else y1label if y1label not in [None, ''] else f"Plot {Model.OnlinePlotter.n_plotters}"
-            Model.OnlinePlotter.tab_widget.addTab(self.win, tab_label)
-
-            # Create primary plot
-            self.ax1 = self.win.addPlot(viewBox=_AxisLockedViewBox())
-            self.ax1.setLabel('bottom', 'Time')
-            self.ax1.setLabel('left', y1label)
-            self.legend_y1 = self.ax1.addLegend(offset=(10, 10))
-            self.legend_y1.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
-            self.legend_y2 = None
-            self.ax1.showGrid(x=True, y=True, alpha=0.3)
-            
-            if y1lim != None:
-                self.ax1.setYRange(*y1lim)
-
-            # Create lines for y1 axis
-            self.y1_lines = []
-            c = 0
-            for i in range(len(y1)):
-                pen = qtg.mkPen(color=colors[c%len(colors)], width=2)
-                line = self.ax1.plot([], [], pen=pen, name=y1[i].name)
-                self.y1_lines.append(line)
-                c += 1
-            
-            # Create secondary y-axis if needed
-            self.y2_lines = []
-            if y2 != None:
-                self.ax2 = _AxisLockedViewBox()
-                self.ax1.showAxis('right')
-                self.ax1.scene().addItem(self.ax2)
-                self.ax1.getAxis('right').linkToView(self.ax2)
-                self.ax2.setXLink(self.ax1)
-                self.ax1.getAxis('right').setLabel(y2label, color='#c0c0c0')
-                self.legend_y2 = qtg.LegendItem(offset=(-10, 10))
-                self.legend_y2.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
-                self.legend_y2.setParentItem(self.ax1.vb)
-                
-                if y2lim != None:
-                    self.ax2.setYRange(*y2lim)
-                
-                # Update views when resized
-                def updateViews():
-                    self.ax2.setGeometry(self.ax1.vb.sceneBoundingRect())
-                    self.ax2.linkedViewChanged(self.ax1.vb, self.ax2.XAxis)
-                
-                updateViews()
-                self.ax1.vb.sigResized.connect(updateViews)
-                
-                # Create lines for y2 axis
-                for i in range(len(y2)):
-                    pen = qtg.mkPen(color=colors[c%len(colors)], width=2, style=QtCore.Qt.DashLine)
-                    line = qtg.PlotDataItem([], [], pen=pen, name=y2[i].name)
-                    self.ax2.addItem(line)
-                    self.legend_y2.addItem(line, y2[i].name)
-                    self.y2_lines.append(line)
-                    c += 1
-
-            # Convergence indicator strip — thin row below the main plot, x-axis linked to ax1
-            self.win.nextRow()
-            self.ax_conv = self.win.addPlot()
-            self.ax_conv.setMaximumHeight(18)
-            self.ax_conv.setMinimumHeight(18)
-            for _axis in ('left', 'bottom', 'right', 'top'):
-                self.ax_conv.hideAxis(_axis)
-            self.ax_conv.hideButtons()
-            self.ax_conv.setMouseEnabled(x=False, y=False)
-            self.ax_conv.setYRange(0, 1, padding=0)
-            self.ax_conv.setXLink(self.ax1)
-            self._conv_bar_item = None
-
-            # Iteration fraction strip — thin row below the convergence strip
-            self.win.nextRow()
-            self.ax_iter = self.win.addPlot()
-            self.ax_iter.setMaximumHeight(18)
-            self.ax_iter.setMinimumHeight(18)
-            for _axis in ('left', 'bottom', 'right', 'top'):
-                self.ax_iter.hideAxis(_axis)
-            self.ax_iter.hideButtons()
-            self.ax_iter.setMouseEnabled(x=False, y=False)
-            self.ax_iter.setYRange(0, 1, padding=0)
-            self.ax_iter.setXLink(self.ax1)
-            self._iter_bar_item = None
-
-            # Data arrays are pre-allocated in preallocate(), called from Model.initialize()
-            self.x_data  = None
-            self.y1_data = None
-            self.y2_data = None
-
-            Model.OnlinePlotter.instances.append(self)
-            self.apply_font_size()
-            self.ax1.vb.sigRangeChangedManually.connect(self._on_range_changed_manually)
-            self._setup_strip_tooltip()
-            return 
-
-        @classmethod
-        def adjust_font_size(cls, delta):
-            new_font_size = max(cls.min_font_size_pt, min(cls.max_font_size_pt, cls.font_size_pt + delta))
-            if new_font_size == cls.font_size_pt:
-                return
-
-            cls.font_size_pt = new_font_size
-            for plotter in cls.instances:
-                plotter.apply_font_size()
-
-        def apply_font_size(self):
-            tick_font = QtGui.QFont()
-            tick_font.setPointSize(Model.OnlinePlotter.font_size_pt)
-            label_color = '#c0c0c0'
-            label_style = {'font-size': f"{Model.OnlinePlotter.font_size_pt + 2}pt"}
-
-            left_axis = self.ax1.getAxis('left')
-            bottom_axis = self.ax1.getAxis('bottom')
-            left_axis.setStyle(tickFont=tick_font)
-            bottom_axis.setStyle(tickFont=tick_font)
-
-            self.ax1.setLabel('left', self.y1label, color=label_color, **label_style)
-            self.ax1.setLabel('bottom', 'Time', color=label_color, **label_style)
-
-            if self.legend_y1 is not None:
-                label_font = self.legend_y1.font()
-                label_font.setPointSize(Model.OnlinePlotter.font_size_pt)
-                self.legend_y1.setFont(label_font)
-
-                for _, label_item in self.legend_y1.items:
-                    label_item.setText(label_item.text, size=f'{Model.OnlinePlotter.font_size_pt}pt')
-
-            if self.y2_items is not None:
-                right_axis = self.ax1.getAxis('right')
-                right_axis.setStyle(tickFont=tick_font)
-                right_axis.setLabel(self.y2label, color=label_color, **label_style)
-
-                if self.legend_y2 is not None:
-                    for _, label_item in self.legend_y2.items:
-                        label_item.setText(label_item.text, size=f'{Model.OnlinePlotter.font_size_pt}pt')
-
-        @staticmethod
-        def _fraction_to_brush(f):
-            """Map a convergence failure fraction [0, 1] to a QBrush.
-            0        → transparent
-            0 .. 0.5 → yellow (255, 255, 0) → orange (255, 165, 0)
-            0.5 .. 1 → orange (255, 165, 0) → red   (200,   0, 0)
-            """
-            if f <= 0.0:
-                return QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
-            if f <= 0.5:
-                t = f * 2.0
-                r, g, b = 255, int(255 - t * (255 - 165)), 0
-            else:
-                t = (f - 0.5) * 2.0
-                r, g, b = int(255 - t * (255 - 200)), int(165 * (1.0 - t)), 0
-            return QtGui.QBrush(QtGui.QColor(r, g, b, 220))
-
-        @staticmethod
-        def _iter_fraction_to_brush(f):
-            """Map an iteration fraction [0, 1] to a QBrush.
-            0 → transparent (white at zero)
-            1 → solid blue (0, 100, 220)
-            """
-            if f <= 0.0:
-                return QtGui.QBrush(QtGui.QColor(0, 0, 0, 0))
-            alpha = int(f * 220)
-            r = int(255 * (1.0 - f))
-            g = int(255 * (1.0 - f))
-            b = 220
-            return QtGui.QBrush(QtGui.QColor(r, g, b, alpha))
-
-        def log_step(self, time, conv_fraction=0.0, iter_fraction=0.0):
-
-            self.current_step += 1
-            idx = self._fill_idx
-
-            self.x_data[idx] = time
-            self.conv_data[idx] = conv_fraction
-            self.iter_data[idx] = iter_fraction
-
-            # Write y1 values directly into pre-allocated array
-            for j, yval in enumerate(self.y1_items):
-                self.y1_data[j, idx] = yval.v
-
-            if self.y2_items != None:
-                for j, yval in enumerate(self.y2_items):
-                    self.y2_data[j, idx] = yval.v
-
-            self._fill_idx += 1
-
-            if self.current_step % self.update_every == 0:
-                self.__refresh_plot()
-
-        def __refresh_plot(self):
-            """
-            Fast update using pyqtgraph setData.  All accumulated history is passed
-            as a NumPy view slice (no copy).  The x-axis is constrained to the last
-            nmax_points so older data remains accessible by panning.
-            """
-            n = self._fill_idx
-            if n == 0:
-                return
-            x_view = self.x_data[:n]
-
-            # Update y1 lines
-            for i in range(len(self.y1_lines)):
-                self.y1_lines[i].setData(x_view, self.y1_data[i, :n])
-
-            # Update y2 lines
-            for i in range(len(self.y2_lines)):
-                self.y2_lines[i].setData(x_view, self.y2_data[i, :n])
-
-            # Auto-follow: keep the view window on the most recent nmax_points
-            if self._auto_follow:
-                x_start = self.x_data[max(0, n - self.nmax_points)]
-                x_end   = self.x_data[n - 1]
-                self.ax1.setXRange(x_start, x_end, padding=0.02)
-
-            # Convergence indicator strip
-            if self._conv_bar_item is not None:
-                self.ax_conv.removeItem(self._conv_bar_item)
-                self._conv_bar_item = None
-            nc_mask = self.conv_data[:n] > 0
-            if np.any(nc_mask):
-                nc_x = x_view[nc_mask]
-                brushes = [self._fraction_to_brush(f) for f in self.conv_data[:n][nc_mask]]
-                self._conv_bar_item = qtg.BarGraphItem(
-                    x=nc_x, height=1, width=self._timestep, brushes=brushes,
-                    pen=qtg.mkPen(None))
-                self.ax_conv.addItem(self._conv_bar_item)
-
-            # Iteration fraction strip
-            if self._iter_bar_item is not None:
-                self.ax_iter.removeItem(self._iter_bar_item)
-                self._iter_bar_item = None
-            iter_brushes = [self._iter_fraction_to_brush(f) for f in self.iter_data[:n]]
-            self._iter_bar_item = qtg.BarGraphItem(
-                x=x_view, height=1, width=self._timestep, brushes=iter_brushes,
-                pen=qtg.mkPen(None))
-            self.ax_iter.addItem(self._iter_bar_item)
-
-            # Process GUI events (much faster than matplotlib canvas.draw)
-            self.app.processEvents()
-
-        def preallocate(self, n_steps, timestep):
-            """
-            Allocate contiguous NumPy arrays for the full simulation duration.
-            Called once from Model.initialize() before the simulation loop begins;
-            no further allocation or data movement occurs during the simulation.
-            """
-            self._fill_idx = 0
-            self._timestep = timestep
-            self.x_data  = np.empty(n_steps)
-            self.y1_data = np.empty((len(self.y1_items), n_steps))
-            n_y2 = len(self.y2_items) if self.y2_items is not None else 1
-            self.y2_data = np.empty((n_y2, n_steps))
-            self.conv_data = np.zeros(n_steps)
-            self.iter_data = np.zeros(n_steps)
-
-        def _setup_strip_tooltip(self):
-            """Connect a rate-limited mouse-move handler for the colorbar strips."""
-            self._strip_proxy = qtg.SignalProxy(
-                self.ax1.scene().sigMouseMoved,
-                rateLimit=20,
-                slot=self._on_strip_mouse_move,
-            )
-            self._tooltip_last_idx = -1
-            self._plot_tooltip_enabled = False
-            # Custom floating label replaces QToolTip to avoid Windows' system-wide
-            # cap on tooltip display duration (SPI_GETMESSAGEDURATION, often ~1 s).
-            self._tip_label = QtWidgets.QLabel()
-            self._tip_label.setWindowFlags(
-                QtCore.Qt.ToolTip |
-                QtCore.Qt.FramelessWindowHint |
-                QtCore.Qt.WindowStaysOnTopHint
-            )
-            self._tip_label.setStyleSheet(
-                "QLabel { background-color: #ffffdc; color: #000000; "
-                "border: 1px solid #aaaaaa; padding: 4px 8px; }"
-            )
-            self._tip_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-            self._tip_label.hide()
-
-        def _on_strip_mouse_move(self, args):
-            """Show a custom floating label when the cursor is over the plot or either colorbar strip."""
-            scene_pos = args[0]
-
-            if self.x_data is None or self._fill_idx == 0:
-                self._tip_label.hide()
-                self._tooltip_last_idx = -1
-                return
-
-            in_conv = self.ax_conv.vb.sceneBoundingRect().contains(scene_pos)
-            in_iter = self.ax_iter.vb.sceneBoundingRect().contains(scene_pos)
-            in_plot = self.ax1.vb.sceneBoundingRect().contains(scene_pos)
-            in_y2   = (self.y2_items is not None
-                       and hasattr(self, 'ax2')
-                       and self.ax2.sceneBoundingRect().contains(scene_pos))
-
-            if not in_conv and not in_iter and not in_plot and not in_y2:
-                self._tip_label.hide()
-                self._tooltip_last_idx = -1
-                return
-
-            # Hide and bail when hovering the main plot with tooltip disabled.
-            if (in_plot or in_y2) and not in_conv and not in_iter and not self._plot_tooltip_enabled:
-                self._tip_label.hide()
-                self._tooltip_last_idx = -1
-                return
-
-            # x is shared across all zones; use ax1.vb for the mapping in all cases
-            vb = self.ax_conv.vb if in_conv else (self.ax_iter.vb if in_iter else self.ax1.vb)
-            x_val = vb.mapSceneToView(scene_pos).x()
-
-            n = self._fill_idx
-            x_slice = self.x_data[:n]
-            idx = int(np.searchsorted(x_slice, x_val, side='left'))
-            idx = max(0, min(idx, n - 1))
-            if idx > 0 and abs(x_slice[idx - 1] - x_val) < abs(x_slice[idx] - x_val):
-                idx -= 1
-
-            # Keep the label positioned near the cursor on every event (cheap move call).
-            cursor_pos = QtGui.QCursor.pos()
-            self._tip_label.move(cursor_pos.x() + 16, cursor_pos.y() + 16)
-
-            # Only rebuild and re-show when the timestep index changes.
-            if idx == self._tooltip_last_idx and self._tip_label.isVisible():
-                return
-            self._tooltip_last_idx = idx
-
-            t = x_slice[idx]
-
-            if in_conv or in_iter:
-                text = (
-                    f"t = {t:.1f} s\n"
-                    f"Conv failures: {self.conv_data[idx]:.1%}\n"
-                    f"Iter fraction: {self.iter_data[idx]:.1%}"
-                )
-            else:
-                lines = [f"t = {t:.1f} s"]
-                for j, item in enumerate(self.y1_items):
-                    unit_str = f" {item.units}" if item.units else ""
-                    lines.append(f"{item.name} = {self.y1_data[j, idx]:.4g}{unit_str}")
-                if self.y2_items is not None:
-                    for j, item in enumerate(self.y2_items):
-                        unit_str = f" {item.units}" if item.units else ""
-                        lines.append(f"{item.name} = {self.y2_data[j, idx]:.4g}{unit_str}")
-                text = "\n".join(lines)
-
-            self._tip_label.setText(text)
-            self._tip_label.adjustSize()
-            self._tip_label.show()
-
-        def _on_range_changed_manually(self, viewRange):
-            """Called when the user pans or zooms; disables auto-follow."""
-            self._auto_follow = False
-            if Model.OnlinePlotter.follow_button is not None:
-                Model.OnlinePlotter.follow_button.setChecked(False)
-
-        @classmethod
-        def set_auto_follow(cls, value):
-            """Enable or disable auto-follow on all plotter instances."""
-            for plotter in cls.instances:
-                plotter._auto_follow = value
-            if cls.follow_button is not None:
-                cls.follow_button.setChecked(value)
-
-        @classmethod
-        def set_plot_tooltip(cls, value):
-            """Enable or disable the main-plot hover tooltip on all plotter instances."""
-            for plotter in cls.instances:
-                plotter._plot_tooltip_enabled = value
-                if not value:
-                    plotter._tip_label.hide()
-                    plotter._tooltip_last_idx = -1
-            if cls.tooltip_button is not None:
-                cls.tooltip_button.setChecked(value)
+    class OnlinePlotter(_OnlinePlotter):
+        """Backward-compatible alias for the extracted plotter implementation."""
+        pass
 
     # ------- end OnlinePlotter --------------------------------------------------
 
@@ -951,6 +464,8 @@ class Model:
         self._input_owner_by_id = {}
         self._network_analysis = None
         self._network_solver_warned = False
+        self._network_views = []
+        self._last_progress_line_len = 0
         return
     
     def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None):
@@ -964,6 +479,42 @@ class Model:
                 y2t = [y2]
 
         self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title))
+
+    def add_network_graph(self, show_tab=True, save_png=False, save_svg=False, path_base=None, include_subnetworks=True, tab_title="Network"):
+        """Create a topology graph tab and optionally export it to image files.
+
+        This is intentionally Python-only and uses the existing PyQt plotting window.
+        """
+        if not self.is_initialized:
+            self.initialize()
+        if self._network_analysis is None:
+            self._build_network_analysis()
+
+        if (save_png or save_svg) and not path_base:
+            raise ValueError("path_base is required when save_png or save_svg is enabled.")
+
+        view = None
+        if show_tab or save_png or save_svg:
+            view = NetworkTopologyView(self, tab_title=tab_title, include_subnetworks=include_subnetworks)
+            self._network_views.append(view)
+
+        exported_paths = []
+        if view is not None and path_base:
+            if save_png:
+                png_path = f"{path_base}.png"
+                view.export_png(png_path)
+                exported_paths.append(png_path)
+            if save_svg:
+                svg_path = f"{path_base}.svg"
+                view.export_svg(svg_path)
+                exported_paths.append(svg_path)
+
+        return {
+            "view_created": view is not None,
+            "exported_paths": tuple(exported_paths),
+            "n_components": len(self._components),
+            "n_edges": len(self._network_analysis["edges"]) if self._network_analysis is not None else 0,
+        }
 
     def wait_for_plots(self):
         """
@@ -1499,25 +1050,14 @@ class Model:
         # Terminal update
         percent = (self.time / (self.settings.stop_time - self.settings.start_time)) * 100
         if int(percent*1000) % 10 == 0:
-            bar = '█' * int(percent // 2) + '-' * (50 - int(percent // 2))
-            sys.stdout.write(f'\r|{bar}| {percent:.1f}% (Sim: {self.time:.2f} sec | Clock: {time.time() - self._start_time_wall_clock:.2f} sec)   ')
+            bar_width = 30
+            n_fill = min(bar_width, max(0, int((percent / 100.0) * bar_width)))
+            bar = '█' * n_fill + '-' * (bar_width - n_fill)
+            line = f'[{bar}] {percent:5.1f}% | Sim {self.time:.1f}s | Clock {time.time() - self._start_time_wall_clock:.1f}s'
+            pad = max(0, self._last_progress_line_len - len(line))
+            sys.stdout.write('\r' + line + (' ' * pad))
             sys.stdout.flush()
+            self._last_progress_line_len = len(line)
 
         return 
-
-
-# =========================================================================================
-class _AxisLockedViewBox(qtg.ViewBox):
-    """ViewBox with modifier-key-constrained scroll zoom.
-    Ctrl+scroll  → x-axis only
-    Shift+scroll → y-axis only
-    plain scroll → both axes (default)
-    """
-    def wheelEvent(self, ev, axis=None):
-        mods = ev.modifiers()
-        if mods & QtCore.Qt.ControlModifier:
-            axis = 0
-        elif mods & QtCore.Qt.ShiftModifier:
-            axis = 1
-        super().wheelEvent(ev, axis=axis)
 

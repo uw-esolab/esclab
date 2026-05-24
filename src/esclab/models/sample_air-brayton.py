@@ -81,6 +81,10 @@ model.add_plotter([model.compressor.T_out, model.weather.T_amb, model.turbine.T_
 model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=10, nmax_points=100)
 # model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=100, nmax_points=100)
 
+# Optional: add a topology tab and export images.
+# model.add_network_graph(show_tab=True, save_png=True, path_base='air_brayton_topology')
+model.add_network_graph(show_tab=True)
+
 
 
 
