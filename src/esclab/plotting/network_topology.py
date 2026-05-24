@@ -9,9 +9,10 @@ class NetworkTopologyView:
     NODE_WIDTH = 150
     NODE_HEIGHT = 56
 
-    def __init__(self, model, tab_title="Network", include_subnetworks=True):
+    def __init__(self, model, tab_title="Network", include_subnetworks=True, show_connection_labels=True):
         self.model = model
         self.include_subnetworks = include_subnetworks
+        self.show_connection_labels = show_connection_labels
         OnlinePlotter.ensure_window()
 
         self.view = QtWidgets.QGraphicsView()
@@ -38,7 +39,8 @@ class NetworkTopologyView:
             return
 
         positions = self._component_positions(components)
-        edge_set = sorted({(src, dst) for src, dst, _, _ in analysis["edges"]}, key=lambda pair: (pair[0].name, pair[1].name))
+        edge_labels_by_pair = self._edge_label_groups(analysis)
+        edge_set = sorted(edge_labels_by_pair.keys(), key=lambda pair: (pair[0].name, pair[1].name))
 
         plan_colors = self._plan_color_map(analysis) if self.include_subnetworks else {}
 
@@ -48,7 +50,7 @@ class NetworkTopologyView:
             self._draw_node(comp, positions[comp], label_map[comp], color)
 
         for src, dst in edge_set:
-            self._draw_edge(src, dst, positions[src], positions[dst])
+            self._draw_edge(src, dst, positions[src], positions[dst], edge_labels_by_pair.get((src, dst), ()))
 
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
         self.view.fitInView(self.view.sceneRect(), QtCore.Qt.KeepAspectRatio)
@@ -106,6 +108,24 @@ class NetworkTopologyView:
                 color_map[comp] = base
         return color_map
 
+    def _edge_label_groups(self, analysis):
+        grouped = {}
+        for src, dst, source_output, destination_input in analysis.get("edges", []):
+            label = f"{self._short_port_name(source_output.name)} -> {self._short_port_name(destination_input.name)}"
+            key = (src, dst)
+            if key not in grouped:
+                grouped[key] = []
+            if label not in grouped[key]:
+                grouped[key].append(label)
+        return {key: tuple(labels) for key, labels in grouped.items()}
+
+    @staticmethod
+    def _short_port_name(full_name):
+        name = str(full_name or "")
+        if "." in name:
+            return name.split(".", 1)[1]
+        return name
+
     def _component_positions(self, components):
         n = len(components)
         radius = 220 + 10 * max(n - 8, 0)
@@ -138,7 +158,7 @@ class NetworkTopologyView:
         text_rect = text.boundingRect()
         text.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
 
-    def _draw_edge(self, src_component, dst_component, src, dst):
+    def _draw_edge(self, src_component, dst_component, src, dst, edge_labels):
         line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
         line_pen.setWidth(2)
 
@@ -158,6 +178,30 @@ class NetworkTopologyView:
 
         self.scene.addLine(QtCore.QLineF(start, end), line_pen)
         self._draw_arrowhead(start, end)
+        self._draw_edge_label(start, end, edge_labels)
+
+    def _draw_edge_label(self, start, end, edge_labels):
+        if not self.show_connection_labels or not edge_labels:
+            return
+
+        text = "\n".join(edge_labels)
+        text_item = self.scene.addText(text)
+        text_item.setDefaultTextColor(QtGui.QColor(20, 20, 20))
+        self._label_items.append(text_item)
+
+        line = QtCore.QLineF(start, end)
+        length = line.length()
+        if length < 1e-9:
+            return
+
+        mid = QtCore.QPointF((start.x() + end.x()) * 0.5, (start.y() + end.y()) * 0.5)
+        nx = -line.dy() / length
+        ny = line.dx() / length
+        offset = 12.0
+        center = QtCore.QPointF(mid.x() + nx * offset, mid.y() + ny * offset)
+
+        text_rect = text_item.boundingRect()
+        text_item.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
 
     @staticmethod
     def _ray_exit_rect(rect, center, toward):
