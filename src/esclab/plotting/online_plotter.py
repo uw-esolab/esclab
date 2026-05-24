@@ -26,6 +26,7 @@ class OnlinePlotter:
     follow_button = None
     tooltip_button = None
     instances = []
+    font_targets = []
     n_plotters = 0
     font_size_pt = 10
     min_font_size_pt = 6
@@ -236,6 +237,13 @@ class OnlinePlotter:
         cls.font_size_pt = new_font_size
         for plotter in cls.instances:
             plotter.apply_font_size()
+        for target in cls.font_targets:
+            target.apply_font_size()
+
+    @classmethod
+    def register_font_target(cls, target):
+        if target not in cls.font_targets:
+            cls.font_targets.append(target)
 
     def apply_font_size(self):
         tick_font = QtGui.QFont()

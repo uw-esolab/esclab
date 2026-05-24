@@ -13,14 +13,17 @@ class NetworkTopologyView:
 
         self.view = QtWidgets.QGraphicsView()
         self.scene = QtWidgets.QGraphicsScene(self.view)
+        self._label_items = []
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
         OnlinePlotter.tab_widget.addTab(self.view, tab_title)
+        OnlinePlotter.register_font_target(self)
 
         self._draw_topology()
 
     def _draw_topology(self):
         self.scene.clear()
+        self._label_items = []
         analysis = self.model._network_analysis
         if analysis is None:
             return
@@ -44,6 +47,13 @@ class NetworkTopologyView:
 
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
         self.view.fitInView(self.view.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        self.apply_font_size()
+
+    def apply_font_size(self):
+        font = QtGui.QFont()
+        font.setPointSize(OnlinePlotter.font_size_pt)
+        for text_item in self._label_items:
+            text_item.setFont(font)
 
     def _component_label_map(self, components):
         """Return stable, non-empty labels for all components.
@@ -118,6 +128,7 @@ class NetworkTopologyView:
 
         text = self.scene.addText(label)
         text.setDefaultTextColor(QtGui.QColor(255, 255, 255))
+        self._label_items.append(text)
         text_rect = text.boundingRect()
         text.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
 
