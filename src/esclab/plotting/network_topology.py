@@ -6,6 +6,9 @@ from esclab.plotting.online_plotter import OnlinePlotter
 
 
 class NetworkTopologyView:
+    NODE_WIDTH = 150
+    NODE_HEIGHT = 56
+
     def __init__(self, model, tab_title="Network", include_subnetworks=True):
         self.model = model
         self.include_subnetworks = include_subnetworks
@@ -14,6 +17,7 @@ class NetworkTopologyView:
         self.view = QtWidgets.QGraphicsView()
         self.scene = QtWidgets.QGraphicsScene(self.view)
         self._label_items = []
+        self._node_rects = {}
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
         OnlinePlotter.tab_widget.addTab(self.view, tab_title)
@@ -24,6 +28,7 @@ class NetworkTopologyView:
     def _draw_topology(self):
         self.scene.clear()
         self._label_items = []
+        self._node_rects = {}
         analysis = self.model._network_analysis
         if analysis is None:
             return
@@ -37,13 +42,13 @@ class NetworkTopologyView:
 
         plan_colors = self._plan_color_map(analysis) if self.include_subnetworks else {}
 
-        for src, dst in edge_set:
-            self._draw_edge(positions[src], positions[dst])
-
         label_map = self._component_label_map(components)
         for comp in components:
             color = plan_colors.get(comp, QtGui.QColor(60, 120, 180))
-            self._draw_node(positions[comp], label_map[comp], color)
+            self._draw_node(comp, positions[comp], label_map[comp], color)
+
+        for src, dst in edge_set:
+            self._draw_edge(src, dst, positions[src], positions[dst])
 
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
         self.view.fitInView(self.view.sceneRect(), QtCore.Qt.KeepAspectRatio)
@@ -115,9 +120,9 @@ class NetworkTopologyView:
             positions[comp] = QtCore.QPointF(x, y)
         return positions
 
-    def _draw_node(self, center, label, color):
-        width = 150
-        height = 56
+    def _draw_node(self, component, center, label, color):
+        width = self.NODE_WIDTH
+        height = self.NODE_HEIGHT
         rect = QtCore.QRectF(center.x() - width / 2, center.y() - height / 2, width, height)
         pen = QtGui.QPen(QtGui.QColor(30, 30, 30))
         pen.setWidth(2)
@@ -125,6 +130,7 @@ class NetworkTopologyView:
         path = QtGui.QPainterPath()
         path.addRoundedRect(rect, 10, 10)
         self.scene.addPath(path, pen, brush)
+        self._node_rects[component] = rect
 
         text = self.scene.addText(label)
         text.setDefaultTextColor(QtGui.QColor(255, 255, 255))
@@ -132,7 +138,7 @@ class NetworkTopologyView:
         text_rect = text.boundingRect()
         text.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
 
-    def _draw_edge(self, src, dst):
+    def _draw_edge(self, src_component, dst_component, src, dst):
         line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
         line_pen.setWidth(2)
 
@@ -140,13 +146,53 @@ class NetworkTopologyView:
         if line.length() < 1.0:
             return
 
-        shrink = 82
-        line.setLength(max(line.length() - shrink, 0.0))
-        start = src
-        end = line.p2()
+        src_rect = self._node_rects.get(src_component)
+        dst_rect = self._node_rects.get(dst_component)
+        if src_rect is None or dst_rect is None:
+            return
+
+        start = self._ray_exit_rect(src_rect, src, dst)
+        end = self._ray_exit_rect(dst_rect, dst, src)
+        if QtCore.QLineF(start, end).length() < 1.0:
+            return
 
         self.scene.addLine(QtCore.QLineF(start, end), line_pen)
         self._draw_arrowhead(start, end)
+
+    @staticmethod
+    def _ray_exit_rect(rect, center, toward):
+        """Return the point where a ray from center toward toward exits rect.
+
+        Assumes center is inside rect and rect is axis-aligned.
+        """
+        x0 = center.x()
+        y0 = center.y()
+        dx = toward.x() - x0
+        dy = toward.y() - y0
+        if abs(dx) < 1e-12 and abs(dy) < 1e-12:
+            return QtCore.QPointF(x0, y0)
+
+        candidates = []
+
+        if dx > 1e-12:
+            t = (rect.right() - x0) / dx
+            candidates.append(t)
+        elif dx < -1e-12:
+            t = (rect.left() - x0) / dx
+            candidates.append(t)
+
+        if dy > 1e-12:
+            t = (rect.bottom() - y0) / dy
+            candidates.append(t)
+        elif dy < -1e-12:
+            t = (rect.top() - y0) / dy
+            candidates.append(t)
+
+        t_pos = [t for t in candidates if t > 0.0]
+        if not t_pos:
+            return QtCore.QPointF(x0, y0)
+        t_exit = min(t_pos)
+        return QtCore.QPointF(x0 + dx * t_exit, y0 + dy * t_exit)
 
     def _draw_arrowhead(self, start, end):
         arrow_size = 10
