@@ -53,6 +53,8 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
 class NetworkTopologyView:
     NODE_WIDTH = 150
     NODE_HEIGHT = 56
+    CONNECTION_LABEL_SEPARATOR = "→"
+    # Alternative if preferred: "▶"
     LEADER_MID_BAND_MIN = 0.40
     LEADER_MID_BAND_MAX = 0.60
     LEADER_BIAS_T_LOW = 0.35
@@ -170,7 +172,11 @@ class NetworkTopologyView:
     def _edge_label_groups(self, analysis):
         grouped = {}
         for src, dst, source_output, destination_input in analysis.get("edges", []):
-            label = f"{self._short_port_name(source_output.name)} -> {self._short_port_name(destination_input.name)}"
+            label = (
+                f"{self._short_port_name(source_output.name)} "
+                f"{self.CONNECTION_LABEL_SEPARATOR} "
+                f"{self._short_port_name(destination_input.name)}"
+            )
             key = (src, dst)
             if key not in grouped:
                 grouped[key] = []
