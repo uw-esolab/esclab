@@ -78,6 +78,7 @@ class NetworkTopologyView:
         self.view = _TopologyGraphicsView()
         self.scene = QtWidgets.QGraphicsScene(self.view)
         self._label_items = []
+        self._node_label_items = []
         self._node_rects = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
@@ -86,13 +87,14 @@ class NetworkTopologyView:
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
         OnlinePlotter.tab_widget.addTab(self.view, tab_title)
         OnlinePlotter.register_font_target(self)
-        self.view.transform_changed_callback = self._update_edge_leaders
+        self.view.transform_changed_callback = self._on_view_transform_changed
 
         self._draw_topology()
 
     def _draw_topology(self):
         self.scene.clear()
         self._label_items = []
+        self._node_label_items = []
         self._node_rects = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
@@ -155,11 +157,20 @@ class NetworkTopologyView:
         # Re-layout edge labels so collision avoidance stays valid after font changes.
         self._draw_topology()
 
+    def _on_view_transform_changed(self):
+        self._recenter_node_labels()
+        self._update_edge_leaders()
+
     def _refresh_node_label_fonts(self):
         font = QtGui.QFont()
         font.setPointSize(OnlinePlotter.font_size_pt)
         for text_item in self._label_items:
             text_item.setFont(font)
+        self._recenter_node_labels()
+
+    def _recenter_node_labels(self):
+        for text_item, center in self._node_label_items:
+            self._center_text_item(text_item, center)
 
     def _component_label_map(self, components):
         """Return stable, non-empty labels for all components.
@@ -270,9 +281,27 @@ class NetworkTopologyView:
         text = self.scene.addText(label)
         text.setDefaultTextColor(QtGui.QColor(255, 255, 255))
         text.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+        font = QtGui.QFont()
+        font.setPointSize(OnlinePlotter.font_size_pt)
+        text.setFont(font)
         self._label_items.append(text)
-        text_rect = text.boundingRect()
-        text.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
+        self._node_label_items.append((text, QtCore.QPointF(center.x(), center.y())))
+        self._center_text_item(text, center)
+
+    def _center_text_item(self, text_item, center):
+        # ItemIgnoresTransformations keeps text in device-space size; convert the
+        # local text extents to scene-space by dividing by current view scale.
+        text_rect = text_item.boundingRect()
+        sx = abs(self.view.transform().m11())
+        sy = abs(self.view.transform().m22())
+        if sx < 1e-9:
+            sx = 1.0
+        if sy < 1e-9:
+            sy = 1.0
+
+        dx = 0.5 * text_rect.width() / sx
+        dy = 0.5 * text_rect.height() / sy
+        text_item.setPos(center.x() - dx, center.y() - dy)
 
     def _compute_edge_segment(self, src_component, dst_component, src, dst):
         line = QtCore.QLineF(src, dst)
