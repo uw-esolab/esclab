@@ -9,11 +9,18 @@ from esclab.plotting.online_plotter import OnlinePlotter
 class _EdgeLabelItem(QtWidgets.QGraphicsTextItem):
     """Edge label text item with built-in hover tooltip."""
 
-    def __init__(self, display_text, tooltip_text):
+    def __init__(self, display_text, tooltip_text=None, tooltip_builder=None):
         super().__init__(display_text)
         self.setAcceptHoverEvents(True)
-        self.setToolTip(tooltip_text)
+        self._tooltip_builder = tooltip_builder
+        if tooltip_text is not None:
+            self.setToolTip(tooltip_text)
         self.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+
+    def hoverEnterEvent(self, event):
+        if self._tooltip_builder is not None:
+            self.setToolTip(self._tooltip_builder())
+        super().hoverEnterEvent(event)
 
 
 class _TopologyGraphicsView(QtWidgets.QGraphicsView):
@@ -213,7 +220,17 @@ class NetworkTopologyView:
             if full_pair in grouped_seen[key]:
                 continue
             grouped_seen[key].add(full_pair)
-            grouped[key].append(full_pair)
+
+            connection = destination_input.connection
+            grouped[key].append(
+                {
+                    "source_full": str(source_output.name),
+                    "dest_full": str(destination_input.name),
+                    "source_short": self._short_port_name(source_output.name),
+                    "dest_short": self._short_port_name(destination_input.name),
+                    "connection": connection,
+                }
+            )
 
         return {key: tuple(connections) for key, connections in grouped.items()}
 
@@ -288,16 +305,16 @@ class NetworkTopologyView:
 
         display_labels = [
             (
-                f"{self._short_port_name(source_full)} "
+                f"{conn['source_short']} "
                 f"{self.CONNECTION_LABEL_SEPARATOR} "
-                f"{self._short_port_name(dest_full)}"
+                f"{conn['dest_short']}"
             )
-            for source_full, dest_full in edge_connections
+            for conn in edge_connections
         ]
 
         display_text = self._build_smart_label_text(display_labels)
-        tooltip_text = self._build_tooltip_html(src_object_label, dst_object_label, edge_connections)
-        text_item = _EdgeLabelItem(display_text, tooltip_text)
+        tooltip_builder = lambda src=src_object_label, dst=dst_object_label, conns=edge_connections: self._build_tooltip_html(src, dst, conns)
+        text_item = _EdgeLabelItem(display_text, tooltip_builder=tooltip_builder)
         self.scene.addItem(text_item)
         text_item.setDefaultTextColor(QtGui.QColor(20, 20, 20))
 
@@ -424,13 +441,44 @@ class NetworkTopologyView:
         dst_header = escape(str(dst_object_label))
 
         rows = []
-        for source_full, dest_full in full_connections:
-            source_short = NetworkTopologyView._short_port_name(source_full)
-            dest_short = NetworkTopologyView._short_port_name(dest_full)
+        for conn in full_connections:
+            source_short = conn["source_short"]
+            dest_short = conn["dest_short"]
+
+            connection = conn["connection"]
+            if connection.has_step_history:
+                status = connection.last_step_is_converged
+                n_iter = connection.last_step_n_iter
+                rel_err = connection.last_step_err_rel
+            else:
+                status = None
+                current_iter = getattr(connection, "n_iter", 0)
+                n_iter = current_iter if current_iter > 0 else None
+                rel_err = connection.err_rel if current_iter > 0 else None
+
+            if status is None:
+                status_text = "n/a"
+            else:
+                status_text = "yes" if bool(status) else "no"
+
+            n_iter_text = "-" if n_iter is None else str(n_iter)
+
+            if rel_err is None:
+                rel_err_text = "-"
+            else:
+                rel_err_text = f"{float(rel_err):.2e}"
+
+            solve_group = connection.solve_group
+            group_text = "-" if solve_group is None else str(solve_group)
+
             rows.append(
                 "<tr>"
                 f"<td style='padding:2px 8px 2px 0;'>{escape(source_short)}</td>"
                 f"<td style='padding:2px 0 2px 8px;'>{escape(dest_short)}</td>"
+                f"<td style='padding:2px 0 2px 8px; white-space:nowrap;'>{escape(status_text)}</td>"
+                f"<td style='padding:2px 0 2px 8px; white-space:nowrap; text-align:right;'>{escape(n_iter_text)}</td>"
+                f"<td style='padding:2px 0 2px 8px; white-space:nowrap; text-align:right; font-family:Consolas, \"Courier New\", monospace;'>{escape(rel_err_text)}</td>"
+                f"<td style='padding:2px 0 2px 8px;'>{escape(group_text)}</td>"
                 "</tr>"
             )
         rows_html = "".join(rows)
@@ -442,6 +490,10 @@ class NetworkTopologyView:
             "<thead><tr>"
             f"<th style='text-align:left; padding:0 8px 2px 0;'>{src_header}</th>"
             f"<th style='text-align:left; padding:0 0 2px 8px;'>{dst_header}</th>"
+            "<th style='text-align:left; padding:0 0 2px 8px; white-space:nowrap;'>Converged</th>"
+            "<th style='text-align:right; padding:0 0 2px 8px; white-space:nowrap;'>n_iter</th>"
+            "<th style='text-align:right; padding:0 0 2px 8px; white-space:nowrap;'>rel_err</th>"
+            "<th style='text-align:left; padding:0 0 2px 8px;'>group</th>"
             "</tr></thead>"
             f"<tbody>{rows_html}</tbody>"
             "</table>"

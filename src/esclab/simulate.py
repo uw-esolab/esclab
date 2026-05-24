@@ -22,12 +22,26 @@ class Connection:
         self.source_last_value = float('nan')
         self.solve_group = solve_group
 
+        # Last completed-step snapshot for UI/debug views.
+        self.has_step_history = False
+        self.last_step_is_converged = None
+        self.last_step_n_iter = None
+        self.last_step_err_abs = None
+        self.last_step_err_rel = None
+
         self.log_n_iter = log_n_iter
 
         self.reset_for_step()
         return
     
     def reset_for_step(self):
+        if hasattr(self, 'n_iter'):
+            self.has_step_history = True
+            self.last_step_is_converged = self.is_converged
+            self.last_step_n_iter = self.n_iter
+            self.last_step_err_abs = self.err_abs
+            self.last_step_err_rel = self.err_rel
+
         self.is_converged = False 
         self.n_iter = 0
         # [[value, abs err, rel err],]
