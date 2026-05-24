@@ -5,6 +5,15 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from esclab.plotting.online_plotter import OnlinePlotter
 
 
+class _EdgeLabelItem(QtWidgets.QGraphicsTextItem):
+    """Edge label text item with built-in hover tooltip."""
+
+    def __init__(self, display_text, tooltip_text):
+        super().__init__(display_text)
+        self.setAcceptHoverEvents(True)
+        self.setToolTip(tooltip_text)
+
+
 class NetworkTopologyView:
     NODE_WIDTH = 150
     NODE_HEIGHT = 56
@@ -19,6 +28,7 @@ class NetworkTopologyView:
         self.scene = QtWidgets.QGraphicsScene(self.view)
         self._label_items = []
         self._node_rects = {}
+        self._label_occupied_rects = []
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
         OnlinePlotter.tab_widget.addTab(self.view, tab_title)
@@ -30,6 +40,7 @@ class NetworkTopologyView:
         self.scene.clear()
         self._label_items = []
         self._node_rects = {}
+        self._label_occupied_rects = []
         analysis = self.model._network_analysis
         if analysis is None:
             return
@@ -54,9 +65,13 @@ class NetworkTopologyView:
 
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
         self.view.fitInView(self.view.sceneRect(), QtCore.Qt.KeepAspectRatio)
-        self.apply_font_size()
+        self._refresh_node_label_fonts()
 
     def apply_font_size(self):
+        # Re-layout edge labels so collision avoidance stays valid after font changes.
+        self._draw_topology()
+
+    def _refresh_node_label_fonts(self):
         font = QtGui.QFont()
         font.setPointSize(OnlinePlotter.font_size_pt)
         for text_item in self._label_items:
@@ -184,9 +199,15 @@ class NetworkTopologyView:
         if not self.show_connection_labels or not edge_labels:
             return
 
-        text = "\n".join(edge_labels)
-        text_item = self.scene.addText(text)
+        display_text, tooltip_text = self._build_smart_label_text(edge_labels)
+        text_item = _EdgeLabelItem(display_text, tooltip_text)
+        self.scene.addItem(text_item)
         text_item.setDefaultTextColor(QtGui.QColor(20, 20, 20))
+
+        font = QtGui.QFont()
+        font.setPointSize(OnlinePlotter.font_size_pt)
+        text_item.setFont(font)
+
         self._label_items.append(text_item)
 
         line = QtCore.QLineF(start, end)
@@ -201,7 +222,87 @@ class NetworkTopologyView:
         center = QtCore.QPointF(mid.x() + nx * offset, mid.y() + ny * offset)
 
         text_rect = text_item.boundingRect()
-        text_item.setPos(center.x() - text_rect.width() / 2, center.y() - text_rect.height() / 2)
+        placed_rect = self._place_label_rect(center, text_rect, nx, ny)
+        text_item.setPos(placed_rect.left(), placed_rect.top())
+        self._label_occupied_rects.append(self._expand_rect(placed_rect, 4.0))
+
+    @staticmethod
+    def _build_smart_label_text(edge_labels, max_lines=2):
+        full_text = "\n".join(edge_labels)
+        if len(edge_labels) <= max_lines:
+            return full_text, full_text
+
+        kept = list(edge_labels[:max_lines])
+        omitted = len(edge_labels) - max_lines
+        if omitted >= 2:
+            kept.append(f"... (+{omitted} more)")
+        else:
+            kept.append(edge_labels[max_lines])
+        display_text = "\n".join(kept)
+        return display_text, full_text
+
+    def _place_label_rect(self, center, text_rect, nx, ny):
+        base_offset = 12.0
+        step = 12.0
+        max_tries = 12
+
+        best_rect = None
+        best_penalty = float("inf")
+
+        candidates = [0.0]
+        for i in range(1, max_tries + 1):
+            delta = i * step
+            candidates.append(delta)
+            candidates.append(-delta)
+
+        for delta in candidates:
+            offset = base_offset + delta
+            cx = center.x() + nx * offset
+            cy = center.y() + ny * offset
+            rect = QtCore.QRectF(
+                cx - text_rect.width() / 2,
+                cy - text_rect.height() / 2,
+                text_rect.width(),
+                text_rect.height(),
+            )
+            penalty = self._placement_penalty(rect)
+            if penalty < best_penalty:
+                best_penalty = penalty
+                best_rect = rect
+                if penalty == 0.0:
+                    break
+
+        return best_rect
+
+    def _placement_penalty(self, rect):
+        padded_rect = self._expand_rect(rect, 2.0)
+        penalty = 0.0
+
+        for node_rect in self._node_rects.values():
+            if padded_rect.intersects(node_rect):
+                penalty += self._intersection_area(padded_rect, node_rect) + 1000.0
+
+        for used_rect in self._label_occupied_rects:
+            if padded_rect.intersects(used_rect):
+                penalty += self._intersection_area(padded_rect, used_rect) + 500.0
+
+        return penalty
+
+    @staticmethod
+    def _expand_rect(rect, margin):
+        return QtCore.QRectF(
+            rect.left() - margin,
+            rect.top() - margin,
+            rect.width() + 2 * margin,
+            rect.height() + 2 * margin,
+        )
+
+    @staticmethod
+    def _intersection_area(a, b):
+        inter = a.intersected(b)
+        if inter.isEmpty():
+            return 0.0
+        return inter.width() * inter.height()
 
     @staticmethod
     def _ray_exit_rect(rect, center, toward):
