@@ -35,6 +35,7 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.transform_changed_callback = None
+        self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
         self.setDragMode(QtWidgets.QGraphicsView.ScrollHandDrag)

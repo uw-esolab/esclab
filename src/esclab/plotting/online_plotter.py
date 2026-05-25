@@ -19,6 +19,15 @@ class _AxisLockedViewBox(qtg.ViewBox):
         super().wheelEvent(ev, axis=axis)
 
 
+class _PlotterKeyEventFilter(QtCore.QObject):
+    """Global key filter for plotter-window keyboard navigation."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.KeyPress and OnlinePlotter.handle_keyboard_event(event):
+            return True
+        return super().eventFilter(obj, event)
+
+
 class OnlinePlotter:
     app = None
     main_window = None
@@ -27,6 +36,11 @@ class OnlinePlotter:
     tooltip_button = None
     instances = []
     font_targets = []
+    tab_shortcuts = []
+    key_event_filter = None
+    KEYBOARD_ZOOM_IN_FACTOR = 1.15
+    KEYBOARD_ZOOM_OUT_FACTOR = 1.0 / KEYBOARD_ZOOM_IN_FACTOR
+    KEYBOARD_PAN_PIXELS = 80
     n_plotters = 0
     font_size_pt = 10
     min_font_size_pt = 6
@@ -79,8 +93,24 @@ class OnlinePlotter:
         font_up_button.clicked.connect(lambda: cls.adjust_font_size(1))
         follow_button.clicked.connect(lambda checked: cls.set_auto_follow(checked))
         tooltip_button.clicked.connect(lambda checked: cls.set_plot_tooltip(checked))
+        next_tab_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Tab"), main_window)
+        prev_tab_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Shift+Tab"), main_window)
+        next_tab_shortcut.setContext(QtCore.Qt.WindowShortcut)
+        prev_tab_shortcut.setContext(QtCore.Qt.WindowShortcut)
+        next_tab_shortcut.activated.connect(lambda: cls.cycle_tabs(forward=True))
+        prev_tab_shortcut.activated.connect(lambda: cls.cycle_tabs(forward=False))
+
+        all_shortcuts = [next_tab_shortcut, prev_tab_shortcut]
+        for shortcut in all_shortcuts:
+            shortcut.setContext(QtCore.Qt.WindowShortcut)
+
+        cls.tab_shortcuts = all_shortcuts
         cls.follow_button = follow_button
         cls.tooltip_button = tooltip_button
+
+        if cls.key_event_filter is None:
+            cls.key_event_filter = _PlotterKeyEventFilter()
+            cls.app.installEventFilter(cls.key_event_filter)
 
         screen = QtWidgets.QApplication.primaryScreen()
         if screen is not None:
@@ -103,6 +133,110 @@ class OnlinePlotter:
         cls.main_window = main_window
         cls.tab_widget = tab_widget
         return main_window
+
+    @classmethod
+    def cycle_tabs(cls, forward=True):
+        if cls.tab_widget is None:
+            return
+
+        count = cls.tab_widget.count()
+        if count <= 1:
+            return
+
+        current = cls.tab_widget.currentIndex()
+        if current < 0:
+            current = 0
+
+        step = 1 if forward else -1
+        cls.tab_widget.setCurrentIndex((current + step) % count)
+
+    @classmethod
+    def handle_keyboard_event(cls, event):
+        """Handle Ctrl+zoom/pan keys for network tabs only."""
+        if cls.main_window is None or cls.tab_widget is None:
+            return False
+        if not cls.main_window.isActiveWindow():
+            return False
+
+        mods = event.modifiers()
+        if not (mods & QtCore.Qt.ControlModifier):
+            return False
+        if mods & QtCore.Qt.AltModifier or mods & QtCore.Qt.MetaModifier:
+            return False
+
+        key = event.key()
+        if key in (QtCore.Qt.Key_Tab, QtCore.Qt.Key_Backtab):
+            return False
+
+        if key in (QtCore.Qt.Key_Minus, QtCore.Qt.Key_Underscore):
+            return cls.zoom_current_network_tab(zoom_in=False)
+        if key in (QtCore.Qt.Key_Plus, QtCore.Qt.Key_Equal):
+            return cls.zoom_current_network_tab(zoom_in=True)
+        if key == QtCore.Qt.Key_Up:
+            return cls.pan_current_network_tab("up")
+        if key == QtCore.Qt.Key_Down:
+            return cls.pan_current_network_tab("down")
+        if key == QtCore.Qt.Key_Left:
+            return cls.pan_current_network_tab("left")
+        if key == QtCore.Qt.Key_Right:
+            return cls.pan_current_network_tab("right")
+
+        return False
+
+    @classmethod
+    def _current_tab_widget(cls):
+        if cls.tab_widget is None:
+            return None
+        return cls.tab_widget.currentWidget()
+
+    @classmethod
+    def _current_network_view(cls):
+        widget = cls._current_tab_widget()
+        if isinstance(widget, QtWidgets.QGraphicsView):
+            return widget
+        return None
+
+    @classmethod
+    def zoom_current_network_tab(cls, zoom_in=True):
+        view = cls._current_network_view()
+        if view is None:
+            return False
+
+        factor = cls.KEYBOARD_ZOOM_IN_FACTOR if zoom_in else cls.KEYBOARD_ZOOM_OUT_FACTOR
+        current_scale = view.transform().m11()
+        if current_scale <= 0.0:
+            current_scale = 1.0
+        min_scale = getattr(view, "MIN_SCALE", 0.02)
+        max_scale = getattr(view, "MAX_SCALE", 50.0)
+        target_scale = max(min_scale, min(max_scale, current_scale * factor))
+        scale_factor = target_scale / current_scale
+        view.scale(scale_factor, scale_factor)
+        callback = getattr(view, "transform_changed_callback", None)
+        if callback is not None:
+            callback()
+        return True
+
+    @classmethod
+    def pan_current_network_tab(cls, direction):
+        view = cls._current_network_view()
+        if view is None:
+            return False
+
+        step = int(cls.KEYBOARD_PAN_PIXELS)
+        hbar = view.horizontalScrollBar()
+        vbar = view.verticalScrollBar()
+        if direction == "left":
+            hbar.setValue(hbar.value() - step)
+        elif direction == "right":
+            hbar.setValue(hbar.value() + step)
+        elif direction == "up":
+            vbar.setValue(vbar.value() - step)
+        elif direction == "down":
+            vbar.setValue(vbar.value() + step)
+        else:
+            return False
+
+        return True
 
     """
     y1 | [a, b, c, ...] component input or output values to be plotted on axis 1
