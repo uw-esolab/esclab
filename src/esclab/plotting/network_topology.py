@@ -67,10 +67,22 @@ class NetworkTopologyView:
     LEADER_MID_BAND_MIN = 0.40
     LEADER_MID_BAND_MAX = 0.60
     LEADER_BIAS_T_LOW = 0.35
-    LEADER_BIAS_T_HIGH = 0.65
-    LABEL_LINE_OVERLAP_PENALTY = 900.0
+    LEADER_BIAS_T_HIGH = 1-LEADER_BIAS_T_LOW
+    LABEL_LINE_OVERLAP_PENALTY = .2*900.0
+    PID_LAYER_X_SPACING = 250.0
+    PID_LAYER_Y_SPACING = 120.0
+    PID_BARYCENTRIC_SWEEPS = 4
+    EDGE_ORTH_CLEARANCE = 18.0
+    EDGE_ROUTE_LANE_SPACING = 12.0
+    EDGE_ROUTE_LAYER_CHANNEL_SPACING = 10.0
 
-    def __init__(self, model, tab_title="Network", include_subnetworks=True, show_connection_labels=True):
+    def __init__(
+        self,
+        model,
+        tab_title="Network",
+        include_subnetworks=True,
+        show_connection_labels=True,
+    ):
         self.model = model
         self.include_subnetworks = include_subnetworks
         self.show_connection_labels = show_connection_labels
@@ -84,6 +96,10 @@ class NetworkTopologyView:
         self._label_occupied_rects = []
         self._edge_label_links = []
         self._connector_segments = []
+        self._layout_layers = {}
+        self._edge_route_offsets = {}
+        self._feedback_edge_pairs = set()
+        self._layout_loopback_y = 0.0
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
         OnlinePlotter.tab_widget.addTab(self.view, tab_title)
@@ -100,6 +116,10 @@ class NetworkTopologyView:
         self._label_occupied_rects = []
         self._edge_label_links = []
         self._connector_segments = []
+        self._layout_layers = {}
+        self._edge_route_offsets = {}
+        self._feedback_edge_pairs = set()
+        self._layout_loopback_y = 0.0
         analysis = self.model._network_analysis
         if analysis is None:
             return
@@ -108,9 +128,13 @@ class NetworkTopologyView:
         if not components:
             return
 
-        positions = self._component_positions(components)
+        positions = self._component_positions_pid_flow(components, analysis)
+        if positions:
+            y_vals = [p.y() for p in positions.values()]
+            self._layout_loopback_y = max(y_vals) + self.PID_LAYER_Y_SPACING * 1.5
         edge_connections_by_pair = self._edge_connection_groups(analysis)
         edge_set = sorted(edge_connections_by_pair.keys(), key=lambda pair: (pair[0].name, pair[1].name))
+        self._edge_route_offsets = self._compute_edge_route_offsets(edge_set)
 
         plan_colors = self._plan_color_map(analysis) if self.include_subnetworks else {}
 
@@ -121,32 +145,48 @@ class NetworkTopologyView:
 
         edge_draw_data = []
         for src, dst in edge_set:
-            segment = self._compute_edge_segment(src, dst, positions[src], positions[dst])
-            if segment is None:
+            is_feedback = (src, dst) in self._feedback_edge_pairs
+            path_points = self._compute_edge_path(
+                src,
+                dst,
+                positions[src],
+                positions[dst],
+                route_offset=self._edge_route_offsets.get((src, dst), 0.0),
+                is_feedback=is_feedback,
+            )
+            if path_points is None or len(path_points) < 2:
                 continue
-            start, end = segment
+            label_segment = self._label_segment_for_path(path_points)
+            segments = self._path_segments(path_points)
             edge_draw_data.append(
                 (
                     src,
                     dst,
-                    start,
-                    end,
+                    path_points,
+                    label_segment,
+                    segments,
                     edge_connections_by_pair.get((src, dst), ()),
                     label_map[src],
                     label_map[dst],
+                    is_feedback,
                 )
             )
-            self._connector_segments.append((start, end))
+            # Feedback loopback arcs run outside the node field — don't include
+            # them in the segment registry used for forward-edge label avoidance.
+            if not is_feedback:
+                self._connector_segments.extend(segments)
 
-        for src, dst, start, end, edge_connections, src_label, dst_label in edge_draw_data:
+        for src, dst, path_points, label_segment, segments, edge_connections, src_label, dst_label, is_feedback in edge_draw_data:
             self._draw_edge(
                 src,
                 dst,
-                start,
-                end,
+                path_points,
+                label_segment,
+                segments,
                 edge_connections,
                 src_label,
                 dst_label,
+                is_feedback=is_feedback,
             )
 
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
@@ -253,19 +293,442 @@ class NetworkTopologyView:
             return name.split(".", 1)[1]
         return name
 
-    def _component_positions(self, components):
-        n = len(components)
-        radius = 220 + 10 * max(n - 8, 0)
-        center_x = 0
-        center_y = 0
-        positions = {}
+    def _component_positions_pid_flow(self, components, analysis):
+        if not components:
+            return {}
 
-        for i, comp in enumerate(components):
-            angle = (2.0 * math.pi * i) / max(n, 1)
-            x = center_x + radius * math.cos(angle)
-            y = center_y + radius * math.sin(angle)
-            positions[comp] = QtCore.QPointF(x, y)
+        order_index = {component: idx for idx, component in enumerate(components)}
+        nodes = list(components)
+        adjacency, reverse_adjacency = self._build_unique_adjacency(nodes, analysis, order_index)
+        if all(len(neighbors) == 0 for neighbors in adjacency.values()):
+            # No edges: arrange in a single row.
+            return {comp: QtCore.QPointF(i * self.PID_LAYER_X_SPACING, 0.0) for i, comp in enumerate(components)}
+
+        feedback_edges = self._find_feedback_edges(nodes, adjacency, order_index)
+        self._feedback_edge_pairs = set(feedback_edges)
+        reduced_adjacency, reduced_reverse = self._reduce_adjacency(adjacency, reverse_adjacency, feedback_edges)
+        layers = self._assign_layers(nodes, reduced_reverse, reduced_adjacency, order_index)
+        self._layout_layers = dict(layers)
+        layer_buckets = self._initial_layer_buckets(nodes, layers, order_index)
+        self._barycentric_reorder(layer_buckets, layers, reduced_adjacency, reduced_reverse, order_index)
+
+        max_height = max(len(layer_nodes) for layer_nodes in layer_buckets.values())
+        y_spacing = self.PID_LAYER_Y_SPACING
+        if max_height >= 8:
+            y_spacing *= 0.9
+        if max_height >= 12:
+            y_spacing *= 0.85
+
+        layer_y_positions = self._compute_layered_y_positions(
+            layer_buckets,
+            reduced_reverse,
+            reduced_adjacency,
+            layers,
+            y_spacing,
+            order_index,
+        )
+
+        positions = {}
+        for layer_id in sorted(layer_buckets):
+            layer_nodes = layer_buckets[layer_id]
+            for rank, component in enumerate(layer_nodes):
+                x = layer_id * self.PID_LAYER_X_SPACING
+                y = layer_y_positions.get(component)
+                if y is None:
+                    n_layer = len(layer_nodes)
+                    y = (rank - (n_layer - 1) * 0.5) * y_spacing
+                positions[component] = QtCore.QPointF(x, y)
+
         return positions
+
+    @staticmethod
+    def _compute_layered_y_positions(layer_buckets, reverse_adjacency, adjacency, layers, y_spacing, order_index):
+        y_positions = {}
+
+        for layer_id in sorted(layer_buckets):
+            layer_nodes = list(layer_buckets[layer_id])
+            if not layer_nodes:
+                continue
+
+            n_layer = len(layer_nodes)
+            default_targets = {
+                node: (idx - (n_layer - 1) * 0.5) * y_spacing
+                for idx, node in enumerate(layer_nodes)
+            }
+
+            targets = []
+            for rank_index, node in enumerate(layer_nodes):
+                preds = [pred for pred in reverse_adjacency[node] if pred in y_positions]
+                if preds:
+                    pred_mean = sum(y_positions[pred] for pred in preds) / float(len(preds))
+
+                    branch_targets = []
+                    for pred in sorted(preds, key=lambda item: order_index[item]):
+                        pred_y = y_positions[pred]
+                        siblings = [
+                            child
+                            for child in adjacency[pred]
+                            if layers.get(child) == layer_id
+                        ]
+                        siblings.sort(key=lambda item: order_index[item])
+                        if len(siblings) > 1 and node in siblings:
+                            sibling_rank = siblings.index(node) - (len(siblings) - 1) * 0.5
+                            branch_targets.append(pred_y + sibling_rank * y_spacing)
+                        else:
+                            branch_targets.append(pred_y)
+
+                    branch_mean = sum(branch_targets) / float(len(branch_targets))
+                    target = 0.65 * branch_mean + 0.20 * pred_mean + 0.15 * default_targets[node]
+                else:
+                    target = default_targets[node]
+                targets.append((target, rank_index, node))
+
+            targets.sort(key=lambda item: (item[0], item[1]))
+
+            assigned = []
+            assigned_targets = []
+            for target, _rank_index, node in targets:
+                y_val = target
+                if assigned and y_val - assigned[-1][0] < y_spacing:
+                    y_val = assigned[-1][0] + y_spacing
+                assigned.append((y_val, node))
+                assigned_targets.append(target)
+
+            center_target = sum(assigned_targets) / float(len(assigned_targets))
+            center_assigned = sum(y for y, _node in assigned) / float(len(assigned))
+            shift = center_target - center_assigned
+
+            for y_val, node in assigned:
+                y_positions[node] = y_val + shift
+
+        if len(y_positions) > 1:
+            y_vals = list(y_positions.values())
+            y_min = min(y_vals)
+            y_max = max(y_vals)
+            current_span = y_max - y_min
+            target_span = y_spacing * max(2.0, min(12.0, 1.5 + 0.75 * math.sqrt(len(y_positions))))
+
+            if current_span > 1e-9 and current_span < target_span:
+                center = 0.5 * (y_min + y_max)
+                scale = target_span / current_span
+                for node in list(y_positions.keys()):
+                    y_positions[node] = center + (y_positions[node] - center) * scale
+            elif current_span <= 1e-9:
+                # Degenerate case: all nodes collapsed into one y-level.
+                for node in y_positions:
+                    layer_id = layers.get(node, 0)
+                    y_positions[node] = ((layer_id % 5) - 2.0) * (0.5 * y_spacing)
+
+        return y_positions
+
+    def _compute_edge_route_offsets(self, edge_set):
+        outgoing = {}
+        incoming = {}
+        for src, dst in edge_set:
+            outgoing.setdefault(src, []).append(dst)
+            incoming.setdefault(dst, []).append(src)
+
+        out_rank = {
+            src: self._centered_rank_map(sorted(dsts, key=lambda comp: comp.name))
+            for src, dsts in outgoing.items()
+        }
+        in_rank = {
+            dst: self._centered_rank_map(sorted(srcs, key=lambda comp: comp.name))
+            for dst, srcs in incoming.items()
+        }
+
+        layer_pair_edges = {}
+        for src, dst in edge_set:
+            src_layer = self._layout_layers.get(src, 0)
+            dst_layer = self._layout_layers.get(dst, 0)
+            layer_pair_edges.setdefault((src_layer, dst_layer), []).append((src, dst))
+
+        pair_rank = {}
+        for pair_key, edges in layer_pair_edges.items():
+            sorted_edges = sorted(edges, key=lambda edge: (edge[0].name, edge[1].name))
+            n_edges = len(sorted_edges)
+            for idx, edge in enumerate(sorted_edges):
+                pair_rank[edge] = idx - (n_edges - 1) * 0.5
+
+        offsets = {}
+        for src, dst in edge_set:
+            src_rank = out_rank.get(src, {}).get(dst, 0.0)
+            dst_rank = in_rank.get(dst, {}).get(src, 0.0)
+            base = (src_rank + dst_rank) * self.EDGE_ROUTE_LANE_SPACING
+            base += pair_rank.get((src, dst), 0.0) * self.EDGE_ROUTE_LAYER_CHANNEL_SPACING
+
+            src_layer = self._layout_layers.get(src, 0)
+            dst_layer = self._layout_layers.get(dst, 0)
+            if dst_layer <= src_layer:
+                # Backward/cycle edges get a larger offset lane to avoid stacking.
+                if abs(base) < 1e-9:
+                    base = self.EDGE_ROUTE_LANE_SPACING
+                base *= 1.4
+
+            offsets[(src, dst)] = base
+
+        return offsets
+
+    @staticmethod
+    def _centered_rank_map(items):
+        n_items = len(items)
+        return {item: idx - (n_items - 1) * 0.5 for idx, item in enumerate(items)}
+
+    @staticmethod
+    def _build_unique_adjacency(nodes, analysis, order_index):
+        adjacency = {node: set() for node in nodes}
+        reverse_adjacency = {node: set() for node in nodes}
+        dedupe = set()
+
+        for src, dst, _source_output, _destination_input in analysis.get("edges", []):
+            if src not in adjacency or dst not in adjacency:
+                continue
+            key = (order_index[src], order_index[dst])
+            if key in dedupe:
+                continue
+            dedupe.add(key)
+            adjacency[src].add(dst)
+            reverse_adjacency[dst].add(src)
+
+        return adjacency, reverse_adjacency
+
+    @staticmethod
+    def _reduce_adjacency(adjacency, reverse_adjacency, feedback_edges):
+        reduced_adjacency = {node: set() for node in adjacency}
+        reduced_reverse = {node: set() for node in reverse_adjacency}
+
+        for src, neighbors in adjacency.items():
+            for dst in neighbors:
+                if (src, dst) in feedback_edges:
+                    continue
+                reduced_adjacency[src].add(dst)
+                reduced_reverse[dst].add(src)
+
+        return reduced_adjacency, reduced_reverse
+
+    @staticmethod
+    def _find_feedback_edges(nodes, adjacency, order_index):
+        # Score each edge: in_degree(src) - out_degree(dst).  Higher = more
+        # likely a return/recycle path (merge node flowing back to source node).
+        # Build the forward graph greedily in score-ascending order; any edge
+        # that would close a cycle becomes a feedback edge instead.
+        in_count = {node: 0 for node in nodes}
+        out_count = {node: len(adjacency[node]) for node in nodes}
+        for src in nodes:
+            for dst in adjacency[src]:
+                in_count[dst] += 1
+
+        all_edges = sorted(
+            ((src, dst) for src in nodes for dst in adjacency[src]),
+            key=lambda e: (in_count[e[0]] - out_count[e[1]], order_index[e[0]], order_index[e[1]]),
+        )
+
+        def reachable(start, target, adj):
+            if start is target:
+                return True
+            visited, stack = {start}, [start]
+            while stack:
+                node = stack.pop()
+                for nb in adj[node]:
+                    if nb is target:
+                        return True
+                    if nb not in visited:
+                        visited.add(nb)
+                        stack.append(nb)
+            return False
+
+        fwd_adjacency = {node: set() for node in nodes}
+        feedback_edges = set()
+        for src, dst in all_edges:
+            if reachable(dst, src, fwd_adjacency):
+                feedback_edges.add((src, dst))
+            else:
+                fwd_adjacency[src].add(dst)
+
+        return feedback_edges
+
+    @staticmethod
+    def _assign_layers(nodes, reverse_adjacency, adjacency, order_index):
+        in_degree = {node: len(reverse_adjacency[node]) for node in nodes}
+        queue = [node for node in nodes if in_degree[node] == 0]
+        queue.sort(key=lambda item: order_index[item])
+
+        topo_order = []
+        while queue:
+            node = queue.pop(0)
+            topo_order.append(node)
+            for neighbor in sorted(adjacency[node], key=lambda item: order_index[item]):
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+            queue.sort(key=lambda item: order_index[item])
+
+        if len(topo_order) < len(nodes):
+            emitted = set(topo_order)
+            topo_order.extend(node for node in nodes if node not in emitted)
+
+        layers = {node: 0 for node in nodes}
+        for node in topo_order:
+            preds = reverse_adjacency[node]
+            if preds:
+                layers[node] = max(layers[pred] + 1 for pred in preds)
+        return layers
+
+    @staticmethod
+    def _initial_layer_buckets(nodes, layers, order_index):
+        buckets = {}
+        for node in nodes:
+            buckets.setdefault(layers[node], []).append(node)
+        for layer_id in buckets:
+            buckets[layer_id].sort(key=lambda item: order_index[item])
+        return buckets
+
+    def _barycentric_reorder(self, layer_buckets, layers, adjacency, reverse_adjacency, order_index):
+        max_layer = max(layer_buckets) if layer_buckets else -1
+        if max_layer <= 0:
+            return
+
+        for _ in range(self.PID_BARYCENTRIC_SWEEPS):
+            for layer_id in range(1, max_layer + 1):
+                previous_layer = layer_buckets.get(layer_id - 1, [])
+                if not previous_layer:
+                    continue
+                previous_rank = {node: idx for idx, node in enumerate(previous_layer)}
+                self._reorder_layer(
+                    layer_buckets,
+                    layer_id,
+                    previous_rank,
+                    reverse_adjacency,
+                    layers,
+                    layer_id - 1,
+                    order_index,
+                )
+
+            for layer_id in range(max_layer - 1, -1, -1):
+                next_layer = layer_buckets.get(layer_id + 1, [])
+                if not next_layer:
+                    continue
+                next_rank = {node: idx for idx, node in enumerate(next_layer)}
+                self._reorder_layer(
+                    layer_buckets,
+                    layer_id,
+                    next_rank,
+                    adjacency,
+                    layers,
+                    layer_id + 1,
+                    order_index,
+                )
+
+            self._local_swap_improvement(layer_buckets, layers, adjacency, reverse_adjacency)
+
+    @staticmethod
+    def _reorder_layer(layer_buckets, layer_id, neighbor_rank, connectivity, layers, expected_neighbor_layer, order_index):
+        layer_nodes = list(layer_buckets.get(layer_id, []))
+        if len(layer_nodes) <= 1:
+            return
+
+        old_rank = {node: idx for idx, node in enumerate(layer_nodes)}
+
+        def barycenter(node):
+            neighbors = [
+                neighbor
+                for neighbor in connectivity[node]
+                if layers.get(neighbor) == expected_neighbor_layer and neighbor in neighbor_rank
+            ]
+            if not neighbors:
+                return float(old_rank[node])
+            return float(sum(neighbor_rank[neighbor] for neighbor in neighbors)) / float(len(neighbors))
+
+        layer_nodes.sort(key=lambda node: (barycenter(node), old_rank[node], order_index[node]))
+        layer_buckets[layer_id] = layer_nodes
+
+    def _local_swap_improvement(self, layer_buckets, layers, adjacency, reverse_adjacency):
+        if not layer_buckets:
+            return
+
+        for layer_id in sorted(layer_buckets):
+            layer_nodes = list(layer_buckets[layer_id])
+            if len(layer_nodes) <= 2:
+                continue
+
+            improved = True
+            while improved:
+                improved = False
+                idx = 0
+                while idx < len(layer_nodes) - 1:
+                    base_score = self._layer_crossing_score(
+                        layer_id,
+                        layer_nodes,
+                        layer_buckets,
+                        layers,
+                        adjacency,
+                        reverse_adjacency,
+                    )
+
+                    candidate_nodes = list(layer_nodes)
+                    candidate_nodes[idx], candidate_nodes[idx + 1] = candidate_nodes[idx + 1], candidate_nodes[idx]
+                    candidate_score = self._layer_crossing_score(
+                        layer_id,
+                        candidate_nodes,
+                        layer_buckets,
+                        layers,
+                        adjacency,
+                        reverse_adjacency,
+                    )
+
+                    if candidate_score < base_score:
+                        layer_nodes = candidate_nodes
+                        improved = True
+                    idx += 1
+
+            layer_buckets[layer_id] = layer_nodes
+
+    @staticmethod
+    def _layer_crossing_score(layer_id, layer_nodes, layer_buckets, layers, adjacency, reverse_adjacency):
+        rank_current = {node: idx for idx, node in enumerate(layer_nodes)}
+        score = 0
+
+        prev_nodes = layer_buckets.get(layer_id - 1, [])
+        if prev_nodes:
+            rank_prev = {node: idx for idx, node in enumerate(prev_nodes)}
+            edge_pairs = []
+            for src in prev_nodes:
+                for dst in adjacency[src]:
+                    if layers.get(dst) == layer_id and dst in rank_current:
+                        edge_pairs.append((rank_prev[src], rank_current[dst]))
+            score += NetworkTopologyView._count_pair_crossings(edge_pairs)
+
+        next_nodes = layer_buckets.get(layer_id + 1, [])
+        if next_nodes:
+            rank_next = {node: idx for idx, node in enumerate(next_nodes)}
+            edge_pairs = []
+            for src in layer_nodes:
+                for dst in adjacency[src]:
+                    if layers.get(dst) == layer_id + 1 and dst in rank_next:
+                        edge_pairs.append((rank_current[src], rank_next[dst]))
+            score += NetworkTopologyView._count_pair_crossings(edge_pairs)
+
+            # Also consider reverse links from next layer to current for coupled graphs.
+            edge_pairs = []
+            for dst in layer_nodes:
+                for src in reverse_adjacency[dst]:
+                    if layers.get(src) == layer_id + 1 and src in rank_next:
+                        edge_pairs.append((rank_current[dst], rank_next[src]))
+            score += NetworkTopologyView._count_pair_crossings(edge_pairs)
+
+        return score
+
+    @staticmethod
+    def _count_pair_crossings(edge_pairs):
+        crossings = 0
+        n = len(edge_pairs)
+        for i in range(n):
+            a1, b1 = edge_pairs[i]
+            for j in range(i + 1, n):
+                a2, b2 = edge_pairs[j]
+                if (a1 - a2) * (b1 - b2) < 0:
+                    crossings += 1
+        return crossings
 
     def _draw_node(self, component, center, label, color):
         width = self.NODE_WIDTH
@@ -321,15 +784,194 @@ class NetworkTopologyView:
 
         return start, end
 
-    def _draw_edge(self, src_component, dst_component, start, end, edge_connections, src_object_label, dst_object_label):
-        line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
-        line_pen.setWidth(2)
+    def _compute_edge_path(self, src_component, dst_component, src, dst, route_offset=0.0, is_feedback=False):
+        segment = self._compute_edge_segment(src_component, dst_component, src, dst)
+        if segment is None:
+            return None
 
-        self.scene.addLine(QtCore.QLineF(start, end), line_pen)
-        self._draw_arrowhead(start, end)
-        self._draw_edge_label(start, end, edge_connections, src_object_label, dst_object_label)
+        start, end = segment
+        src_rect = self._node_rects.get(src_component)
+        dst_rect = self._node_rects.get(dst_component)
+        if src_rect is None or dst_rect is None:
+            return [start, end]
 
-    def _draw_edge_label(self, start, end, edge_connections, src_object_label, dst_object_label):
+        if is_feedback:
+            return self._loopback_path(src_rect, dst_rect, src, dst)
+
+        start, end = self._preferred_horizontal_anchors(src_rect, dst_rect, src, dst)
+        path_points = self._orthogonal_path(start, end, route_offset=route_offset)
+        if len(path_points) < 2:
+            return [start, end]
+        return path_points
+
+    def _loopback_path(self, src_rect, dst_rect, src_center, dst_center):
+        """Route a return edge below the process spine (P&ID loopback convention)."""
+        clearance = self.EDGE_ORTH_CLEARANCE
+        start = QtCore.QPointF(src_rect.right(), src_center.y())
+        end = QtCore.QPointF(dst_rect.left(), dst_center.y())
+        x_out = src_rect.right() + clearance
+        x_in = dst_rect.left() - clearance
+        loopback_y = self._layout_loopback_y
+        path = [
+            start,
+            QtCore.QPointF(x_out, src_center.y()),
+            QtCore.QPointF(x_out, loopback_y),
+            QtCore.QPointF(x_in, loopback_y),
+            QtCore.QPointF(x_in, dst_center.y()),
+            end,
+        ]
+        return self._simplify_path(path)
+
+    @classmethod
+    def _preferred_horizontal_anchors(cls, src_rect, dst_rect, src_center, dst_center):
+        dx = dst_center.x() - src_center.x()
+        dy = dst_center.y() - src_center.y()
+
+        # For process-flow layout, prefer left/right entry/exit for readability.
+        if abs(dx) >= 1e-9:
+            if dx >= 0.0:
+                start = QtCore.QPointF(src_rect.right(), src_center.y())
+                end = QtCore.QPointF(dst_rect.left(), dst_center.y())
+            else:
+                start = QtCore.QPointF(src_rect.left(), src_center.y())
+                end = QtCore.QPointF(dst_rect.right(), dst_center.y())
+            return start, end
+
+        if dy >= 0.0:
+            return QtCore.QPointF(src_center.x(), src_rect.bottom()), QtCore.QPointF(dst_center.x(), dst_rect.top())
+        return QtCore.QPointF(src_center.x(), src_rect.top()), QtCore.QPointF(dst_center.x(), dst_rect.bottom())
+
+    @classmethod
+    def _orthogonal_path(cls, start, end, route_offset=0.0):
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+
+        if abs(dx) < 1e-9 or abs(dy) < 1e-9:
+            return [start, end]
+
+        clearance = cls.EDGE_ORTH_CLEARANCE
+        path = [start]
+
+        if abs(dx) >= abs(dy):
+            sign = 1.0 if dx >= 0.0 else -1.0
+            x_span = max(clearance, clearance + abs(route_offset))
+            x_out = start.x() + sign * x_span
+            x_in = end.x() - sign * x_span
+            y_track = (start.y() + end.y()) * 0.5 + route_offset
+            if (x_in - x_out) * sign < 0.0:
+                x_mid = (start.x() + end.x()) * 0.5 + 0.5 * route_offset
+                path.extend([
+                    QtCore.QPointF(x_mid, start.y()),
+                    QtCore.QPointF(x_mid, y_track),
+                    QtCore.QPointF(x_mid, end.y()),
+                ])
+            else:
+                path.extend([
+                    QtCore.QPointF(x_out, start.y()),
+                    QtCore.QPointF(x_out, y_track),
+                    QtCore.QPointF(x_in, y_track),
+                    QtCore.QPointF(x_in, end.y()),
+                ])
+        else:
+            sign = 1.0 if dy >= 0.0 else -1.0
+            y_span = max(clearance, clearance + abs(route_offset))
+            y_out = start.y() + sign * y_span
+            y_in = end.y() - sign * y_span
+            x_track = (start.x() + end.x()) * 0.5 + route_offset
+            if (y_in - y_out) * sign < 0.0:
+                y_mid = (start.y() + end.y()) * 0.5 + 0.5 * route_offset
+                path.extend([
+                    QtCore.QPointF(start.x(), y_mid),
+                    QtCore.QPointF(x_track, y_mid),
+                    QtCore.QPointF(end.x(), y_mid),
+                ])
+            else:
+                path.extend([
+                    QtCore.QPointF(start.x(), y_out),
+                    QtCore.QPointF(x_track, y_out),
+                    QtCore.QPointF(x_track, y_in),
+                    QtCore.QPointF(end.x(), y_in),
+                ])
+
+        path.append(end)
+        return cls._simplify_path(path)
+
+    @staticmethod
+    def _simplify_path(path_points):
+        if not path_points:
+            return []
+
+        simplified = [path_points[0]]
+        for point in path_points[1:]:
+            prev = simplified[-1]
+            if abs(point.x() - prev.x()) < 1e-9 and abs(point.y() - prev.y()) < 1e-9:
+                continue
+            simplified.append(point)
+
+        if len(simplified) <= 2:
+            return simplified
+
+        pruned = [simplified[0]]
+        for idx in range(1, len(simplified) - 1):
+            a = pruned[-1]
+            b = simplified[idx]
+            c = simplified[idx + 1]
+            collinear_x = abs(a.x() - b.x()) < 1e-9 and abs(b.x() - c.x()) < 1e-9
+            collinear_y = abs(a.y() - b.y()) < 1e-9 and abs(b.y() - c.y()) < 1e-9
+            if collinear_x or collinear_y:
+                continue
+            pruned.append(b)
+        pruned.append(simplified[-1])
+        return pruned
+
+    @staticmethod
+    def _path_segments(path_points):
+        segments = []
+        for idx in range(len(path_points) - 1):
+            a = path_points[idx]
+            b = path_points[idx + 1]
+            if QtCore.QLineF(a, b).length() >= 1e-9:
+                segments.append((a, b))
+        return segments
+
+    @staticmethod
+    def _label_segment_for_path(path_points):
+        segments = NetworkTopologyView._path_segments(path_points)
+        if not segments:
+            return None
+        return max(segments, key=lambda seg: QtCore.QLineF(seg[0], seg[1]).length())
+
+    def _draw_edge(self, src_component, dst_component, path_points, label_segment, own_segments, edge_connections, src_object_label, dst_object_label, is_feedback=False):
+        if is_feedback:
+            line_pen = QtGui.QPen(QtGui.QColor(140, 140, 140))
+            line_pen.setWidth(2)
+            line_pen.setStyle(QtCore.Qt.DashLine)
+        else:
+            line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
+            line_pen.setWidth(2)
+
+        if len(path_points) < 2:
+            return
+
+        for seg_start, seg_end in self._path_segments(path_points):
+            self.scene.addLine(QtCore.QLineF(seg_start, seg_end), line_pen)
+
+        arrow_start = path_points[-2]
+        arrow_end = path_points[-1]
+        self._draw_arrowhead(arrow_start, arrow_end)
+
+        if label_segment is None:
+            return
+        self._draw_edge_label(
+            label_segment[0],
+            label_segment[1],
+            edge_connections,
+            src_object_label,
+            dst_object_label,
+            own_segments=own_segments,
+        )
+
+    def _draw_edge_label(self, start, end, edge_connections, src_object_label, dst_object_label, own_segments=None):
         if not self.show_connection_labels or not edge_connections:
             return
 
@@ -366,7 +1008,7 @@ class NetworkTopologyView:
         center = QtCore.QPointF(mid.x() + nx * offset, mid.y() + ny * offset)
 
         text_rect = text_item.boundingRect()
-        placed_rect = self._place_label_rect(center, text_rect, nx, ny, own_segment=(start, end))
+        placed_rect = self._place_label_rect(center, text_rect, nx, ny, own_segments=own_segments)
         text_item.setPos(placed_rect.left(), placed_rect.top())
         self._register_edge_leader(text_item, start, end)
         self._label_occupied_rects.append(self._expand_rect(placed_rect, 4.0))
@@ -554,7 +1196,7 @@ class NetworkTopologyView:
             "</html>"
         )
 
-    def _place_label_rect(self, center, text_rect, nx, ny, own_segment=None):
+    def _place_label_rect(self, center, text_rect, nx, ny, own_segments=None):
         base_offset = 12.0
         step = 12.0
         max_tries = 12
@@ -578,7 +1220,7 @@ class NetworkTopologyView:
                 text_rect.width(),
                 text_rect.height(),
             )
-            penalty = self._placement_penalty(rect, own_segment=own_segment)
+            penalty = self._placement_penalty(rect, own_segments=own_segments)
             if penalty < best_penalty:
                 best_penalty = penalty
                 best_rect = rect
@@ -587,7 +1229,7 @@ class NetworkTopologyView:
 
         return best_rect
 
-    def _placement_penalty(self, rect, own_segment=None):
+    def _placement_penalty(self, rect, own_segments=None):
         padded_rect = self._expand_rect(rect, 2.0)
         penalty = 0.0
 
@@ -600,7 +1242,10 @@ class NetworkTopologyView:
                 penalty += self._intersection_area(padded_rect, used_rect) + 500.0
 
         for seg_start, seg_end in self._connector_segments:
-            if own_segment is not None and self._segments_match(seg_start, seg_end, own_segment[0], own_segment[1]):
+            if own_segments is not None and any(
+                self._segments_match(seg_start, seg_end, own_seg[0], own_seg[1])
+                for own_seg in own_segments
+            ):
                 continue
             if self._segment_intersects_rect(seg_start, seg_end, padded_rect):
                 penalty += self.LABEL_LINE_OVERLAP_PENALTY

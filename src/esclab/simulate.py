@@ -539,7 +539,16 @@ class Model:
 
         self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title))
 
-    def add_network_graph(self, show_tab=True, save_png=False, save_svg=False, path_base=None, include_subnetworks=True, show_connection_labels=True, tab_title="Network"):
+    def add_network_graph(
+        self,
+        show_tab=True,
+        save_png=False,
+        save_svg=False,
+        path_base=None,
+        include_subnetworks=True,
+        show_connection_labels=True,
+        tab_title="Network",
+    ):
         """Create a topology graph tab and optionally export it to image files.
 
         This is intentionally Python-only and uses the existing PyQt plotting window.

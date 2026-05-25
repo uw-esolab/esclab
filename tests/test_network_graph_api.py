@@ -1,4 +1,5 @@
 from esclab.simulate import Component, Model
+from esclab.plotting.network_topology import NetworkTopologyView
 
 
 class _Source(Component):
@@ -54,3 +55,31 @@ def test_add_network_graph_requires_path_for_export():
         assert "path_base" in str(exc)
     else:
         raise AssertionError("Expected ValueError when save_png=True without path_base")
+
+
+def test_pid_flow_layered_y_positions_spread_branches_and_recenter_merge():
+    # Layer 0: s
+    # Layer 1: split -> a, b
+    # Layer 2: merge -> m
+    s = object()
+    a = object()
+    b = object()
+    m = object()
+
+    layer_buckets = {
+        0: [s],
+        1: [a, b],
+        2: [m],
+    }
+    reverse_adjacency = {
+        s: set(),
+        a: {s},
+        b: {s},
+        m: {a, b},
+    }
+
+    y = NetworkTopologyView._compute_layered_y_positions(layer_buckets, reverse_adjacency, y_spacing=100.0)
+
+    assert y[a] < y[b]
+    assert (y[b] - y[a]) >= 100.0
+    assert abs(y[m] - 0.0) < 1e-9
