@@ -206,6 +206,7 @@ class Component:
                         object.__setattr__(self, attr_name, copy.copy(attr_val))
         self.trnsys_type = ''     # TRNSYS type number, if applicable <string>
         self.name = ''
+        self.context = None  # Set by Model during the matrix-build phase; None otherwise.
         return 
     
     def __get_io_items(self, item_type, connected_only=False):
@@ -341,31 +342,10 @@ class Component:
     def postsim_calcs(self):
         pass
 
-    def add_network_equations(self, context):
-        """
-        Optional. Implement in a subclass to participate in coupled network solving.
-
-        Called when this component is part of a coupled subnetwork (cycle, branching, or merging).
-        Add one or more linear equations describing this component's physical behavior using
-        context.add_equation().
-
-        Parameters
-        ----------
-        context : NetworkEquationContext
-            Provides:
-            - add_equation(terms, rhs=0.0): add one equation. terms maps Output objects to
-              float coefficients. Outputs not in the unknown set are automatically moved to
-              the right-hand side using their current .v value.
-            - is_unknown(output): True if the given Output is a network unknown.
-            - source(input_port): the source Output connected to an Input port.
-            - unknowns: frozenset of all unknown Output objects in this subnetwork.
-        """
-        pass
-
 
 # =========================================================================================
 class NetworkEquationContext:
-    """Context object passed to Component.add_network_equations().
+    """Context object passed to components during the matrix-build phase of each iteration.
 
     API provider for components to add their linear equations into the matrix solver.
     """
@@ -725,7 +705,9 @@ class Model:
             input_owner_by_id=self._input_owner_by_id,
         )
         for component in plan["components"]:
-            component.add_network_equations(eq_context)
+            component.context = eq_context
+            component.calculate()
+            component.context = None
 
         if not A_rows:
             return False, False
@@ -978,9 +960,8 @@ class Model:
     def _apply_network_iteration(self):
         """Apply one network-level iteration update inside the existing step() loop.
 
-        Coupled subnetworks are solved when components implement add_network_equations()
-        and connections are marked with solve_group, providing enough equations for a
-        stable linear solve.
+        Coupled subnetworks are solved for components that are part of a solve_group and
+        contribute equations via ``if self.context is not None:`` inside calculate().
         """
         if self._network_analysis is None:
             return False
@@ -998,8 +979,8 @@ class Model:
 
         if coupled_count > 0 and not equations_added_any and not self._network_solver_warned:
             print("Network solver: coupled networks detected but no equations were added. "
-                "Implement add_network_equations() on component classes and mark connections "
-                "with solve_group to enable solving.")
+                "Mark connections with solve_group and contribute equations inside calculate() "
+                "using 'if self.context is not None:' to enable solving.")
             self._network_solver_warned = True
 
         return solved_any
@@ -1093,15 +1074,15 @@ class Model:
             all_converged = True 
             self.iteration += 1
 
-            # Call the network solver here to update all coupled components before each 
-            # iteration. This allows guess propagation to occur across the entire coupled 
-            # network, which can improve convergence in cases where simple sequential 
-            # updates are not sufficient. The network solver calls add_network_equations() 
-            # on each component; components that do not implement it contribute no equations.
-            # Coefficients used in the matrix inversion are based on the values of connections 
-            # at the start of the iteration, so the network iteration is effectively a 
-            # "Jacobi" style update that does not interfere with the main loop's sequential 
-            # update logic.
+            # Call the network solver here to update all coupled components before each
+            # iteration. This allows guess propagation to occur across the entire coupled
+            # network, which can improve convergence in cases where simple sequential
+            # updates are not sufficient. Components contribute equations by checking
+            # ``if self.context is not None:`` inside calculate(); the Model sets
+            # self.context to the NetworkEquationContext before the call and clears it
+            # afterward. Coefficients are based on values at the start of the iteration
+            # (Jacobi-style), though components can compute fresher coefficients from
+            # their inputs before the context check for a Gauss-Seidel effect.
             network_updated = self._apply_network_iteration()
             if network_updated:
                 all_converged = False

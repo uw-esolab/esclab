@@ -6,11 +6,10 @@ frequency range to appear at the resistive load.
 To call the circuit a "hi-pass" or "low-pass" filter, we can swap the positions of the 
 inductor and capacitor. Use the is_hipass variable to select which configuration to simulate.
 
-From a simulation perspective, note that the system is again solved using the matrix 
-inversion capability, and the voltage signal in VoltageSource is time-varying and recalculated
-at each timestep. To get this to work properly, the calculations should be carried out inside 
-the add_network_equations() method of VoltageSource rather than in calculate(), since the 
-voltage value is needed during the network solve to determine the system state at each timestep.
+From a simulation perspective, note that the system is solved using the matrix inversion
+capability, and the voltage signal in VoltageSource is time-varying and recalculated at
+each timestep. The time-varying voltage is computed inside calculate() when self.context
+is not None (the matrix-build phase), so the matrix always uses the current timestep value.
 """
 
 # Hi pass or low-pass RLC circuit 
