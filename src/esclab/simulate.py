@@ -493,7 +493,7 @@ class Model:
         tol_abs_global = 1.e-4
         max_iterations = 100 
         learn_rate = None  # if not None, replaces individual connection learn rates when connecting components
-        
+        progress_update = 200  # Minimum time between terminal progress updates, in milliseconds        
         def __init__(self):
             pass
     # End class Settings -----------------------------------------------------
@@ -525,6 +525,8 @@ class Model:
         self._network_solver_warned = False
         self._network_views = []
         self._last_progress_line_len = 0
+        self._last_progress_step = -1
+        self._last_progress_wall_clock = 0.0
         return
     
     def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None):
@@ -1124,20 +1126,33 @@ class Model:
         for plotter in self.plotters:
             plotter.log_step(self.time, conv_fraction, iter_fraction)
 
+        # Keep Qt tabs responsive without letting GUI activity dominate step time.
+        Model.OnlinePlotter.process_ui_events()
+
         self.time += self.settings.timestep
         self.is_first_step = False
 
         # Terminal update
-        percent = (self.time / (self.settings.stop_time - self.settings.start_time)) * 100
-        if int(percent*1000) % 10 == 0:
+        elapsed = self.time - self.settings.start_time
+        duration = self.settings.stop_time - self.settings.start_time
+        percent = np.clip((elapsed / duration) * 100 if duration > 0 else 100.0, 0.0, 100.0)
+        progress_step = int(round(elapsed / self.settings.timestep)) if self.settings.timestep > 0 else 0
+        now_clock = time.time()
+        should_print = (
+            progress_step != self._last_progress_step and
+            ((now_clock - self._last_progress_wall_clock) >= self.settings.progress_update / 1000.0 or percent >= 100.0)
+        )
+        if should_print:
             bar_width = 30
             n_fill = min(bar_width, max(0, int((percent / 100.0) * bar_width)))
             bar = '█' * n_fill + '-' * (bar_width - n_fill)
-            line = f'[{bar}] {percent:5.1f}% | Sim {self.time:.1f}s | Clock {time.time() - self._start_time_wall_clock:.1f}s'
+            line = f'[{bar}] {percent:5.1f}% | Sim {self.time:.1f}s | Clock {now_clock - self._start_time_wall_clock:.1f}s'
             pad = max(0, self._last_progress_line_len - len(line))
             sys.stdout.write('\r' + line + (' ' * pad))
             sys.stdout.flush()
             self._last_progress_line_len = len(line)
+            self._last_progress_step = progress_step
+            self._last_progress_wall_clock = now_clock
 
         return 
 

@@ -1,6 +1,7 @@
 import numpy as np
 import pyqtgraph as qtg
 from pyqtgraph.Qt import QtCore, QtWidgets, QtGui
+import time
 
 
 class _AxisLockedViewBox(qtg.ViewBox):
@@ -45,6 +46,9 @@ class OnlinePlotter:
     font_size_pt = 10
     min_font_size_pt = 6
     max_font_size_pt = 30
+    UI_EVENT_PROCESS_INTERVAL_SEC = 0.02
+    UI_EVENT_PROCESS_BUDGET_MS = 3
+    _last_ui_event_process = 0.0
 
     @classmethod
     def ensure_window(cls, plotter_size=(0.9, 0.9)):
@@ -498,8 +502,6 @@ class OnlinePlotter:
         )
         self.ax_iter.addItem(self._iter_bar_item)
 
-        self.app.processEvents()
-
     def preallocate(self, n_steps, timestep):
         self._fill_idx = 0
         self._timestep = timestep
@@ -611,3 +613,21 @@ class OnlinePlotter:
                 plotter._tooltip_last_idx = -1
         if cls.tooltip_button is not None:
             cls.tooltip_button.setChecked(value)
+
+    @classmethod
+    def process_ui_events(cls, force=False):
+        """Process Qt events with throttling so UI activity cannot starve simulation."""
+        if cls.app is None:
+            return
+
+        now = time.perf_counter()
+        if not force and (now - cls._last_ui_event_process) < cls.UI_EVENT_PROCESS_INTERVAL_SEC:
+            return
+
+        try:
+            cls.app.processEvents(QtCore.QEventLoop.AllEvents, cls.UI_EVENT_PROCESS_BUDGET_MS)
+        except TypeError:
+            # Compatibility fallback for bindings without max-time overload.
+            cls.app.processEvents()
+
+        cls._last_ui_event_process = now
