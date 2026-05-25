@@ -346,7 +346,7 @@ class Component:
         Optional. Implement in a subclass to participate in coupled network solving.
 
         Called when this component is part of a coupled subnetwork (cycle, branching, or merging).
-        Stamp one or more linear equations describing this component's physical behavior using
+        Add one or more linear equations describing this component's physical behavior using
         context.add_equation().
 
         Parameters
@@ -367,14 +367,43 @@ class Component:
 class NetworkEquationContext:
     """Context object passed to Component.add_network_equations().
 
-    Provides a clean API for components to stamp linear equations into the coupled
-    subnetwork solve without interacting with numpy or the matrix directly.
+    API provider for components to add their linear equations into the matrix solver.
     """
 
-    def __init__(self, unknown_index, n_unknown, _add_row_fn):
+    def __init__(self, unknown_index, n_unknown, _add_row_fn, input_owner_by_id=None):
         self._unknown_index = unknown_index
         self._n_unknown = n_unknown
         self._add_row_fn = _add_row_fn
+        self._input_owner_by_id = {} if input_owner_by_id is None else input_owner_by_id
+
+    def _describe_input_port(self, input_port):
+        input_name = str(getattr(input_port, "name", "") or "").strip()
+        owner = self._input_owner_by_id.get(id(input_port))
+
+        instance_name = ""
+        if owner is not None:
+            instance_name = str(getattr(owner, "name", "") or "").strip()
+            if not instance_name:
+                instance_name = type(owner).__name__
+
+        if not input_name and owner is not None:
+            for attr_name in dir(owner):
+                try:
+                    if getattr(owner, attr_name) is input_port:
+                        input_name = f"{instance_name}.{attr_name}" if instance_name else attr_name
+                        break
+                except Exception:
+                    continue
+
+        if not instance_name and input_name and "." in input_name:
+            instance_name = input_name.split(".", 1)[0]
+
+        if not input_name:
+            input_name = "<unnamed input>"
+        if not instance_name:
+            instance_name = "<unknown component>"
+
+        return input_name, instance_name
 
     def add_equation(self, terms, rhs=0.0):
         """Add one equation to the linear system.
@@ -391,6 +420,13 @@ class NetworkEquationContext:
         row = np.zeros(self._n_unknown)
         adjusted_rhs = float(rhs)
         for output, coeff in terms.items():
+            if output is None:
+                raise RuntimeError(
+                    "Network equation contains an unconnected source term (None). "
+                    "This usually means context.source(input_port) was used on an input "
+                    "that is not connected. Be sure to add a connection for that input "
+                    "before running the simulation."
+                )
             idx = self._unknown_index.get(output)
             if idx is not None:
                 row[idx] += float(coeff)
@@ -403,10 +439,19 @@ class NetworkEquationContext:
         return output in self._unknown_index
 
     def source(self, input_port):
-        """Return the source Output connected to the given Input port, or None."""
+        """Return the source Output connected to input_port.
+
+        Raises RuntimeError when input_port is not connected, with details about
+        the offending input and component instance to aid debugging.
+        """
         if input_port.connection is not None:
             return input_port.connection.source
-        return None
+        input_name, instance_name = self._describe_input_port(input_port)
+        raise RuntimeError(
+            "Network equation requested context.source(input_port) for an unconnected input. "
+            f"Input: {input_name}. Component instance: {instance_name}. "
+            "Add the missing connection before running the simulation."
+        )
 
     @property
     def unknowns(self):
@@ -620,7 +665,12 @@ class Model:
             A_rows.append(row)
             b_rows.append(float(rhs))
 
-        eq_context = NetworkEquationContext(unknown_index, n_unknown, _add_row)
+        eq_context = NetworkEquationContext(
+            unknown_index,
+            n_unknown,
+            _add_row,
+            input_owner_by_id=self._input_owner_by_id,
+        )
         for component in plan["components"]:
             component.add_network_equations(eq_context)
 
