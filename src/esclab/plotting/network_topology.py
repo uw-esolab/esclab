@@ -81,6 +81,8 @@ class NetworkTopologyView:
     EDGE_ORTH_CLEARANCE = 18.0
     EDGE_ROUTE_LANE_SPACING = 12.0
     EDGE_ROUTE_LAYER_CHANNEL_SPACING = 10.0
+    EDGE_NODE_AVOID_MARGIN = 6.0
+    EDGE_NODE_INTERSECTION_PENALTY = 10000.0
 
     def __init__(
         self,
@@ -909,9 +911,108 @@ class NetworkTopologyView:
 
         start, end = self._preferred_horizontal_anchors(src_rect, dst_rect, src, dst)
         path_points = self._orthogonal_path(start, end, route_offset=route_offset)
+        path_points = self._reroute_path_around_nodes(
+            path_points,
+            start,
+            end,
+            src_component,
+            dst_component,
+            route_offset=route_offset,
+        )
         if len(path_points) < 2:
             return [start, end]
         return path_points
+
+    def _reroute_path_around_nodes(self, path_points, start, end, src_component, dst_component, route_offset=0.0):
+        """Reroute H-V-H paths when their jog cuts through neighboring nodes."""
+        if len(path_points) < 2:
+            return path_points
+        if abs(start.y() - end.y()) < 1e-9:
+            return path_points
+
+        obstacle_rects = []
+        margin = self.EDGE_NODE_AVOID_MARGIN
+        for component, rect in self._node_rects.items():
+            if component is src_component or component is dst_component:
+                continue
+            obstacle_rects.append(self._expand_rect(rect, margin))
+
+        if not obstacle_rects:
+            return path_points
+        if not self._path_intersects_rects(path_points, obstacle_rects):
+            return path_points
+
+        x_base = (start.x() + end.x()) * 0.5 + route_offset
+        if end.x() >= start.x():
+            x_min, x_max = start.x(), end.x()
+            x_base = max(x_min, min(x_base, x_max))
+        else:
+            x_min, x_max = end.x(), start.x()
+            x_base = max(x_min, min(x_base, x_max))
+
+        clearance = max(self.EDGE_ORTH_CLEARANCE, self.EDGE_ORTH_CLEARANCE + 0.25 * abs(route_offset))
+        lane_step = max(8.0, self.EDGE_ROUTE_LANE_SPACING)
+
+        candidate_xs = [x_base]
+        vertical_probe_start = QtCore.QPointF(x_base, start.y())
+        vertical_probe_end = QtCore.QPointF(x_base, end.y())
+        for rect in obstacle_rects:
+            if self._segment_intersects_rect(vertical_probe_start, vertical_probe_end, rect):
+                candidate_xs.append(rect.left() - clearance)
+                candidate_xs.append(rect.right() + clearance)
+
+        for i in range(1, 8):
+            delta = i * lane_step
+            candidate_xs.append(x_base - delta)
+            candidate_xs.append(x_base + delta)
+
+        unique_candidate_xs = []
+        for x_val in candidate_xs:
+            if all(abs(x_val - existing) > 1e-9 for existing in unique_candidate_xs):
+                unique_candidate_xs.append(x_val)
+
+        best_path = path_points
+        best_score = self._edge_path_obstacle_score(best_path, obstacle_rects, x_base, x_base, x_min, x_max)
+        for x_mid in unique_candidate_xs:
+            candidate_path = self._simplify_path(
+                [
+                    start,
+                    QtCore.QPointF(x_mid, start.y()),
+                    QtCore.QPointF(x_mid, end.y()),
+                    end,
+                ]
+            )
+            score = self._edge_path_obstacle_score(candidate_path, obstacle_rects, x_mid, x_base, x_min, x_max)
+            if score < best_score:
+                best_score = score
+                best_path = candidate_path
+
+        return best_path
+
+    def _edge_path_obstacle_score(self, path_points, obstacle_rects, x_mid, x_base, x_min, x_max):
+        score = 0.0
+        total_length = 0.0
+        for seg_start, seg_end in self._path_segments(path_points):
+            total_length += QtCore.QLineF(seg_start, seg_end).length()
+            for rect in obstacle_rects:
+                if self._segment_intersects_rect(seg_start, seg_end, rect):
+                    score += self.EDGE_NODE_INTERSECTION_PENALTY
+
+        if x_mid < x_min:
+            score += 2000.0 + 50.0 * (x_min - x_mid)
+        elif x_mid > x_max:
+            score += 2000.0 + 50.0 * (x_mid - x_max)
+
+        score += 0.02 * total_length
+        score += 0.25 * abs(x_mid - x_base)
+        return score
+
+    def _path_intersects_rects(self, path_points, rects):
+        for seg_start, seg_end in self._path_segments(path_points):
+            for rect in rects:
+                if self._segment_intersects_rect(seg_start, seg_end, rect):
+                    return True
+        return False
 
     def _loopback_path(self, src_rect, dst_rect, src_center, dst_center):
         """Route a return edge below the process spine (P&ID loopback convention)."""
