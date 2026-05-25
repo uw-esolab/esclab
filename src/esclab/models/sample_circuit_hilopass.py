@@ -8,7 +8,7 @@ inductor and capacitor. Use the is_hipass variable to select which configuration
 
 From a simulation perspective, note that the system is solved using the matrix inversion
 capability, and the voltage signal in VoltageSource is time-varying and recalculated at
-each timestep. The time-varying voltage is computed inside calculate() when self.context
+each timestep. The time-varying voltage is computed inside calculate() when self.coupled_eqs
 is not None (the matrix-build phase), so the matrix always uses the current timestep value.
 """
 

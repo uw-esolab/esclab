@@ -206,7 +206,7 @@ class Component:
                         object.__setattr__(self, attr_name, copy.copy(attr_val))
         self.trnsys_type = ''     # TRNSYS type number, if applicable <string>
         self.name = ''
-        self.context = None  # Set by Model during the matrix-build phase; None otherwise.
+        self.coupled_eqs = None  # Set by Model during the matrix-build phase; None otherwise.
         return 
     
     def __get_io_items(self, item_type, connected_only=False):
@@ -705,9 +705,9 @@ class Model:
             input_owner_by_id=self._input_owner_by_id,
         )
         for component in plan["components"]:
-            component.context = eq_context
+            component.coupled_eqs = eq_context
             component.calculate()
-            component.context = None
+            component.coupled_eqs = None
 
         if not A_rows:
             return False, False
@@ -961,7 +961,7 @@ class Model:
         """Apply one network-level iteration update inside the existing step() loop.
 
         Coupled subnetworks are solved for components that are part of a solve_group and
-        contribute equations via ``if self.context is not None:`` inside calculate().
+        contribute equations via ``if self.coupled_eqs is not None:`` inside calculate().
         """
         if self._network_analysis is None:
             return False
@@ -980,7 +980,7 @@ class Model:
         if coupled_count > 0 and not equations_added_any and not self._network_solver_warned:
             print("Network solver: coupled networks detected but no equations were added. "
                 "Mark connections with solve_group and contribute equations inside calculate() "
-                "using 'if self.context is not None:' to enable solving.")
+                "using 'if self.coupled_eqs is not None:' to enable solving.")
             self._network_solver_warned = True
 
         return solved_any
@@ -1078,8 +1078,8 @@ class Model:
             # iteration. This allows guess propagation to occur across the entire coupled
             # network, which can improve convergence in cases where simple sequential
             # updates are not sufficient. Components contribute equations by checking
-            # ``if self.context is not None:`` inside calculate(); the Model sets
-            # self.context to the NetworkEquationContext before the call and clears it
+            # ``if self.coupled_eqs is not None:`` inside calculate(); the Model sets
+            # self.coupled_eqs to the NetworkEquationContext before the call and clears it
             # afterward. Coefficients are based on values at the start of the iteration
             # (Jacobi-style), though components can compute fresher coefficients from
             # their inputs before the context check for a Gauss-Seidel effect.
