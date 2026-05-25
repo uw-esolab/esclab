@@ -125,11 +125,13 @@ model.add_plotter([model.vs.u_out, model.r.u_out, model.l.u_out, model.c.u_out, 
                   y1label="Voltage (V)", 
                   update_every=5,
                   nmax_points=1000,
+                  show_live=True,
                   )
 model.add_plotter([model.vs.i_out, model.r.i_out, model.l.i_out, model.c.i_out, model.vs.i_in], 
                   y1label="Current (A)", 
                   update_every=5,
                   nmax_points=1000,
+                  show_live=True,
                   )
 
 model.add_network_graph()

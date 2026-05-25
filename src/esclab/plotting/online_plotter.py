@@ -59,7 +59,7 @@ class OnlinePlotter:
             return cls.main_window
 
         main_window = QtWidgets.QMainWindow()
-        main_window.setWindowTitle("Simulation Plot")
+        main_window.setWindowTitle("ᴇꜱᴄʟᴀʙ ☀")
         tab_widget = QtWidgets.QTabWidget()
 
         controls_widget = QtWidgets.QWidget()
