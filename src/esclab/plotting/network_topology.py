@@ -62,6 +62,11 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
 class NetworkTopologyView:
     NODE_WIDTH = 150
     NODE_HEIGHT = 56
+    SCENE_RECT_PADDING = 40.0
+    INITIAL_VIEW_FIT_MARGIN = 8.0
+    INITIAL_VIEW_SCALE_BOOST = 1.10
+    LAYOUT_ASPECT_STRETCH_TRIGGER = 1.10
+    MAX_VERTICAL_LAYOUT_STRETCH = 2.00
     CONNECTION_LABEL_SEPARATOR = "→"
     # Alternative if preferred: "▶"
     LEADER_MID_BAND_MIN = 0.40
@@ -129,6 +134,7 @@ class NetworkTopologyView:
             return
 
         positions = self._component_positions_pid_flow(components, analysis)
+        positions = self._stretch_layout_for_viewport(positions)
         if positions:
             y_vals = [p.y() for p in positions.values()]
             self._layout_loopback_y = max(y_vals) + self.PID_LAYER_Y_SPACING * 1.5
@@ -189,10 +195,112 @@ class NetworkTopologyView:
                 is_feedback=is_feedback,
             )
 
-        self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
-        self.view.fitInView(self.view.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        # Initial framing: fit to core graph geometry (nodes + routed edges),
+        # not to label/leader extents, so the process network fills the view.
+        graph_fit_rect = self._graph_fit_rect(edge_draw_data)
+        scene_padding = self.SCENE_RECT_PADDING
+        self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-scene_padding, -scene_padding, scene_padding, scene_padding))
+        self.view.fitInView(graph_fit_rect, QtCore.Qt.KeepAspectRatio)
+        if self.INITIAL_VIEW_SCALE_BOOST > 1.0:
+            boost = self.INITIAL_VIEW_SCALE_BOOST
+            current_scale = self.view.transform().m11()
+            max_scale = self.view.MAX_SCALE if self.view.MAX_SCALE > 0.0 else current_scale * boost
+            if current_scale > 0.0:
+                capped_boost = min(boost, max_scale / current_scale)
+                if capped_boost > 1.0:
+                    self.view.scale(capped_boost, capped_boost)
         self._refresh_node_label_fonts()
+
+        # Place edge labels after fitInView so label scene extents are computed
+        # with the final transform, keeping label offsets stable across zoom.
+        for src, dst, path_points, label_segment, segments, edge_connections, src_label, dst_label, is_feedback in edge_draw_data:
+            if label_segment is None:
+                continue
+            self._draw_edge_label(
+                label_segment[0],
+                label_segment[1],
+                edge_connections,
+                src_label,
+                dst_label,
+                own_segments=segments,
+            )
+
         self._update_edge_leaders()
+
+        # Expand scene bounds after labels/leaders are in place so panning can
+        # still reach all annotations even though initial fit ignores them.
+        self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-scene_padding, -scene_padding, scene_padding, scene_padding))
+
+    def _graph_fit_rect(self, edge_draw_data):
+        """Build a fit rect from nodes and edge paths only.
+
+        Labels and leader lines are intentionally excluded so they do not force
+        an overly zoomed-out initial framing. Feedback loopback arcs are also
+        excluded because they are decorative return paths that can be very long
+        and would otherwise dominate the initial zoom.
+        """
+        fit_rect = QtCore.QRectF()
+        has_geometry = False
+
+        for node_rect in self._node_rects.values():
+            fit_rect = node_rect if not has_geometry else fit_rect.united(node_rect)
+            has_geometry = True
+
+        for _, _, path_points, _, _, _, _, _, is_feedback in edge_draw_data:
+            if is_feedback:
+                continue
+            for point in path_points:
+                point_rect = QtCore.QRectF(point.x(), point.y(), 0.0, 0.0)
+                fit_rect = point_rect if not has_geometry else fit_rect.united(point_rect)
+                has_geometry = True
+
+        if not has_geometry:
+            fallback = self.scene.itemsBoundingRect()
+            if fallback.isNull():
+                return QtCore.QRectF(-1.0, -1.0, 2.0, 2.0)
+            fit_rect = fallback
+
+        margin = self.INITIAL_VIEW_FIT_MARGIN
+        return fit_rect.adjusted(-margin, -margin, margin, margin)
+
+    def _stretch_layout_for_viewport(self, positions):
+        """Vertically stretch wide layouts so they better fill the viewport.
+
+        The layered process layout can be much wider than tall, which leaves
+        large unused vertical space after fit-in-view. Stretching y around the
+        layout centroid improves initial screen utilization while preserving left
+        to right ordering and relative vertical ranks.
+        """
+        if not positions or len(positions) < 2:
+            return positions
+
+        xs = [point.x() for point in positions.values()]
+        ys = [point.y() for point in positions.values()]
+        width = (max(xs) - min(xs)) + self.NODE_WIDTH
+        height = (max(ys) - min(ys)) + self.NODE_HEIGHT
+        if width <= 1e-9 or height <= 1e-9:
+            return positions
+
+        graph_aspect = width / height
+        viewport = self.view.viewport().size()
+        viewport_width = max(1, viewport.width())
+        viewport_height = max(1, viewport.height())
+        target_aspect = viewport_width / viewport_height
+        if target_aspect <= 1e-9:
+            target_aspect = 16.0 / 9.0
+
+        if graph_aspect <= target_aspect * self.LAYOUT_ASPECT_STRETCH_TRIGGER:
+            return positions
+
+        stretch = min(self.MAX_VERTICAL_LAYOUT_STRETCH, graph_aspect / target_aspect)
+        if stretch <= 1.0:
+            return positions
+
+        y_center = 0.5 * (max(ys) + min(ys))
+        return {
+            comp: QtCore.QPointF(point.x(), y_center + (point.y() - y_center) * stretch)
+            for comp, point in positions.items()
+        }
 
     def apply_font_size(self):
         # Re-layout edge labels so collision avoidance stays valid after font changes.
@@ -937,16 +1045,7 @@ class NetworkTopologyView:
         arrow_end = path_points[-1]
         self._draw_arrowhead(arrow_start, arrow_end)
 
-        if label_segment is None:
-            return
-        self._draw_edge_label(
-            label_segment[0],
-            label_segment[1],
-            edge_connections,
-            src_object_label,
-            dst_object_label,
-            own_segments=own_segments,
-        )
+        # Edge labels are drawn in a separate pass after fitInView.
 
     def _draw_edge_label(self, start, end, edge_connections, src_object_label, dst_object_label, own_segments=None):
         if not self.show_connection_labels or not edge_connections:
@@ -981,16 +1080,43 @@ class NetworkTopologyView:
         mid = QtCore.QPointF((start.x() + end.x()) * 0.5, (start.y() + end.y()) * 0.5)
         nx = -line.dy() / length
         ny = line.dx() / length
-        offset = 12.0
-        center = QtCore.QPointF(mid.x() + nx * offset, mid.y() + ny * offset)
+        sx = abs(self.view.transform().m11())
+        sy = abs(self.view.transform().m22())
+        if sx < 1e-9:
+            sx = 1.0
+        if sy < 1e-9:
+            sy = 1.0
+        scale_mean = 0.5 * (sx + sy)
+        if scale_mean < 1e-9:
+            scale_mean = 1.0
+
+        # Keep initial gap roughly constant in device pixels.
+        normal_offset_px = 12.0
+        normal_offset_scene = normal_offset_px / scale_mean
+        center = QtCore.QPointF(mid.x() + nx * normal_offset_scene, mid.y() + ny * normal_offset_scene)
 
         text_rect = text_item.boundingRect()
-        placed_rect = self._place_label_rect(center, text_rect, nx, ny, own_segments=own_segments)
+        scene_text_rect = QtCore.QRectF(0.0, 0.0, text_rect.width() / sx, text_rect.height() / sy)
+        placed_rect = self._place_label_rect(center, scene_text_rect, nx, ny, own_segments=own_segments)
         text_item.setPos(placed_rect.left(), placed_rect.top())
-        self._register_edge_leader(text_item, start, end)
+
+        placed_center = placed_rect.center()
+        tx = ny
+        ty = -nx
+        signed_scene_offset = (placed_center.x() - mid.x()) * nx + (placed_center.y() - mid.y()) * ny
+        signed_scene_tangent = (placed_center.x() - mid.x()) * tx + (placed_center.y() - mid.y()) * ty
+        signed_offset_px = signed_scene_offset * scale_mean
+        signed_tangent_px = signed_scene_tangent * scale_mean
+        self._register_edge_leader(
+            text_item,
+            start,
+            end,
+            signed_offset_px=signed_offset_px,
+            signed_tangent_px=signed_tangent_px,
+        )
         self._label_occupied_rects.append(self._expand_rect(placed_rect, 4.0))
 
-    def _register_edge_leader(self, text_item, line_start, line_end):
+    def _register_edge_leader(self, text_item, line_start, line_end, signed_offset_px=12.0, signed_tangent_px=0.0):
         pen = QtGui.QPen(QtGui.QColor(150, 150, 150, 210))
         pen.setWidth(1)
         leader_item = self.scene.addLine(QtCore.QLineF(line_start, line_start), pen)
@@ -1000,6 +1126,8 @@ class NetworkTopologyView:
                 "leader_item": leader_item,
                 "line_start": QtCore.QPointF(line_start.x(), line_start.y()),
                 "line_end": QtCore.QPointF(line_end.x(), line_end.y()),
+                "signed_offset_px": float(signed_offset_px),
+                "signed_tangent_px": float(signed_tangent_px),
             }
         )
 
@@ -1008,6 +1136,8 @@ class NetworkTopologyView:
             self._update_one_edge_leader(link)
 
     def _update_one_edge_leader(self, link):
+        self._reposition_edge_label_for_zoom(link)
+
         text_item = link["text_item"]
         line_start = link["line_start"]
         line_end = link["line_end"]
@@ -1024,6 +1154,47 @@ class NetworkTopologyView:
 
         line_item.setVisible(True)
         line_item.setLine(QtCore.QLineF(leader_start, anchor))
+
+    def _reposition_edge_label_for_zoom(self, link):
+        text_item = link["text_item"]
+        line_start = link["line_start"]
+        line_end = link["line_end"]
+
+        line = QtCore.QLineF(line_start, line_end)
+        length = line.length()
+        if length < 1e-9:
+            return
+
+        sx = abs(self.view.transform().m11())
+        sy = abs(self.view.transform().m22())
+        if sx < 1e-9:
+            sx = 1.0
+        if sy < 1e-9:
+            sy = 1.0
+
+        scale_mean = 0.5 * (sx + sy)
+        if scale_mean < 1e-9:
+            scale_mean = 1.0
+
+        vx = line_end.x() - line_start.x()
+        vy = line_end.y() - line_start.y()
+        nx = -vy / length
+        ny = vx / length
+        tx = ny
+        ty = -nx
+        signed_scene_offset = float(link.get("signed_offset_px", 12.0)) / scale_mean
+        signed_scene_tangent = float(link.get("signed_tangent_px", 0.0)) / scale_mean
+
+        mid = QtCore.QPointF((line_start.x() + line_end.x()) * 0.5, (line_start.y() + line_end.y()) * 0.5)
+        label_center = QtCore.QPointF(
+            mid.x() + nx * signed_scene_offset + tx * signed_scene_tangent,
+            mid.y() + ny * signed_scene_offset + ty * signed_scene_tangent,
+        )
+
+        text_rect = text_item.boundingRect()
+        scene_w = text_rect.width() / sx
+        scene_h = text_rect.height() / sy
+        text_item.setPos(label_center.x() - 0.5 * scene_w, label_center.y() - 0.5 * scene_h)
 
     def _label_visual_rect_in_scene(self, text_item):
         """Return the label's rendered scene rect accounting for ignore-transform mode."""
@@ -1174,30 +1345,59 @@ class NetworkTopologyView:
         )
 
     def _place_label_rect(self, center, text_rect, nx, ny, own_segments=None):
-        base_offset = 12.0
-        step = 12.0
+        sx = abs(self.view.transform().m11())
+        sy = abs(self.view.transform().m22())
+        if sx < 1e-9:
+            sx = 1.0
+        if sy < 1e-9:
+            sy = 1.0
+        scale_mean = 0.5 * (sx + sy)
+        if scale_mean < 1e-9:
+            scale_mean = 1.0
+
+        # Search offsets in pixel-sized increments for zoom-stable spacing.
+        base_offset = 12.0 / scale_mean
+        step = 12.0 / scale_mean
+        tangent_step = 16.0 / scale_mean
         max_tries = 12
+        tangent_tries = 6
 
         best_rect = None
         best_penalty = float("inf")
 
-        candidates = [0.0]
+        normal_candidates = [0.0]
         for i in range(1, max_tries + 1):
             delta = i * step
-            candidates.append(delta)
-            candidates.append(-delta)
+            normal_candidates.append(delta)
+            normal_candidates.append(-delta)
 
-        for delta in candidates:
-            offset = base_offset + delta
-            cx = center.x() + nx * offset
-            cy = center.y() + ny * offset
+        tangent_candidates = [0.0]
+        for i in range(1, tangent_tries + 1):
+            shift = i * tangent_step
+            tangent_candidates.append(shift)
+            tangent_candidates.append(-shift)
+
+        tx = ny
+        ty = -nx
+        candidate_pairs = [(delta_n, delta_t) for delta_t in tangent_candidates for delta_n in normal_candidates]
+        candidate_pairs.sort(key=lambda pair: (abs(pair[0]) + 0.75 * abs(pair[1]), abs(pair[1])))
+
+        min_node_clearance = 10.0 / scale_mean
+        for delta_n, delta_t in candidate_pairs:
+            offset = base_offset + delta_n
+            cx = center.x() + nx * offset + tx * delta_t
+            cy = center.y() + ny * offset + ty * delta_t
             rect = QtCore.QRectF(
                 cx - text_rect.width() / 2,
                 cy - text_rect.height() / 2,
                 text_rect.width(),
                 text_rect.height(),
             )
-            penalty = self._placement_penalty(rect, own_segments=own_segments)
+            penalty = self._placement_penalty(
+                rect,
+                own_segments=own_segments,
+                min_node_clearance=min_node_clearance,
+            )
             if penalty < best_penalty:
                 best_penalty = penalty
                 best_rect = rect
@@ -1206,13 +1406,18 @@ class NetworkTopologyView:
 
         return best_rect
 
-    def _placement_penalty(self, rect, own_segments=None):
+    def _placement_penalty(self, rect, own_segments=None, min_node_clearance=0.0):
         padded_rect = self._expand_rect(rect, 2.0)
         penalty = 0.0
 
         for node_rect in self._node_rects.values():
             if padded_rect.intersects(node_rect):
-                penalty += self._intersection_area(padded_rect, node_rect) + 1000.0
+                # Treat node overlap as expensive so labels prefer nearby whitespace.
+                penalty += 20000.0 + 20.0 * self._intersection_area(padded_rect, node_rect)
+            elif min_node_clearance > 0.0:
+                gap = self._rect_separation(padded_rect, node_rect)
+                if gap < min_node_clearance:
+                    penalty += 150.0 * (min_node_clearance - gap)
 
         for used_rect in self._label_occupied_rects:
             if padded_rect.intersects(used_rect):
@@ -1228,6 +1433,12 @@ class NetworkTopologyView:
                 penalty += self.LABEL_LINE_OVERLAP_PENALTY
 
         return penalty
+
+    @staticmethod
+    def _rect_separation(a, b):
+        dx = max(0.0, max(a.left() - b.right(), b.left() - a.right()))
+        dy = max(0.0, max(a.top() - b.bottom(), b.top() - a.bottom()))
+        return math.hypot(dx, dy)
 
     @staticmethod
     def _segments_match(a1, a2, b1, b2, tol=1e-9):
