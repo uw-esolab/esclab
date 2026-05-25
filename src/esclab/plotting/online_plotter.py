@@ -247,20 +247,36 @@ class OnlinePlotter:
     y2 | [d, e, f, ...] component input or output values to be plotted on axis 2
     """
 
-    def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(0.9, 0.9), tab_title=None):
+    def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(0.9, 0.9), tab_title=None, show_live=True):
         assert isinstance(y1, type([]))
         assert isinstance(y2, type([])) or y2 is None
 
+        self.show_live = show_live
         self.current_step = -1
         self._fill_idx = 0
         self._auto_follow = True
         self.y1label = y1label
         self.y2label = y2label
-
         self.nmax_points = nmax_points
         self.update_every = update_every
         self.y1_items = y1
         self.y2_items = y2
+        self.x_data = None
+        self.y1_data = None
+        self.y2_data = None
+        self._y1lim = y1lim
+        self._y2lim = y2lim
+        self._plotter_size = plotter_size
+        self._tab_title = tab_title
+
+        if show_live:
+            self._build_widgets()
+        else:
+            self.y1_lines = []
+            self.y2_lines = []
+
+    def _build_widgets(self):
+        """Create all Qt plot widgets and register this plotter in the shared window."""
         colors = [
             "#377eb8",
             "#ff7f00",
@@ -274,19 +290,17 @@ class OnlinePlotter:
             "#00ffe5",
             "#5d0ab6",
         ]
-
-        self.app = OnlinePlotter.app
-        OnlinePlotter.ensure_window(plotter_size=plotter_size)
+        OnlinePlotter.ensure_window(plotter_size=self._plotter_size)
         self.app = OnlinePlotter.app
 
         self.win = qtg.GraphicsLayoutWidget()
         OnlinePlotter.n_plotters += 1
-        tab_label = tab_title if tab_title not in [None, ""] else y1label if y1label not in [None, ""] else f"Plot {OnlinePlotter.n_plotters}"
+        tab_label = self._tab_title if self._tab_title not in [None, ""] else self.y1label if self.y1label not in [None, ""] else f"Plot {OnlinePlotter.n_plotters}"
         OnlinePlotter.tab_widget.addTab(self.win, tab_label)
 
         self.ax1 = self.win.addPlot(viewBox=_AxisLockedViewBox())
         self.ax1.setLabel("bottom", "Time")
-        self.ax1.setLabel("left", y1label)
+        self.ax1.setLabel("left", self.y1label)
         self.legend_y1 = self.ax1.addLegend(offset=(10, 10))
         self.legend_y1.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
         self.legend_y2 = None
@@ -300,31 +314,31 @@ class OnlinePlotter:
         self.ax1.addItem(self._tooltip_vline, ignoreBounds=True)
         self._tooltip_vline.hide()
 
-        if y1lim is not None:
-            self.ax1.setYRange(*y1lim)
+        if self._y1lim is not None:
+            self.ax1.setYRange(*self._y1lim)
 
         self.y1_lines = []
         c = 0
-        for i in range(len(y1)):
+        for i in range(len(self.y1_items)):
             pen = qtg.mkPen(color=colors[c % len(colors)], width=2)
-            line = self.ax1.plot([], [], pen=pen, name=y1[i].name)
+            line = self.ax1.plot([], [], pen=pen, name=self.y1_items[i].name)
             self.y1_lines.append(line)
             c += 1
 
         self.y2_lines = []
-        if y2 is not None:
+        if self.y2_items is not None:
             self.ax2 = _AxisLockedViewBox()
             self.ax1.showAxis("right")
             self.ax1.scene().addItem(self.ax2)
             self.ax1.getAxis("right").linkToView(self.ax2)
             self.ax2.setXLink(self.ax1)
-            self.ax1.getAxis("right").setLabel(y2label, color="#c0c0c0")
+            self.ax1.getAxis("right").setLabel(self.y2label, color="#c0c0c0")
             self.legend_y2 = qtg.LegendItem(offset=(-10, 10))
             self.legend_y2.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
             self.legend_y2.setParentItem(self.ax1.vb)
 
-            if y2lim is not None:
-                self.ax2.setYRange(*y2lim)
+            if self._y2lim is not None:
+                self.ax2.setYRange(*self._y2lim)
 
             def updateViews():
                 self.ax2.setGeometry(self.ax1.vb.sceneBoundingRect())
@@ -333,11 +347,11 @@ class OnlinePlotter:
             updateViews()
             self.ax1.vb.sigResized.connect(updateViews)
 
-            for i in range(len(y2)):
+            for i in range(len(self.y2_items)):
                 pen = qtg.mkPen(color=colors[c % len(colors)], width=2, style=QtCore.Qt.DashLine)
-                line = qtg.PlotDataItem([], [], pen=pen, name=y2[i].name)
+                line = qtg.PlotDataItem([], [], pen=pen, name=self.y2_items[i].name)
                 self.ax2.addItem(line)
-                self.legend_y2.addItem(line, y2[i].name)
+                self.legend_y2.addItem(line, self.y2_items[i].name)
                 self.y2_lines.append(line)
                 c += 1
 
@@ -365,14 +379,16 @@ class OnlinePlotter:
         self.ax_iter.setXLink(self.ax1)
         self._iter_bar_item = None
 
-        self.x_data = None
-        self.y1_data = None
-        self.y2_data = None
-
-        OnlinePlotter.instances.append(self)
+        if self not in OnlinePlotter.instances:
+            OnlinePlotter.instances.append(self)
         self.apply_font_size()
         self.ax1.vb.sigRangeChangedManually.connect(self._on_range_changed_manually)
         self._setup_strip_tooltip()
+
+    def _finalize(self):
+        """Build Qt widgets and render all buffered data. Called from wait_for_plots() for deferred plotters."""
+        self._build_widgets()
+        self.__refresh_plot()
 
     @classmethod
     def adjust_font_size(cls, delta):
@@ -461,7 +477,7 @@ class OnlinePlotter:
 
         self._fill_idx += 1
 
-        if self.current_step % self.update_every == 0:
+        if self.show_live and self.current_step % self.update_every == 0:
             self.__refresh_plot()
 
     def __refresh_plot(self):

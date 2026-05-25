@@ -527,9 +527,10 @@ class Model:
         self._last_progress_line_len = 0
         self._last_progress_step = -1
         self._last_progress_wall_clock = 0.0
+        self._deferred_network_graphs = []
         return
     
-    def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None):
+    def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None, show_live=True):
         if not isinstance(y1, type([])):
             y1t = [y1]
         else:
@@ -539,7 +540,7 @@ class Model:
             if not isinstance(y2, type([])):
                 y2t = [y2]
 
-        self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title))
+        self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title, show_live=show_live))
 
     def add_network_graph(
         self,
@@ -550,6 +551,7 @@ class Model:
         include_subnetworks=True,
         show_connection_labels=True,
         tab_title="Connections",
+        show_live=True,
     ):
         """Create a topology graph tab and optionally export it to image files.
 
@@ -562,6 +564,23 @@ class Model:
 
         if (save_png or save_svg) and not path_base:
             raise ValueError("path_base is required when save_png or save_svg is enabled.")
+
+        if not show_live:
+            self._deferred_network_graphs.append({
+                "show_tab": show_tab,
+                "save_png": save_png,
+                "save_svg": save_svg,
+                "path_base": path_base,
+                "include_subnetworks": include_subnetworks,
+                "show_connection_labels": show_connection_labels,
+                "tab_title": tab_title,
+            })
+            return {
+                "view_created": False,
+                "exported_paths": (),
+                "n_components": len(self._components),
+                "n_edges": len(self._network_analysis["edges"]) if self._network_analysis is not None else 0,
+            }
 
         view = None
         if show_tab or save_png or save_svg:
@@ -595,6 +614,29 @@ class Model:
         """
         Call to keep the plotter window open after simulation is complete.
         """
+        # Finalize deferred (show_live=False) plotters first — this creates the Qt app
+        # and window if they don't exist yet.
+        for plotter in self.plotters:
+            if not plotter.show_live:
+                plotter._finalize()
+
+        # Instantiate any deferred network graph views.
+        for kwargs in self._deferred_network_graphs:
+            if kwargs.get("show_tab") or kwargs.get("save_png") or kwargs.get("save_svg"):
+                view = NetworkTopologyView(
+                    self,
+                    tab_title=kwargs["tab_title"],
+                    include_subnetworks=kwargs["include_subnetworks"],
+                    show_connection_labels=kwargs["show_connection_labels"],
+                )
+                self._network_views.append(view)
+                if kwargs.get("path_base"):
+                    if kwargs.get("save_png"):
+                        view.export_png(f"{kwargs['path_base']}.png")
+                    if kwargs.get("save_svg"):
+                        view.export_svg(f"{kwargs['path_base']}.svg")
+        self._deferred_network_graphs.clear()
+
         app = Model.OnlinePlotter.app
         main_window = Model.OnlinePlotter.main_window
         # Check whether plotting was ever initialized
