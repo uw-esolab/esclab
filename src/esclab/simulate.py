@@ -700,7 +700,9 @@ class Model:
             return False, True
 
         updated_any = False
-        relax = 0.25
+        # For the matrix solve, we need to use the global learning rate since individual connection
+        # learn rates can't be enforced. If the global isn't specified, just default to the full step.
+        relax = self.settings.learn_rate if self.settings.learn_rate is not None else 1.0
         for output, idx in unknown_index.items():
             old_value = output.v
             if np.any(np.isnan(old_value)):
