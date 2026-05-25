@@ -547,7 +547,7 @@ class Model:
         path_base=None,
         include_subnetworks=True,
         show_connection_labels=True,
-        tab_title="Network",
+        tab_title="Connections",
     ):
         """Create a topology graph tab and optionally export it to image files.
 

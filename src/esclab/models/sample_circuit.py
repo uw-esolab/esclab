@@ -1,5 +1,17 @@
+"""
+RLC circuit example with a voltage source that steps from 0 to 1 at t=0. 
+The current is determined by a root-solving method within the voltage source 
+component using successive bracketed solver steps. 
+
+Some care is needed to obtain convergence for this example. 
+
+This example uses component classes that are defined locally rather than the 
+circuit_elements library. This allows illustration of the differences between 
+the bracketed solver approach and the matrix inversion method, which is shown in
+the remaining sample circuit examples.
+"""
+
 from esclab.simulate import *
-from eeslib.functions import convert, converttemp
 
 class CircuitElement(Component):
     """Base class for circuit elements."""
