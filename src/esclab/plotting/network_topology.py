@@ -843,58 +843,35 @@ class NetworkTopologyView:
 
     @classmethod
     def _orthogonal_path(cls, start, end, route_offset=0.0):
+        """Build an H-V-H elbow (2 horizontal + 1 vertical segment) between
+        left/right anchor points.
+
+        The single vertical jog is placed at the horizontal midpoint of the two
+        anchors, shifted by *route_offset* to separate parallel edges.  The path
+        always exits and arrives horizontally so the arrowhead direction matches
+        the side of the node being entered.
+        """
         dx = end.x() - start.x()
         dy = end.y() - start.y()
 
-        if abs(dx) < 1e-9 or abs(dy) < 1e-9:
+        # Degenerate: already a straight horizontal or vertical line.
+        if abs(dy) < 1e-9 or abs(dx) < 1e-9:
             return [start, end]
 
-        clearance = cls.EDGE_ORTH_CLEARANCE
-        path = [start]
-
-        if abs(dx) >= abs(dy):
-            sign = 1.0 if dx >= 0.0 else -1.0
-            x_span = max(clearance, clearance + abs(route_offset))
-            x_out = start.x() + sign * x_span
-            x_in = end.x() - sign * x_span
-            y_track = (start.y() + end.y()) * 0.5 + route_offset
-            if (x_in - x_out) * sign < 0.0:
-                x_mid = (start.x() + end.x()) * 0.5 + 0.5 * route_offset
-                path.extend([
-                    QtCore.QPointF(x_mid, start.y()),
-                    QtCore.QPointF(x_mid, y_track),
-                    QtCore.QPointF(x_mid, end.y()),
-                ])
-            else:
-                path.extend([
-                    QtCore.QPointF(x_out, start.y()),
-                    QtCore.QPointF(x_out, y_track),
-                    QtCore.QPointF(x_in, y_track),
-                    QtCore.QPointF(x_in, end.y()),
-                ])
+        # Vertical jog column: midpoint + lane offset, clamped inside the
+        # start→end x-span to prevent U-bends from large route_offset values.
+        x_mid = (start.x() + end.x()) * 0.5 + route_offset
+        if dx > 0:
+            x_mid = max(start.x(), min(x_mid, end.x()))
         else:
-            sign = 1.0 if dy >= 0.0 else -1.0
-            y_span = max(clearance, clearance + abs(route_offset))
-            y_out = start.y() + sign * y_span
-            y_in = end.y() - sign * y_span
-            x_track = (start.x() + end.x()) * 0.5 + route_offset
-            if (y_in - y_out) * sign < 0.0:
-                y_mid = (start.y() + end.y()) * 0.5 + 0.5 * route_offset
-                path.extend([
-                    QtCore.QPointF(start.x(), y_mid),
-                    QtCore.QPointF(x_track, y_mid),
-                    QtCore.QPointF(end.x(), y_mid),
-                ])
-            else:
-                path.extend([
-                    QtCore.QPointF(start.x(), y_out),
-                    QtCore.QPointF(x_track, y_out),
-                    QtCore.QPointF(x_track, y_in),
-                    QtCore.QPointF(end.x(), y_in),
-                ])
+            x_mid = min(start.x(), max(x_mid, end.x()))
 
-        path.append(end)
-        return cls._simplify_path(path)
+        return cls._simplify_path([
+            start,
+            QtCore.QPointF(x_mid, start.y()),
+            QtCore.QPointF(x_mid, end.y()),
+            end,
+        ])
 
     @staticmethod
     def _simplify_path(path_points):
