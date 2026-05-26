@@ -3,6 +3,20 @@ from eeslib import fluid_properties as fp
 from eeslib.functions import convert
 import numpy as np
 
+"""
+Unified property database for incompressible fluids, including density, viscosity, and specific heat, where available.
+
+Note that some water properties are provided here, and other fluids that are potentially compressible (e.g. air, argon, hydrogen) are included with ideal gas density models. For more detailed and comprehensive property data, users should import **eeslib** which provides an API for CoolProp.
+
+Usage:
+    from esclab.components.esol_properties import Incompressible
+    props = Incompressible()
+    props.viscosity('Air', T=300)           # Viscosity of air at 300 K
+    props.specheat('Therminol Oil', T=350)  # Specific heat of Therminol Oil at 350 K
+    props.enthalpy('Salt (60 NaNO3, 40 KNO3)', T=400, T_ref=300)  # Enthalpy change of salt from 300 K to 400 K
+
+"""
+
 class Incompressible:
     """Incompressible substance property database with density, viscosity, and specific heat, where available"""
     
@@ -12,6 +26,7 @@ class Incompressible:
             'specheat': (lambda T: 0.368455 + 0.000399548*T - 1.70558E-07*T*T),
         },
         "Water (liquid)": {
+            # Use with caution - this is only valid near room temp/pressure
             'density': (lambda T: 1000),
             'specheat': (lambda T: 4.181),
         },
