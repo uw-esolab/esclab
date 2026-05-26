@@ -1,8 +1,7 @@
 """
-This file provides a mechanism for importing components into models directly
-without requiring the intermediate '.components' namespace. 
+This file ensures that the component libraries are available for import from the top-level components module. 
 
-Add modules to this file using:
+Add new modules to this file using:
 	from . import my_component_library
     
 And add the module name to __all__ to make it available using the flat import syntax:
@@ -27,10 +26,12 @@ from . import brayton_simple
 from . import circuit_elements
 from . import esol_properties
 from . import flownetwork
+from . import template_component
 
 __all__ = [
     "brayton_simple",
     "circuit_elements",
     "esol_properties",
     "flownetwork",
+    "template_component"
 ]
