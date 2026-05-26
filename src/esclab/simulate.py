@@ -8,6 +8,9 @@ from esclab.plotting import OnlinePlotter as _OnlinePlotter, NetworkTopologyView
 
 # ------------------------------------------------------------------------
 class Connection:
+    """
+    
+    """
     def __init__(self, source, tol_rel, tol_abs, log_n_iter, learn_rate, solve_group=None):
 
         self.tol_rel = tol_rel
@@ -278,6 +281,8 @@ class Component:
     
     def auto_assign_names(self):
         """
+        Called automatically by the model during initialization.
+
         Automatically assign names to all inputs and outputs of this component based on the 
         component's name and the attribute name of the input/output.
         Make sure all inputs/outputs have a name assigned
@@ -313,14 +318,19 @@ class Component:
 
     def presim_setup(self, **kwargs):
         """
-        Do initial calculations.
-        Pre-simulation calculations here
+        Do all calculations needed for the simulation here. This is called after all models have been
+        instantiated and connected, but before the first time step. Data from other components is not available
+        at this step. Use this for any calculations that should only be done once at the beginning of the simulation.
+        
+        Overwrite in child class, as needed. 
+
+        kwargs can be used to pass any relevant data from the model or other components that is needed for setup.
         """
         pass
     
     def calculate(self):
         """
-        Do calculations for this component. This is where the main logic of the component goes, 
+        Do regular calculations for this component. This is where the main logic of the component goes, 
         and where outputs are calculated from inputs and parameters.
         
         Within the calculate step, the following flags are available to control the flow of calculations:
@@ -340,6 +350,9 @@ class Component:
         pass 
     
     def postsim_calcs(self):
+        """
+        Calculations done after the final time step of the simulation. Data from all time steps is available.
+        """
         pass
 
 
@@ -519,6 +532,32 @@ class Model:
         return
     
     def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None, show_live=True):
+        """
+        Add a plotter to the model to visualize component inputs and outputs over time.
+        
+        Parameters
+        ----------
+        y1 : Component.Input, Component.Output, or list
+            Component input or output (or list of them) to plot on the primary y-axis.
+        y2 : Component.Input, Component.Output, or list, optional
+            Component input or output (or list of them) to plot on the secondary y-axis.
+        y1lim : tuple, optional
+            Limits for the primary y-axis (min, max).
+        y2lim : tuple, optional
+            Limits for the secondary y-axis (min, max).
+        y1label : str, optional
+            Label for the primary y-axis.
+        y2label : str, optional
+            Label for the secondary y-axis.
+        nmax_points : int, optional
+            Maximum number of points to show in the scrolling plotter time horizon.
+        update_every : int, optional
+            Update the plot every N time steps.
+        tab_title : str, optional
+            Title of the tab for the current plotter.
+        show_live : bool, optional
+            Flag indicating whether to show the plotter live during the simulation. If false, the plots will render after the simulation has completed.
+        """
         if not isinstance(y1, type([])):
             y1t = [y1]
         else:
@@ -541,9 +580,36 @@ class Model:
         tab_title="Connections",
         show_live=True,
     ):
-        """Create a topology graph tab and optionally export it to image files.
+        """
+        Create a topology graph tab and optionally export it to image files.
 
-        This is intentionally Python-only and uses the existing PyQt plotting window.
+        Parameters
+        ----------
+        show_tab : bool, optional
+            Whether to show the graph in a tab. Default is True.
+        save_png : bool, optional
+            Whether to export the graph to a PNG file. Default is False.
+        save_svg : bool, optional
+            Whether to export the graph to an SVG file. Default is False.
+        path_base : str, optional
+            Base path (excluding extension) for exported image files. Required if save_png or save_svg is True.
+        include_subnetworks : bool, optional
+            Whether to draw bounding boxes around identified subnetworks. Default is True.
+        show_connection_labels : bool, optional
+            Whether to display port names on the connection edges. Default is True.
+        tab_title : str, optional
+            Title for the graph tab. Default is "Connections".
+        show_live : bool, optional
+            Whether to instantiate the tab immediately. Default is True. Set to False to defer until wait_for_plots().
+
+        Returns
+        -------
+        dict
+            A dictionary containing status information:
+            - 'view_created' (bool): True if the view was successfully created.
+            - 'exported_paths' (tuple): Paths to any exported image files.
+            - 'n_components' (int): Number of components in the model.
+            - 'n_edges' (int): Number of edges (connections) analyzed.
         """
         if not self.is_initialized:
             self.initialize()
@@ -641,6 +707,27 @@ class Model:
         app.exec()
 
     def connect(self, source, destination, tol_rel = None, tol_abs=None, log_n_iter = 0, learn_rate = None, solve_group=None):
+        """
+        Connect an output from one component to an input of another component.
+        
+        Parameters
+        ----------
+        source : Component.Output
+            The source output port providing the value.
+        destination : Component.Input
+            The destination input port receiving the value.
+        tol_rel : float, optional
+            Relative tolerance for convergence. Defaults to model settings if not given.
+        tol_abs : float, optional
+            Absolute tolerance for convergence. Defaults to model settings if not given.
+        log_n_iter : int, optional
+            Number of iterations to keep history for logging.
+        learn_rate : float, optional
+            Learn rate / relaxation factor for convergence iterating (0..1].
+        solve_group : str, optional
+            Group identifier for coupled network matrix solving. This is a unique string that 
+            is shared by all connected equations within a particular coupled networks.
+        """
         if self._has_started_stepping:
             raise RuntimeError("Cannot add new connections after step() has started.")
         
@@ -1045,6 +1132,12 @@ class Model:
 
     # ----------------------------------------------------------------------- 
     def step(self, n_steps = 1):
+        """
+        Parameters
+        ----------
+        n_steps : int, optional
+            Expected number of steps (Note: Internal logic currently executes a single step per call).
+        """
         # Check overall initialization for the model
         if not self.is_initialized:
             self.initialize()
