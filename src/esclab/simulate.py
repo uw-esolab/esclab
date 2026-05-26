@@ -466,14 +466,18 @@ class Model:
 
     # ------------------------------------------------------------------------
     class Settings:
-        timestep = 1  #sec
-        start_time = 0  #sec
-        stop_time = 24*3600 #sec
-        tol_rel_global = 1.e-6
-        tol_abs_global = 1.e-4
-        max_iterations = 100 
-        learn_rate = None  # if not None, replaces individual connection learn rates when connecting components
-        progress_update = 200  # Minimum time between terminal progress updates, in milliseconds        
+        timestep = 1            # [sec] Simulation time step
+        start_time = 0          # [sec] Simulation start time
+        stop_time = 24*3600     # [sec] Simulation stop time (not inclusive)
+        tol_rel_global = 1.e-6  # Relative tolerance for connections. Used if not overridden by individual connections
+        tol_abs_global = 1.e-4  # Absolute tolerance for connections. Used if not overridden by individual connections
+        max_iterations = 100    # Maximum number of iterations for convergence, per step(). Raises warning if exceeded.
+        learn_rate = None       
+        # (0..1) if not None, replaces individual connection learn rates when connecting components. The learn rate 
+        # determines the fraction of the difference between the new value and the previous value that is applied at 
+        # each iteration, for values updated from connections. Lower learn rates can help with convergence of 
+        # difficult problems, at the cost of more iterations.
+        progress_update = 200  # [msec] Minimum clock time between terminal progress updates, in milliseconds
         def __init__(self):
             pass
     # End class Settings -----------------------------------------------------
@@ -489,16 +493,20 @@ class Model:
     # Model class methods --------------------------------------------------------
     # ----------------------------------------------------------------------------
     def __init__(self):
-        self._components = []
         self.settings = Model.Settings()
-        self.is_initialized = False
-        self._has_started_stepping = False
-        self.plotters_initialized = False
-        self.is_first_step = True
-        self.is_first_iteration = True
-        self.is_converged = False
-        self.time = 0
+        self.is_initialized = False           # Flag - True after initialize() is called        
+        self.plotters_initialized = False     # Flag - True after plotters are initialized (at the end of initialize())
+        self.is_first_step = True             # Flag - True only throughout the first step() call of the simulation
+        self.is_first_iteration = True        # Flag - True only throughout the first iteration of each step() call
+        self.is_converged = False             # Flag - True when the current step() call has reached convergence
+        self.time = 0                         # Current simulation time (sec)
+        # placeholder for plotters
         self.plotters = []
+        # Internal bookkeeping for components 
+        self._components = []
+        # Internal flag to track whether stepping has begun
+        self._has_started_stepping = False
+        # Internal bookkeeping for network equation building and solving
         self._output_owner_by_id = {}
         self._input_owner_by_id = {}
         self._network_analysis = None
