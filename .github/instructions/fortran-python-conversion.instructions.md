@@ -164,3 +164,91 @@ Review units noting that esclab will always use base SI (K, Pa, J, kg, s). Where
 * non-temperature: *convert('<non-SI>', '<SI>')
 * temperature: converttemp('<non-SI>', '<SI>', <temp_value>)
 Mark implemented units conversions with a comment like "# AUTO UNITS CONVERSION IMPLEMENTED: <description of conversion>" for clarity.
+
+## RUN TYPE 5
+
+This step refactors a directly-converted component (from RUN TYPE 1–4) into a fully native esclab component. It resolves the two main structural problems that remain after a direct conversion: (1) iterative operating-point solvers that belong in the network equation matrix, and (2) state that should live in instance variables rather than Output ports.
+
+**When to apply:** a component has any of the following:
+- A secant, Newton, or bisection loop inside `calculate()` to find a flow/pressure operating point
+- Output ports used as "previous iteration" memory (e.g., `P1_point_1x`, `P1_point_2x`)
+- Many scalar Parameters that are logically a grouped array (e.g., coefficients per pump)
+- State that must persist across timesteps (tank mass, pressure, enthalpy, level)
+
+**Do not apply until** all RUN TYPE 1–4 TODO flags are resolved and `get_errors` is clean.
+
+### Rules
+
+**Rule 1 — Read the framework before writing any new code.**
+Open `simulate.py` and read the `Component` base class and the `NetworkEquationContext` (`coupled_eqs`) API. Open `circuit_elements.py` and read `Capacitor` and at least one `Pump` class as concrete examples. You need to understand:
+- Lifecycle: `presim_setup(**kwargs)` → `calculate()` (iterated) → `is_converged` block inside `calculate()`
+- `self.model.is_first_step`, `self.model.is_first_iteration`, `self.model.is_converged`
+- `self.coupled_eqs`: `None` for sequential components; a `NetworkEquationContext` for components inside a coupled subnetwork
+- `coupled_eqs.add_equation(terms_dict, rhs)` and `coupled_eqs.source(input_port)`
+
+**Rule 2 — Classify every variable into exactly one category before touching the code.**
+- *Instance variables* (`self._name`): state that must survive from one timestep to the next (e.g., tank pressure, enthalpy, mass, level, fluid density, temperature). Initialised in `presim_setup()`, advanced in the `is_converged` block.
+- *Output ports* (`self.name.v`): values consumed by downstream components or the model file. Also serve as linearisation points between iterations (their values from the previous iteration are read at the top of `calculate()`).
+- *Local variables*: intermediate quantities that do not need to survive the call.
+Remove all Output ports that served only as solver-state memory (secant-method bracket values, previous-iteration guesses, etc.).
+
+**Rule 3 — Collapse grouped scalar Parameters into array Parameters.**
+If a component has N identical sub-elements (pumps, HX passes, etc.) each described by the same K coefficients, replace the N×K scalar Parameters with a single `ndarray` Parameter of shape `(N, K)`. Document the shape, axis ordering, and units in the class docstring. A 3-pump component with [A, B, C] head coefficients becomes one `pump_head_coeffs` Parameter of shape `(3, 3)`.
+
+**Rule 4 — Write `presim_setup()` first, before `calculate()`.**
+- Compute initial state from Parameter initial-condition values using property lookups (eeslib, esol_properties).
+- Assign results to all `self._*` instance variables.
+- Assign physically meaningful initial values to *every* Output port. Never leave a port at 0.0 for a quantity like pressure or enthalpy — use steady-state estimates.
+- Call helper methods (e.g., alarm checks) here too so alarms are correct on the first timestep.
+
+**Rule 5 — Extract pure helper methods for reusable sub-calculations.**
+Functions that do not touch `self.model`, `self.coupled_eqs`, or Output ports make clean helpers. Alarm/trip logic is a common candidate: `def _check_alarms(self, level): -> (LL_Alarm, LL_Trip, HL_Alarm, HL_Trip)`. Call these from both `presim_setup()` and `calculate()`.
+
+**Rule 6 — Structure `calculate()` in three explicit phases.**
+
+*Phase A — matrix contribution* (guard: `if self.coupled_eqs is not None:`):
+  - Read current Output port values as linearisation points.
+  - Linearise each nonlinear constraint and call `self.coupled_eqs.add_equation(terms_dict, rhs)` once per equation.
+  - Count equations vs. unknowns before coding to confirm the local system is square.
+  - End Phase A with a bare `return`.
+
+*Phase B — sequential diagnostics* (no guard; runs only when `coupled_eqs is None`):
+  - The network matrix has already written pump/flow Output port values; read them directly.
+  - Compute bleed extraction, inlet mixing, per-element power/efficiency, vent enthalpy, etc.
+  - Write all Output ports needed by downstream components.
+  - End with `if not self.model.is_converged: return`.
+
+*Phase C — convergence block* (runs only on the converged iteration):
+  - Perform ODE integration (RK4 or similar) for state variables.
+  - Advance all `self._*` instance variables to end-of-timestep values.
+  - Write final diagnostic Output ports (level, tank mass, alarm signals, cavitation trips).
+
+**Rule 7 — Linearise hydraulic head curves correctly.**
+For a speed-scaled head curve `ΔP = ρg(AQ² + BsQ + Cs²)` linearised around operating point `Q₀` (in m³/s):
+- slope (Pa·s/kg): `g × (2A·Q₀ + B·s)`
+- intercept (Pa): `ρg × (C·s² − A·Q₀²)`
+- Matrix equation: `{P_out: 1, m_dot: −slope}` with `rhs = P_inlet + intercept`
+
+Always clamp `Q₀ = max(m_dot_pi.v, 1e-6) / rho` to prevent the slope from collapsing to zero at start-up. For a constant-speed pump set `s = 1.0`.
+
+**Rule 8 — Count and verify matrix equations before writing Phase A.**
+List each unknown Output port the matrix must solve, then write exactly one equation per unknown. Common pattern for a multi-pump component with a shared discharge header and `N` pumps:
+- N × (head-curve equation if pump is on, else zero-flow equation)
+- 1 × flow summation: `m_dot_out = Σ m_dot_Pi`
+- 1 × loop closure: `m_dot_out = source(m_dot_in)` (or static-pressure pin when all pumps are off)
+- 1 × enthalpy: `h_out = h_inlet + specific_work`
+
+Total: `N + 3` equations for `N + 3` unknowns (`m_dot_P1…PN`, `m_dot_out`, `P_out`, `h_out`).
+
+**Rule 9 — Use `source(input_port)` for loop-closure equations.**
+`self.coupled_eqs.source(self.m_dot_in)` returns a reference to the upstream node in the network graph so the matrix enforces flow continuity without hard-coding a value. Use this for the loop-closure equation whenever the component receives a flow that must equal its own discharge.
+
+**Rule 10 — Write RK4 integration as a nested closure inside the Phase C block.**
+Define `def _rk4_rates(P, h): ...` inside `calculate()` after the `is_converged` guard. The closure captures `m_dot_in`, `m_dot_pump`, `m_dot_vent`, and `m_tank` from the surrounding scope, keeping the four RK4 calls concise. Guard denominators with `math.copysign(max(abs(x), ε), x)` to match the stabilisation from the original Fortran code.
+
+**Rule 11 — Delete old code in small, uniquely-identifiable chunks.**
+- Insert the new methods first and leave the old body appended below them. The file will have syntax errors but `get_errors` will tell you exactly where.
+- Delete old code one logical block at a time (one secant-solver step, one `if` branch, etc.) using `replace_string_in_file` with 3–5 lines of unchanged context on both sides.
+- Run `get_errors` after each deletion.
+- Never attempt to delete more than ~100 lines in a single call; match text only appears once in the file.
+- Finish by running `pytest tests/` to confirm no regressions.
