@@ -14,7 +14,7 @@ is not None (the matrix-build phase), so the matrix always uses the current time
 
 # Hi pass or low-pass RLC circuit 
 # 
-# Hi pass:
+# Low pass:
 #       ---------- 
 # ------LLLLLLLLLL------1----------
 # |     ----------    |2          |
@@ -26,7 +26,7 @@ is not None (the matrix-build phase), so the matrix always uses the current time
 # |      GGGGG        |           |
 # --------GGG---------TR-----------
 # 
-# Low pass:
+# High pass:
 #       ---------- 
 # ------CCCCCCCCCC------1----------
 # |     ----------    |2          |
@@ -63,7 +63,7 @@ model.initialize()
 # Intermediate parameters
 zeta = 0.8  # damping ratio
 is_hipass = True
-# is_hipass = False
+is_hipass = False
 
 
 # ----------------------------------------------------------
@@ -82,13 +82,13 @@ model.vs.omega_lo = omega_c * 2    # low-pass cutoff at twice the natural freque
 
 # Switch model type here...
 if is_hipass:
-    # Hi-pass tolopolgy. Inductor in series, capacitor in parallel
-    pos_A = model.l
-    pos_B = model.c
-else:    
-    # Low-pass tolopolgy. Capacitor in series, inductor in parallel
+    # High-pass tolopolgy. Capacitor in series, inductor in parallel
     pos_A = model.c
     pos_B = model.l
+else:    
+    # Low-pass tolopolgy. Inductor in series, capacitor in parallel
+    pos_A = model.l
+    pos_B = model.c
 
 # ----------------------------------------------------------
 # Configure simulation settings
