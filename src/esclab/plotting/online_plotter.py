@@ -83,6 +83,11 @@ class OnlinePlotter:
         tooltip_button.setChecked(False)
         tooltip_button.setFixedSize(70, 30)
         controls_layout.addWidget(tooltip_button)
+        
+        save_png_button = QtWidgets.QPushButton("Save")
+        save_png_button.setFixedSize(80, 30)
+        controls_layout.addWidget(save_png_button)
+        
         controls_layout.addStretch()
 
         container = QtWidgets.QWidget()
@@ -97,6 +102,7 @@ class OnlinePlotter:
         font_up_button.clicked.connect(lambda: cls.adjust_font_size(1))
         follow_button.clicked.connect(lambda checked: cls.set_auto_follow(checked))
         tooltip_button.clicked.connect(lambda checked: cls.set_plot_tooltip(checked))
+        save_png_button.clicked.connect(lambda: cls.save_current_tab_png())
         next_tab_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Tab"), main_window)
         prev_tab_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Shift+Tab"), main_window)
         next_tab_shortcut.setContext(QtCore.Qt.WindowShortcut)
@@ -153,6 +159,72 @@ class OnlinePlotter:
 
         step = 1 if forward else -1
         cls.tab_widget.setCurrentIndex((current + step) % count)
+
+    @classmethod
+    def save_current_tab_png(cls, dpi=300):
+        widget = cls._current_tab_widget()
+        if widget is None:
+            return
+        
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(cls.main_window, "Save Image", "", "PNG Files (*.png)")
+        if not path:
+            return
+            
+        if not path.lower().endswith('.png'):
+            path += '.png'
+            
+        screen_dpi = getattr(cls.main_window, 'logicalDpiX', lambda: 96.0)()
+        scale_factor = dpi / screen_dpi
+
+        orig_size = widget.size()
+        scaled_width = int(orig_size.width() * scale_factor)
+        scaled_height = int(orig_size.height() * scale_factor)
+        scaled_size = QtCore.QSize(scaled_width, scaled_height)
+        
+        image = QtGui.QImage(scaled_size, QtGui.QImage.Format_ARGB32)
+        image.fill(QtGui.QColor("white"))
+        
+        painter = QtGui.QPainter(image)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        
+        if hasattr(widget, 'scene') and widget.scene() is not None:
+            target_rect = QtCore.QRectF(0, 0, scaled_size.width(), scaled_size.height())
+            source_rect = QtCore.QRectF(0, 0, orig_size.width(), orig_size.height())
+            
+            # Temporarily disable ItemIgnoresTransformations for all items
+            # (such as pyqtgraph's LegendItem) so they scale up correctly
+            flags_to_restore = []
+            export_items = []
+            
+            for item in widget.scene().items():
+                if int(item.flags()) & QtWidgets.QGraphicsItem.ItemIgnoresTransformations:
+                    item.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, False)
+                    flags_to_restore.append(item)
+                
+                # Notify pyqtgraph items so cosmetic pens scale up natively
+                if hasattr(item, 'setExportMode'):
+                    item.setExportMode(True, {'resolutionScale': scale_factor, 'antialias': True})
+                    export_items.append(item)
+                    
+            widget.scene().render(painter, target_rect, source_rect)
+            
+            # Restore the flags and export mode
+            for item in flags_to_restore:
+                item.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+            for item in export_items:
+                item.setExportMode(False)
+        else:
+            painter.scale(scale_factor, scale_factor)
+            widget.render(painter)
+            
+        painter.end()
+        
+        # Set DPI metadata for the image file
+        dpm = int(dpi * 100 / 2.54)
+        image.setDotsPerMeterX(dpm)
+        image.setDotsPerMeterY(dpm)
+        
+        image.save(path, "PNG")
 
     @classmethod
     def handle_keyboard_event(cls, event):
