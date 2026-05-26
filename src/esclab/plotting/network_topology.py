@@ -61,13 +61,14 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
 
 
 class NetworkTopologyView:
-    NODE_WIDTH = 150
-    NODE_HEIGHT = 56
+    NODE_WIDTH = 140
+    NODE_HEIGHT = 35
     SCENE_RECT_PADDING = 40.0
-    INITIAL_VIEW_FIT_MARGIN = 12.0
-    INITIAL_VIEW_SCALE_BOOST = 1.40
+    RECT_COLOR = (60, 180, 200)
+    INITIAL_VIEW_FIT_MARGIN = 18.0
+    INITIAL_VIEW_SCALE_BOOST = 1.0
     LAYOUT_ASPECT_STRETCH_TRIGGER = 1.00
-    MAX_VERTICAL_LAYOUT_STRETCH = 1.00
+    MAX_VERTICAL_LAYOUT_STRETCH = 1.50
     CONNECTION_LABEL_SEPARATOR = "→"
     # Alternative if preferred: "▶"
     LEADER_MID_BAND_MIN = 0.40
@@ -149,7 +150,7 @@ class NetworkTopologyView:
 
         label_map = self._component_label_map(components)
         for comp in components:
-            color = plan_colors.get(comp, QtGui.QColor(60, 120, 180))
+            color = plan_colors.get(comp, QtGui.QColor(*self.RECT_COLOR))
             self._draw_node(comp, positions[comp], label_map[comp], color)
 
         edge_draw_data = []
@@ -203,7 +204,6 @@ class NetworkTopologyView:
         graph_fit_rect = self._graph_fit_rect(edge_draw_data)
         scene_padding = self.SCENE_RECT_PADDING
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-scene_padding, -scene_padding, scene_padding, scene_padding))
-        self.view.fitInView(graph_fit_rect, QtCore.Qt.KeepAspectRatio)
         if self.INITIAL_VIEW_SCALE_BOOST > 1.0:
             boost = self.INITIAL_VIEW_SCALE_BOOST
             current_scale = self.view.transform().m11()
@@ -354,7 +354,7 @@ class NetworkTopologyView:
     def _plan_color_map(self, analysis):
         color_map = {}
         palette = [
-            QtGui.QColor(60, 120, 180),
+            QtGui.QColor(*self.RECT_COLOR),
             QtGui.QColor(230, 140, 30),
             QtGui.QColor(100, 170, 90),
             QtGui.QColor(170, 90, 170),
