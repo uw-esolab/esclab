@@ -24,6 +24,7 @@ git clone https://github.com/uw-esolab/esclab.git
 ```
 
 4. Open a command console and execute the following:
+
 ```bash
 # Change to the library directory
 cd C:\repositories\esclab
@@ -31,12 +32,13 @@ cd C:\repositories\esclab
 conda create -n esclab_dev python=3.13
 conda activate esclab_dev
 
-# Install the esclab project to the python package you just created. The -e flag makes the installation editable.
+# Install the esclab project to the python package you just created. 
+# The -e flag makes the installation editable.
 pip install -e .
-# If you are also modifying the eeslib dependency (published by uw-esolab), then clone and install the editable version to this conda environment.
+# ESCLab currently requires the most recent version of EESLib (published by uw-esolab). 
+# Clone and install the editable version to this conda environment. 
+# Make sure C:\repositories is replace with the path to your repository directory.
 pip install -e C:\repositories\eeslib
-# **otherwise** install using the standard pip call
-# pip install eeslib
 ```
 
 ## Getting started
@@ -48,15 +50,17 @@ pip install -e C:\repositories\eeslib
 To create a new model, prepare one or more component files that contain instance(s) of Component classes that are units in the system you want to model. Connect components together in a *model* file.
 
 Templates and examples for *Components* and *Models* are provided in their respective folders. 
+
 * `template_model.py` provides a template for building new system models
 * `template_component.py` provides a template for a component library
 * `sample_circuit_secsub.py` gives and example of a simple solve loop using successive substitution (no coupled equations)
 * `sample_circuit.py` gives an equivalent example using the coupled equation approach. `sample_circuit_tee.py`, and `sample_circuit_hilopass.py` also give examples of solving coupled equations for increasingly complex topologies.
 
 The main calculation and plotting scripts are:
+
 * `simulate.py` | core simulation engine
 * `network_topology.py` | tools for detecting, organizing, and rendering coupled network systems
-* `online_plotter.py` | Qt-based window for real-time plotting 
+* `online_plotter.py` | Qt-based window for real-time plotting
 
 The `flownetwork` folder is currently under-development code for a CSP thermal-hydraulic simulation. None of it is functioning in this environment!!
 
