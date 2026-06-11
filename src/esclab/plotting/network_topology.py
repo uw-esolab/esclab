@@ -1,3 +1,4 @@
+import json
 import math
 from html import escape
 
@@ -24,6 +25,34 @@ class _EdgeLabelItem(QtWidgets.QGraphicsTextItem):
         super().hoverEnterEvent(event)
 
 
+class _DraggableNodeItem(QtWidgets.QGraphicsPathItem):
+    """A node shape that can be dragged to reposition it in the topology view."""
+
+    def __init__(self, path, pen, brush, comp, topology_view, text_item):
+        super().__init__(path)
+        self.setPen(pen)
+        self.setBrush(brush)
+        self._comp = comp
+        self._topology_view = topology_view
+        self._text_item = text_item
+        self.setFlags(
+            QtWidgets.QGraphicsItem.ItemIsMovable
+            | QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
+        )
+        self.setCursor(QtCore.Qt.SizeAllCursor)
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
+            center = self.sceneBoundingRect().center()
+            self._topology_view._center_text_item(self._text_item, center)
+        return super().itemChange(change, value)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        center = self.sceneBoundingRect().center()
+        self._topology_view._on_node_drag_finished(self._comp, center)
+
+
 class _TopologyGraphicsView(QtWidgets.QGraphicsView):
     """Interactive graphics view for topology: wheel zoom + drag pan."""
 
@@ -35,10 +64,14 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.transform_changed_callback = None
+        self._panning = False
+        self._pan_start = QtCore.QPoint()
+        self._pan_hbar_start = 0
+        self._pan_vbar_start = 0
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
-        self.setDragMode(QtWidgets.QGraphicsView.ScrollHandDrag)
+        self.setDragMode(QtWidgets.QGraphicsView.NoDrag)
         self.setViewportUpdateMode(QtWidgets.QGraphicsView.SmartViewportUpdate)
 
     def wheelEvent(self, event):
@@ -58,6 +91,39 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
         if self.transform_changed_callback is not None:
             self.transform_changed_callback()
         event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            for item in self.scene().items(scene_pos):
+                if isinstance(item, _DraggableNodeItem):
+                    super().mousePressEvent(event)
+                    return
+            self._panning = True
+            self._pan_start = event.pos()
+            self._pan_hbar_start = self.horizontalScrollBar().value()
+            self._pan_vbar_start = self.verticalScrollBar().value()
+            self.setCursor(QtCore.Qt.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._panning:
+            delta = event.pos() - self._pan_start
+            self.horizontalScrollBar().setValue(self._pan_hbar_start - delta.x())
+            self.verticalScrollBar().setValue(self._pan_vbar_start - delta.y())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton and self._panning:
+            self._panning = False
+            self.setCursor(QtCore.Qt.ArrowCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class NetworkTopologyView:
@@ -91,6 +157,7 @@ class NetworkTopologyView:
         tab_title="Network",
         include_subnetworks=True,
         show_connection_labels=True,
+        layout_file=None,
     ):
         self.model = model
         self.include_subnetworks = include_subnetworks
@@ -102,6 +169,9 @@ class NetworkTopologyView:
         self._label_items = []
         self._node_label_items = []
         self._node_rects = {}
+        self._node_items = {}
+        self._component_layout_keys = {}
+        self._override_positions = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
         self._connector_segments = []
@@ -111,10 +181,39 @@ class NetworkTopologyView:
         self._layout_loopback_y = 0.0
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
-        OnlinePlotter.tab_widget.addTab(self.view, tab_title)
+
+        # Build a container widget with a slim toolbar above the graphics view.
+        container = QtWidgets.QWidget()
+        vlayout = QtWidgets.QVBoxLayout(container)
+        vlayout.setContentsMargins(0, 2, 0, 0)
+        vlayout.setSpacing(2)
+        toolbar = QtWidgets.QWidget()
+        hlayout = QtWidgets.QHBoxLayout(toolbar)
+        hlayout.setContentsMargins(4, 2, 4, 2)
+        hlayout.setSpacing(6)
+        btn_save = QtWidgets.QPushButton("Save Layout")
+        btn_load = QtWidgets.QPushButton("Load Layout")
+        btn_reset = QtWidgets.QPushButton("Reset Layout")
+        btn_save.setFixedHeight(22)
+        btn_load.setFixedHeight(22)
+        btn_reset.setFixedHeight(22)
+        btn_save.clicked.connect(self._toolbar_save)
+        btn_load.clicked.connect(self._toolbar_load)
+        btn_reset.clicked.connect(self._toolbar_reset)
+        hlayout.addWidget(btn_save)
+        hlayout.addWidget(btn_load)
+        hlayout.addWidget(btn_reset)
+        hlayout.addStretch()
+        toolbar.setLayout(hlayout)
+        vlayout.addWidget(toolbar)
+        vlayout.addWidget(self.view)
+        container.setLayout(vlayout)
+        OnlinePlotter.tab_widget.addTab(container, tab_title)
         OnlinePlotter.register_font_target(self)
         self.view.transform_changed_callback = self._on_view_transform_changed
 
+        if layout_file is not None:
+            self._load_layout_file(layout_file)
         self._draw_topology()
 
     def _draw_topology(self):
@@ -122,6 +221,8 @@ class NetworkTopologyView:
         self._label_items = []
         self._node_label_items = []
         self._node_rects = {}
+        self._node_items = {}
+        self._component_layout_keys = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
         self._connector_segments = []
@@ -137,8 +238,15 @@ class NetworkTopologyView:
         if not components:
             return
 
+        self._component_layout_keys = self._component_layout_key_map(components)
+
         positions = self._component_positions_pid_flow(components, analysis)
         positions = self._stretch_layout_for_viewport(positions)
+        for comp in components:
+            key = self._component_layout_keys.get(comp)
+            if key in self._override_positions:
+                x, y = self._override_positions[key]
+                positions[comp] = QtCore.QPointF(x, y)
         if positions:
             y_vals = [p.y() for p in positions.values()]
             self._layout_loopback_y = max(y_vals) + self.PID_LAYER_Y_SPACING * 1.5
@@ -321,8 +429,8 @@ class NetworkTopologyView:
         self._recenter_node_labels()
 
     def _recenter_node_labels(self):
-        for text_item, center in self._node_label_items:
-            self._center_text_item(text_item, center)
+        for text_item, node_item in self._node_label_items:
+            self._center_text_item(text_item, node_item.sceneBoundingRect().center())
 
     def _component_label_map(self, components):
         """Return stable, non-empty labels for all components.
@@ -350,6 +458,33 @@ class NetworkTopologyView:
             seen[base] = seen.get(base, 0) + 1
             labels[comp] = f"{base} {seen[base]}"
         return labels
+
+    def _component_layout_key_map(self, components):
+        """Return stable, unique keys for JSON layout persistence.
+
+        Use component names when available; otherwise fall back to class names,
+        and append indices when duplicates exist.
+        """
+        base_names = []
+        for comp in components:
+            base = str(getattr(comp, "name", "") or "").strip()
+            if not base:
+                base = type(comp).__name__
+            base_names.append(base)
+
+        counts = {}
+        for base in base_names:
+            counts[base] = counts.get(base, 0) + 1
+
+        seen = {}
+        keys = {}
+        for comp, base in zip(components, base_names):
+            if counts[base] == 1:
+                keys[comp] = base
+                continue
+            seen[base] = seen.get(base, 0) + 1
+            keys[comp] = f"{base}__{seen[base]}"
+        return keys
 
     def _plan_color_map(self, analysis):
         color_map = {}
@@ -850,17 +985,23 @@ class NetworkTopologyView:
         brush = QtGui.QBrush(color)
         path = QtGui.QPainterPath()
         path.addRoundedRect(rect, 10, 10)
-        self.scene.addPath(path, pen, brush)
         self._node_rects[component] = rect
 
-        text = self.scene.addText(label)
+        text = QtWidgets.QGraphicsTextItem(label)
         text.setDefaultTextColor(QtGui.QColor(255, 255, 255))
         text.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+        text.setZValue(2.0)
         font = QtGui.QFont()
         font.setPointSize(OnlinePlotter.font_size_pt)
         text.setFont(font)
+        self.scene.addItem(text)
+
+        node_item = _DraggableNodeItem(path, pen, brush, component, self, text)
+        node_item.setZValue(1.0)
+        self.scene.addItem(node_item)
+        self._node_items[component] = node_item
         self._label_items.append(text)
-        self._node_label_items.append((text, QtCore.QPointF(center.x(), center.y())))
+        self._node_label_items.append((text, node_item))
         self._center_text_item(text, center)
 
     def _center_text_item(self, text_item, center):
@@ -1680,6 +1821,61 @@ class NetworkTopologyView:
         brush = QtGui.QBrush(QtGui.QColor(70, 70, 70))
         pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
         self.scene.addPolygon(polygon, pen, brush)
+
+    def _on_node_drag_finished(self, comp, new_center):
+        """Record the dragged position and schedule a full redraw."""
+        layout_key = self._component_layout_keys.get(comp)
+        if layout_key is None:
+            layout_key = str(getattr(comp, "name", "") or "").strip() or type(comp).__name__
+        self._override_positions[layout_key] = (new_center.x(), new_center.y())
+        QtCore.QTimer.singleShot(0, self._draw_topology)
+
+    def save_layout(self, path):
+        """Save current node positions to a JSON layout file."""
+        positions_data = {}
+        for comp, rect in self._node_rects.items():
+            layout_key = self._component_layout_keys.get(comp)
+            if layout_key is None:
+                continue
+            center = rect.center()
+            positions_data[layout_key] = {"x": center.x(), "y": center.y()}
+        data = {"version": 1, "positions": positions_data}
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+    def load_layout(self, path):
+        """Load node positions from a JSON layout file and redraw."""
+        self._load_layout_file(path)
+        self._draw_topology()
+
+    def _load_layout_file(self, path):
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        version = data.get("version")
+        if version != 1:
+            raise ValueError(f"Unsupported layout file version: {version!r}")
+        self._override_positions = {
+            name: (float(d["x"]), float(d["y"]))
+            for name, d in data.get("positions", {}).items()
+        }
+
+    def _toolbar_save(self):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self.view, "Save Layout", "", "JSON Files (*.json)"
+        )
+        if path:
+            self.save_layout(path)
+
+    def _toolbar_load(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self.view, "Load Layout", "", "JSON Files (*.json)"
+        )
+        if path:
+            self.load_layout(path)
+
+    def _toolbar_reset(self):
+        self._override_positions.clear()
+        self._draw_topology()
 
     def export_png(self, path):
         image = QtGui.QImage(self.view.viewport().size(), QtGui.QImage.Format_ARGB32)

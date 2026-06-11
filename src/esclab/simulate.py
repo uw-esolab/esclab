@@ -579,6 +579,7 @@ class Model:
         show_connection_labels=True,
         tab_title="Connections",
         show_live=True,
+        layout_file=None,
     ):
         """
         Create a topology graph tab and optionally export it to image files.
@@ -601,6 +602,9 @@ class Model:
             Title for the graph tab. Default is "Connections".
         show_live : bool, optional
             Whether to instantiate the tab immediately. Default is True. Set to False to defer until wait_for_plots().
+        layout_file : str, optional
+            Path to a JSON layout file produced by the Save Layout button. When provided the node
+            positions stored in the file supersede the automatically generated layout.
 
         Returns
         -------
@@ -628,6 +632,7 @@ class Model:
                 "include_subnetworks": include_subnetworks,
                 "show_connection_labels": show_connection_labels,
                 "tab_title": tab_title,
+                "layout_file": layout_file,
             })
             return {
                 "view_created": False,
@@ -643,6 +648,7 @@ class Model:
                 tab_title=tab_title,
                 include_subnetworks=include_subnetworks,
                 show_connection_labels=show_connection_labels,
+                layout_file=layout_file,
             )
             self._network_views.append(view)
 
@@ -682,6 +688,7 @@ class Model:
                     tab_title=kwargs["tab_title"],
                     include_subnetworks=kwargs["include_subnetworks"],
                     show_connection_labels=kwargs["show_connection_labels"],
+                    layout_file=kwargs.get("layout_file"),
                 )
                 self._network_views.append(view)
                 if kwargs.get("path_base"):
