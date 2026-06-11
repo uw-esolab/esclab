@@ -587,12 +587,66 @@ class NetworkTopologyView:
         if len(path_points) < 2:
             return auto_path_points
 
-        path_points[0] = QtCore.QPointF(auto_path_points[0].x(), auto_path_points[0].y())
-        path_points[-1] = QtCore.QPointF(auto_path_points[-1].x(), auto_path_points[-1].y())
+        path_points = self._reanchor_override_path(path_points, auto_path_points)
+        path_points = self._orthogonalize_path(path_points)
         path_points = self._simplify_path(path_points)
         if len(path_points) < 2:
             return auto_path_points
         return path_points
+
+    @staticmethod
+    def _reanchor_override_path(path_points, auto_path_points):
+        """Attach an overridden path to new endpoint anchors after node moves."""
+        anchored = [QtCore.QPointF(point.x(), point.y()) for point in path_points]
+        auto_points = [QtCore.QPointF(point.x(), point.y()) for point in auto_path_points]
+        if len(auto_points) < 2:
+            return anchored
+
+        start = auto_points[0]
+        end = auto_points[-1]
+        if len(anchored) < 2:
+            return [QtCore.QPointF(start.x(), start.y()), QtCore.QPointF(end.x(), end.y())]
+
+        anchored[0] = QtCore.QPointF(start.x(), start.y())
+        anchored[-1] = QtCore.QPointF(end.x(), end.y())
+
+        # Keep first/last runs aligned to the current auto-anchor orientation so
+        # moving components stretches those runs instead of creating diagonals.
+        if len(anchored) >= 3:
+            auto_first = auto_points[1]
+            if abs(auto_first.x() - start.x()) >= abs(auto_first.y() - start.y()):
+                anchored[1] = QtCore.QPointF(anchored[1].x(), start.y())
+            else:
+                anchored[1] = QtCore.QPointF(start.x(), anchored[1].y())
+
+            auto_last_prev = auto_points[-2]
+            if abs(end.x() - auto_last_prev.x()) >= abs(end.y() - auto_last_prev.y()):
+                anchored[-2] = QtCore.QPointF(anchored[-2].x(), end.y())
+            else:
+                anchored[-2] = QtCore.QPointF(end.x(), anchored[-2].y())
+
+        return anchored
+
+    @staticmethod
+    def _orthogonalize_path(path_points):
+        """Convert any diagonal hops into horizontal+vertical elbows."""
+        if len(path_points) < 2:
+            return path_points
+
+        orth = [QtCore.QPointF(path_points[0].x(), path_points[0].y())]
+        for point in path_points[1:]:
+            prev = orth[-1]
+            dx = point.x() - prev.x()
+            dy = point.y() - prev.y()
+            if abs(dx) < 1e-9 or abs(dy) < 1e-9:
+                orth.append(QtCore.QPointF(point.x(), point.y()))
+                continue
+
+            # Split a diagonal segment into a Manhattan elbow.
+            orth.append(QtCore.QPointF(point.x(), prev.y()))
+            orth.append(QtCore.QPointF(point.x(), point.y()))
+
+        return orth
 
     @staticmethod
     def _path_points_to_json(path_points):
@@ -1173,16 +1227,23 @@ class NetworkTopologyView:
         if is_feedback:
             return self._loopback_path(src_rect, dst_rect, src, dst)
 
-        start, end = self._preferred_horizontal_anchors(src_rect, dst_rect, src, dst)
-        path_points = self._orthogonal_path(start, end, route_offset=route_offset)
-        path_points = self._reroute_path_around_nodes(
-            path_points,
+        start, end, start_side, end_side = self._preferred_anchors(src_rect, dst_rect, src, dst)
+        path_points = self._orthogonal_path(
             start,
             end,
-            src_component,
-            dst_component,
             route_offset=route_offset,
+            start_side=start_side,
+            end_side=end_side,
         )
+        if start_side in ("left", "right") and end_side in ("left", "right"):
+            path_points = self._reroute_path_around_nodes(
+                path_points,
+                start,
+                end,
+                src_component,
+                dst_component,
+                route_offset=route_offset,
+            )
         if len(path_points) < 2:
             return [start, end]
         return path_points
@@ -1297,34 +1358,33 @@ class NetworkTopologyView:
         return self._simplify_path(path)
 
     @classmethod
-    def _preferred_horizontal_anchors(cls, src_rect, dst_rect, src_center, dst_center):
+    def _preferred_anchors(cls, src_rect, dst_rect, src_center, dst_center):
         dx = dst_center.x() - src_center.x()
         dy = dst_center.y() - src_center.y()
 
-        # For process-flow layout, prefer left/right entry/exit for readability.
-        if abs(dx) >= 1e-9:
+        # Choose side pairs from the dominant center-to-center axis so arrows can
+        # enter/exit from top/bottom when vertical separation is larger.
+        if abs(dx) >= abs(dy):
             if dx >= 0.0:
                 start = QtCore.QPointF(src_rect.right(), src_center.y())
                 end = QtCore.QPointF(dst_rect.left(), dst_center.y())
-            else:
-                start = QtCore.QPointF(src_rect.left(), src_center.y())
-                end = QtCore.QPointF(dst_rect.right(), dst_center.y())
-            return start, end
+                return start, end, "right", "left"
+            start = QtCore.QPointF(src_rect.left(), src_center.y())
+            end = QtCore.QPointF(dst_rect.right(), dst_center.y())
+            return start, end, "left", "right"
 
         if dy >= 0.0:
-            return QtCore.QPointF(src_center.x(), src_rect.bottom()), QtCore.QPointF(dst_center.x(), dst_rect.top())
-        return QtCore.QPointF(src_center.x(), src_rect.top()), QtCore.QPointF(dst_center.x(), dst_rect.bottom())
+            start = QtCore.QPointF(src_center.x(), src_rect.bottom())
+            end = QtCore.QPointF(dst_center.x(), dst_rect.top())
+            return start, end, "bottom", "top"
+
+        start = QtCore.QPointF(src_center.x(), src_rect.top())
+        end = QtCore.QPointF(dst_center.x(), dst_rect.bottom())
+        return start, end, "top", "bottom"
 
     @classmethod
-    def _orthogonal_path(cls, start, end, route_offset=0.0):
-        """Build an H-V-H elbow (2 horizontal + 1 vertical segment) between
-        left/right anchor points.
-
-        The single vertical jog is placed at the horizontal midpoint of the two
-        anchors, shifted by *route_offset* to separate parallel edges.  The path
-        always exits and arrives horizontally so the arrowhead direction matches
-        the side of the node being entered.
-        """
+    def _orthogonal_path(cls, start, end, route_offset=0.0, start_side=None, end_side=None):
+        """Build orthogonal paths for horizontal, vertical, or mixed side anchors."""
         dx = end.x() - start.x()
         dy = end.y() - start.y()
 
@@ -1332,20 +1392,42 @@ class NetworkTopologyView:
         if abs(dy) < 1e-9 or abs(dx) < 1e-9:
             return [start, end]
 
-        # Vertical jog column: midpoint + lane offset, clamped inside the
-        # start→end x-span to prevent U-bends from large route_offset values.
-        x_mid = (start.x() + end.x()) * 0.5 + route_offset
-        if dx > 0:
-            x_mid = max(start.x(), min(x_mid, end.x()))
-        else:
-            x_mid = min(start.x(), max(x_mid, end.x()))
+        horizontal_sides = {"left", "right"}
+        vertical_sides = {"top", "bottom"}
+        if start_side in horizontal_sides and end_side in horizontal_sides:
+            # H-V-H: place a vertical jog column between anchors.
+            x_mid = (start.x() + end.x()) * 0.5 + route_offset
+            if dx > 0:
+                x_mid = max(start.x(), min(x_mid, end.x()))
+            else:
+                x_mid = min(start.x(), max(x_mid, end.x()))
+            return cls._simplify_path([
+                start,
+                QtCore.QPointF(x_mid, start.y()),
+                QtCore.QPointF(x_mid, end.y()),
+                end,
+            ])
 
-        return cls._simplify_path([
-            start,
-            QtCore.QPointF(x_mid, start.y()),
-            QtCore.QPointF(x_mid, end.y()),
-            end,
-        ])
+        if start_side in vertical_sides and end_side in vertical_sides:
+            # V-H-V: place a horizontal jog row between anchors.
+            y_mid = (start.y() + end.y()) * 0.5 + route_offset
+            if dy > 0:
+                y_mid = max(start.y(), min(y_mid, end.y()))
+            else:
+                y_mid = min(start.y(), max(y_mid, end.y()))
+            return cls._simplify_path([
+                start,
+                QtCore.QPointF(start.x(), y_mid),
+                QtCore.QPointF(end.x(), y_mid),
+                end,
+            ])
+
+        # Mixed side pair: emit a single L elbow preserving the start-side axis.
+        if start_side in horizontal_sides:
+            corner = QtCore.QPointF(end.x(), start.y())
+        else:
+            corner = QtCore.QPointF(start.x(), end.y())
+        return cls._simplify_path([start, corner, end])
 
     @staticmethod
     def _simplify_path(path_points):
@@ -1962,7 +2044,9 @@ class NetworkTopologyView:
         polygon = QtGui.QPolygonF([end, p1, p2])
         brush = QtGui.QBrush(QtGui.QColor(70, 70, 70))
         pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
-        self.scene.addPolygon(polygon, pen, brush)
+        arrow_item = self.scene.addPolygon(polygon, pen, brush)
+        arrow_item.setZValue(1.6)
+        arrow_item.setAcceptedMouseButtons(QtCore.Qt.NoButton)
 
     def _on_node_drag_finished(self, comp, new_center):
         """Record the dragged position and schedule a full redraw."""
