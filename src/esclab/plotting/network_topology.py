@@ -11,18 +11,32 @@ from esclab.plotting.online_plotter import OnlinePlotter
 class _EdgeLabelItem(QtWidgets.QGraphicsTextItem):
     """Edge label text item with built-in hover tooltip."""
 
-    def __init__(self, display_text, tooltip_text=None, tooltip_builder=None):
+    def __init__(self, display_text, tooltip_text=None, tooltip_builder=None, topology_view=None, edge_key=None):
         super().__init__(display_text)
         self.setAcceptHoverEvents(True)
         self._tooltip_builder = tooltip_builder
+        self._topology_view = topology_view
+        self.edge_key = edge_key
         if tooltip_text is not None:
             self.setToolTip(tooltip_text)
         self.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
+        self.setCursor(QtCore.Qt.OpenHandCursor)
 
     def hoverEnterEvent(self, event):
         if self._tooltip_builder is not None:
             self.setToolTip(self._tooltip_builder())
         super().hoverEnterEvent(event)
+
+    def mousePressEvent(self, event):
+        self.setCursor(QtCore.Qt.ClosedHandCursor)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self.setCursor(QtCore.Qt.OpenHandCursor)
+        if self._topology_view is not None:
+            self._topology_view._on_edge_label_drag_finished(self)
 
 
 class _DraggableNodeItem(QtWidgets.QGraphicsPathItem):
@@ -142,7 +156,7 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
         if event.button() == QtCore.Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             for item in self.scene().items(scene_pos):
-                if isinstance(item, (_DraggableNodeItem, _DraggableEdgeSegmentItem)):
+                if isinstance(item, (_DraggableNodeItem, _DraggableEdgeSegmentItem, _EdgeLabelItem)):
                     super().mousePressEvent(event)
                     return
             self._panning = True
@@ -220,9 +234,11 @@ class NetworkTopologyView:
         self._component_layout_keys = {}
         self._override_positions = {}
         self._edge_path_overrides = {}
+        self._edge_label_overrides = {}
         self._rendered_edge_paths = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
+        self._edge_label_link_by_item = {}
         self._connector_segments = []
         self._layout_layers = {}
         self._edge_route_offsets = {}
@@ -297,6 +313,7 @@ class NetworkTopologyView:
         self._rendered_edge_paths = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
+        self._edge_label_link_by_item = {}
         self._connector_segments = []
         self._layout_layers = {}
         self._edge_route_offsets = {}
@@ -407,6 +424,7 @@ class NetworkTopologyView:
             if label_segment is None:
                 continue
             self._draw_edge_label(
+                edge_key,
                 label_segment[0],
                 label_segment[1],
                 edge_connections,
@@ -1514,7 +1532,7 @@ class NetworkTopologyView:
 
         # Edge labels are drawn in a separate pass after fitInView.
 
-    def _draw_edge_label(self, start, end, edge_connections, src_object_label, dst_object_label, own_segments=None):
+    def _draw_edge_label(self, edge_key, start, end, edge_connections, src_object_label, dst_object_label, own_segments=None):
         if not self.show_connection_labels or not edge_connections:
             return
 
@@ -1529,7 +1547,7 @@ class NetworkTopologyView:
 
         display_text = self._build_smart_label_text(display_labels)
         tooltip_builder = lambda src=src_object_label, dst=dst_object_label, conns=edge_connections: self._build_tooltip_html(src, dst, conns)
-        text_item = _EdgeLabelItem(display_text, tooltip_builder=tooltip_builder)
+        text_item = _EdgeLabelItem(display_text, tooltip_builder=tooltip_builder, topology_view=self, edge_key=edge_key)
         self.scene.addItem(text_item)
         text_item.setDefaultTextColor(QtGui.QColor(20, 20, 20))
 
@@ -1574,29 +1592,39 @@ class NetworkTopologyView:
         signed_scene_tangent = (placed_center.x() - mid.x()) * tx + (placed_center.y() - mid.y()) * ty
         signed_offset_px = signed_scene_offset * scale_mean
         signed_tangent_px = signed_scene_tangent * scale_mean
-        self._register_edge_leader(
+        link = self._register_edge_leader(
             text_item,
             start,
             end,
+            edge_key=edge_key,
             signed_offset_px=signed_offset_px,
             signed_tangent_px=signed_tangent_px,
         )
-        self._label_occupied_rects.append(self._expand_rect(placed_rect, 4.0))
+        override = self._edge_label_overrides.get(edge_key)
+        if override is not None:
+            link["signed_offset_px"] = float(override.get("signed_offset_px", link["signed_offset_px"]))
+            link["signed_tangent_px"] = float(override.get("signed_tangent_px", link["signed_tangent_px"]))
+            self._update_one_edge_leader(link)
 
-    def _register_edge_leader(self, text_item, line_start, line_end, signed_offset_px=12.0, signed_tangent_px=0.0):
+        visual_rect = self._label_visual_rect_in_scene(text_item)
+        self._label_occupied_rects.append(self._expand_rect(visual_rect, 4.0))
+
+    def _register_edge_leader(self, text_item, line_start, line_end, edge_key=None, signed_offset_px=12.0, signed_tangent_px=0.0):
         pen = QtGui.QPen(QtGui.QColor(150, 150, 150, 210))
         pen.setWidth(1)
         leader_item = self.scene.addLine(QtCore.QLineF(line_start, line_start), pen)
-        self._edge_label_links.append(
-            {
-                "text_item": text_item,
-                "leader_item": leader_item,
-                "line_start": QtCore.QPointF(line_start.x(), line_start.y()),
-                "line_end": QtCore.QPointF(line_end.x(), line_end.y()),
-                "signed_offset_px": float(signed_offset_px),
-                "signed_tangent_px": float(signed_tangent_px),
-            }
-        )
+        link = {
+            "text_item": text_item,
+            "leader_item": leader_item,
+            "edge_key": edge_key,
+            "line_start": QtCore.QPointF(line_start.x(), line_start.y()),
+            "line_end": QtCore.QPointF(line_end.x(), line_end.y()),
+            "signed_offset_px": float(signed_offset_px),
+            "signed_tangent_px": float(signed_tangent_px),
+        }
+        self._edge_label_links.append(link)
+        self._edge_label_link_by_item[text_item] = link
+        return link
 
     def _update_edge_leaders(self):
         for link in self._edge_label_links:
@@ -2092,6 +2120,55 @@ class NetworkTopologyView:
 
         QtCore.QTimer.singleShot(0, self._draw_topology)
 
+    def _on_edge_label_drag_finished(self, text_item):
+        link = self._edge_label_link_by_item.get(text_item)
+        if link is None:
+            return
+
+        self._update_link_offsets_from_text_item(link)
+        edge_key = link.get("edge_key")
+        if edge_key:
+            self._edge_label_overrides[edge_key] = {
+                "signed_offset_px": float(link.get("signed_offset_px", 12.0)),
+                "signed_tangent_px": float(link.get("signed_tangent_px", 0.0)),
+            }
+        self._update_one_edge_leader(link)
+
+    def _update_link_offsets_from_text_item(self, link):
+        text_item = link["text_item"]
+        line_start = link["line_start"]
+        line_end = link["line_end"]
+
+        line = QtCore.QLineF(line_start, line_end)
+        length = line.length()
+        if length < 1e-9:
+            return
+
+        sx = abs(self.view.transform().m11())
+        sy = abs(self.view.transform().m22())
+        if sx < 1e-9:
+            sx = 1.0
+        if sy < 1e-9:
+            sy = 1.0
+        scale_mean = 0.5 * (sx + sy)
+        if scale_mean < 1e-9:
+            scale_mean = 1.0
+
+        mid = QtCore.QPointF((line_start.x() + line_end.x()) * 0.5, (line_start.y() + line_end.y()) * 0.5)
+        vx = line_end.x() - line_start.x()
+        vy = line_end.y() - line_start.y()
+        nx = -vy / length
+        ny = vx / length
+        tx = ny
+        ty = -nx
+
+        label_rect = self._label_visual_rect_in_scene(text_item)
+        label_center = label_rect.center()
+        signed_scene_offset = (label_center.x() - mid.x()) * nx + (label_center.y() - mid.y()) * ny
+        signed_scene_tangent = (label_center.x() - mid.x()) * tx + (label_center.y() - mid.y()) * ty
+        link["signed_offset_px"] = signed_scene_offset * scale_mean
+        link["signed_tangent_px"] = signed_scene_tangent * scale_mean
+
     def _toggle_snap_to_grid(self, checked):
         self._snap_to_grid_enabled = bool(checked)
         if self._snap_grid_spinbox is not None:
@@ -2124,10 +2201,19 @@ class NetworkTopologyView:
             if path_points and len(path_points) >= 2
         }
 
+        edge_labels_data = {
+            edge_key: {
+                "signed_offset_px": float(values.get("signed_offset_px", 12.0)),
+                "signed_tangent_px": float(values.get("signed_tangent_px", 0.0)),
+            }
+            for edge_key, values in self._edge_label_overrides.items()
+        }
+
         data = {
             "version": 1,
             "positions": positions_data,
             "edge_paths": edge_paths_data,
+            "edge_labels": edge_labels_data,
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
@@ -2156,6 +2242,16 @@ class NetworkTopologyView:
                 edge_path_overrides[edge_key] = points
         self._edge_path_overrides = edge_path_overrides
 
+        edge_label_overrides = {}
+        for edge_key, values in data.get("edge_labels", {}).items():
+            if not isinstance(values, dict):
+                continue
+            edge_label_overrides[edge_key] = {
+                "signed_offset_px": float(values.get("signed_offset_px", 12.0)),
+                "signed_tangent_px": float(values.get("signed_tangent_px", 0.0)),
+            }
+        self._edge_label_overrides = edge_label_overrides
+
     def _toolbar_save(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self.view, "Save Layout", "", "JSON Files (*.json)"
@@ -2173,6 +2269,7 @@ class NetworkTopologyView:
     def _toolbar_reset(self):
         self._override_positions.clear()
         self._edge_path_overrides.clear()
+        self._edge_label_overrides.clear()
         self._draw_topology()
 
     def export_png(self, path):
