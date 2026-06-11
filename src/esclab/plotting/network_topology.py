@@ -53,6 +53,52 @@ class _DraggableNodeItem(QtWidgets.QGraphicsPathItem):
         self._topology_view._on_node_drag_finished(self._comp, center)
 
 
+class _DraggableEdgeSegmentItem(QtWidgets.QGraphicsLineItem):
+    """Invisible draggable hit target for an edge segment."""
+
+    def __init__(self, line, edge_key, segment_index, orientation, topology_view):
+        super().__init__(line)
+        self._edge_key = edge_key
+        self._segment_index = segment_index
+        self._orientation = orientation
+        self._topology_view = topology_view
+
+        pen = QtGui.QPen(QtGui.QColor(0, 0, 0, 0))
+        pen.setWidth(12)
+        pen.setCosmetic(True)
+        self.setPen(pen)
+        self.setFlags(
+            QtWidgets.QGraphicsItem.ItemIsMovable
+            | QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
+        )
+        if self._orientation == "vertical":
+            self.setCursor(QtCore.Qt.SizeHorCursor)
+        else:
+            self.setCursor(QtCore.Qt.SizeVerCursor)
+        self.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
+        self.setZValue(1.5)
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.ItemPositionChange:
+            pos = QtCore.QPointF(value)
+            if self._orientation == "vertical":
+                pos.setY(0.0)
+            else:
+                pos.setX(0.0)
+            return pos
+        return super().itemChange(change, value)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        pos = self.pos()
+        delta = pos.x() if self._orientation == "vertical" else pos.y()
+        self._topology_view._on_edge_segment_drag_finished(
+            self._edge_key,
+            self._segment_index,
+            delta,
+        )
+
+
 class _TopologyGraphicsView(QtWidgets.QGraphicsView):
     """Interactive graphics view for topology: wheel zoom + drag pan."""
 
@@ -96,7 +142,7 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
         if event.button() == QtCore.Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             for item in self.scene().items(scene_pos):
-                if isinstance(item, _DraggableNodeItem):
+                if isinstance(item, (_DraggableNodeItem, _DraggableEdgeSegmentItem)):
                     super().mousePressEvent(event)
                     return
             self._panning = True
@@ -173,6 +219,8 @@ class NetworkTopologyView:
         self._node_items = {}
         self._component_layout_keys = {}
         self._override_positions = {}
+        self._edge_path_overrides = {}
+        self._rendered_edge_paths = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
         self._connector_segments = []
@@ -246,6 +294,7 @@ class NetworkTopologyView:
         self._node_rects = {}
         self._node_items = {}
         self._component_layout_keys = {}
+        self._rendered_edge_paths = {}
         self._label_occupied_rects = []
         self._edge_label_links = []
         self._connector_segments = []
@@ -287,7 +336,7 @@ class NetworkTopologyView:
         edge_draw_data = []
         for src, dst in edge_set:
             is_feedback = (src, dst) in self._feedback_edge_pairs
-            path_points = self._compute_edge_path(
+            auto_path_points = self._compute_edge_path(
                 src,
                 dst,
                 positions[src],
@@ -295,12 +344,18 @@ class NetworkTopologyView:
                 route_offset=self._edge_route_offsets.get((src, dst), 0.0),
                 is_feedback=is_feedback,
             )
+            if auto_path_points is None or len(auto_path_points) < 2:
+                continue
+            edge_key = self._edge_layout_key(src, dst)
+            path_points = self._apply_edge_path_override(edge_key, auto_path_points)
             if path_points is None or len(path_points) < 2:
                 continue
+            self._rendered_edge_paths[edge_key] = self._copy_path_points(path_points)
             label_segment = self._label_segment_for_path(path_points)
             segments = self._path_segments(path_points)
             edge_draw_data.append(
                 (
+                    edge_key,
                     src,
                     dst,
                     path_points,
@@ -317,8 +372,9 @@ class NetworkTopologyView:
             if not is_feedback:
                 self._connector_segments.extend(segments)
 
-        for src, dst, path_points, label_segment, segments, edge_connections, src_label, dst_label, is_feedback in edge_draw_data:
+        for edge_key, src, dst, path_points, label_segment, segments, edge_connections, src_label, dst_label, is_feedback in edge_draw_data:
             self._draw_edge(
+                edge_key,
                 src,
                 dst,
                 path_points,
@@ -347,7 +403,7 @@ class NetworkTopologyView:
 
         # Place edge labels after fitInView so label scene extents are computed
         # with the final transform, keeping label offsets stable across zoom.
-        for src, dst, path_points, label_segment, segments, edge_connections, src_label, dst_label, is_feedback in edge_draw_data:
+        for edge_key, src, dst, path_points, label_segment, segments, edge_connections, src_label, dst_label, is_feedback in edge_draw_data:
             if label_segment is None:
                 continue
             self._draw_edge_label(
@@ -380,7 +436,7 @@ class NetworkTopologyView:
             fit_rect = node_rect if not has_geometry else fit_rect.united(node_rect)
             has_geometry = True
 
-        for _, _, path_points, _, _, _, _, _, is_feedback in edge_draw_data:
+        for _, _, _, path_points, _, _, _, _, _, is_feedback in edge_draw_data:
             if is_feedback:
                 continue
             for point in path_points:
@@ -508,6 +564,50 @@ class NetworkTopologyView:
             seen[base] = seen.get(base, 0) + 1
             keys[comp] = f"{base}__{seen[base]}"
         return keys
+
+    def _edge_layout_key(self, src, dst):
+        src_key = self._component_layout_keys.get(src)
+        dst_key = self._component_layout_keys.get(dst)
+        if src_key is None:
+            src_key = str(getattr(src, "name", "") or "").strip() or type(src).__name__
+        if dst_key is None:
+            dst_key = str(getattr(dst, "name", "") or "").strip() or type(dst).__name__
+        return f"{src_key}__TO__{dst_key}"
+
+    @staticmethod
+    def _copy_path_points(path_points):
+        return [QtCore.QPointF(point.x(), point.y()) for point in path_points]
+
+    def _apply_edge_path_override(self, edge_key, auto_path_points):
+        override_points = self._edge_path_overrides.get(edge_key)
+        if not override_points:
+            return auto_path_points
+
+        path_points = self._copy_path_points(override_points)
+        if len(path_points) < 2:
+            return auto_path_points
+
+        path_points[0] = QtCore.QPointF(auto_path_points[0].x(), auto_path_points[0].y())
+        path_points[-1] = QtCore.QPointF(auto_path_points[-1].x(), auto_path_points[-1].y())
+        path_points = self._simplify_path(path_points)
+        if len(path_points) < 2:
+            return auto_path_points
+        return path_points
+
+    @staticmethod
+    def _path_points_to_json(path_points):
+        return [{"x": point.x(), "y": point.y()} for point in path_points]
+
+    @staticmethod
+    def _path_points_from_json(points_json):
+        points = []
+        for item in points_json:
+            if not isinstance(item, dict):
+                continue
+            if "x" not in item or "y" not in item:
+                continue
+            points.append(QtCore.QPointF(float(item["x"]), float(item["y"])))
+        return points
 
     def _plan_color_map(self, analysis):
         color_map = {}
@@ -1292,7 +1392,7 @@ class NetworkTopologyView:
             return None
         return max(segments, key=lambda seg: QtCore.QLineF(seg[0], seg[1]).length())
 
-    def _draw_edge(self, src_component, dst_component, path_points, label_segment, own_segments, edge_connections, src_object_label, dst_object_label, is_feedback=False):
+    def _draw_edge(self, edge_key, src_component, dst_component, path_points, label_segment, own_segments, edge_connections, src_object_label, dst_object_label, is_feedback=False):
         if is_feedback:
             line_pen = QtGui.QPen(QtGui.QColor(140, 140, 140))
             line_pen.setWidth(2)
@@ -1304,8 +1404,27 @@ class NetworkTopologyView:
         if len(path_points) < 2:
             return
 
-        for seg_start, seg_end in self._path_segments(path_points):
+        segments = self._path_segments(path_points)
+        n_segments = len(segments)
+        for segment_index, (seg_start, seg_end) in enumerate(segments):
             self.scene.addLine(QtCore.QLineF(seg_start, seg_end), line_pen)
+
+            # Allow route editing by dragging internal orthogonal segments.
+            if segment_index == 0 or segment_index == n_segments - 1:
+                continue
+            dx = abs(seg_end.x() - seg_start.x())
+            dy = abs(seg_end.y() - seg_start.y())
+            if dx < 1e-9 and dy < 1e-9:
+                continue
+            orientation = "vertical" if dx < dy else "horizontal"
+            drag_item = _DraggableEdgeSegmentItem(
+                QtCore.QLineF(seg_start, seg_end),
+                edge_key,
+                segment_index,
+                orientation,
+                self,
+            )
+            self.scene.addItem(drag_item)
 
         arrow_start = path_points[-2]
         arrow_end = path_points[-1]
@@ -1855,6 +1974,40 @@ class NetworkTopologyView:
         self._override_positions[layout_key] = (new_center.x(), new_center.y())
         QtCore.QTimer.singleShot(0, self._draw_topology)
 
+    def _on_edge_segment_drag_finished(self, edge_key, segment_index, delta):
+        path_points = self._rendered_edge_paths.get(edge_key)
+        if path_points is None or len(path_points) < 4:
+            QtCore.QTimer.singleShot(0, self._draw_topology)
+            return
+        if segment_index <= 0 or segment_index >= len(path_points) - 2:
+            QtCore.QTimer.singleShot(0, self._draw_topology)
+            return
+
+        path_points = self._copy_path_points(path_points)
+        p0 = path_points[segment_index]
+        p1 = path_points[segment_index + 1]
+        dx = abs(p1.x() - p0.x())
+        dy = abs(p1.y() - p0.y())
+
+        if dx < dy:
+            new_x = p0.x() + float(delta)
+            if self._snap_to_grid_enabled:
+                new_x = self._snap_point_to_grid(QtCore.QPointF(new_x, 0.0)).x()
+            path_points[segment_index].setX(new_x)
+            path_points[segment_index + 1].setX(new_x)
+        else:
+            new_y = p0.y() + float(delta)
+            if self._snap_to_grid_enabled:
+                new_y = self._snap_point_to_grid(QtCore.QPointF(0.0, new_y)).y()
+            path_points[segment_index].setY(new_y)
+            path_points[segment_index + 1].setY(new_y)
+
+        path_points = self._simplify_path(path_points)
+        if len(path_points) >= 2:
+            self._edge_path_overrides[edge_key] = path_points
+
+        QtCore.QTimer.singleShot(0, self._draw_topology)
+
     def _toggle_snap_to_grid(self, checked):
         self._snap_to_grid_enabled = bool(checked)
         if self._snap_grid_spinbox is not None:
@@ -1880,7 +2033,18 @@ class NetworkTopologyView:
                 continue
             center = rect.center()
             positions_data[layout_key] = {"x": center.x(), "y": center.y()}
-        data = {"version": 1, "positions": positions_data}
+
+        edge_paths_data = {
+            edge_key: self._path_points_to_json(path_points)
+            for edge_key, path_points in self._edge_path_overrides.items()
+            if path_points and len(path_points) >= 2
+        }
+
+        data = {
+            "version": 1,
+            "positions": positions_data,
+            "edge_paths": edge_paths_data,
+        }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
@@ -1900,6 +2064,14 @@ class NetworkTopologyView:
             for name, d in data.get("positions", {}).items()
         }
 
+        edge_path_overrides = {}
+        for edge_key, points_json in data.get("edge_paths", {}).items():
+            points = self._path_points_from_json(points_json)
+            points = self._simplify_path(points)
+            if len(points) >= 2:
+                edge_path_overrides[edge_key] = points
+        self._edge_path_overrides = edge_path_overrides
+
     def _toolbar_save(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self.view, "Save Layout", "", "JSON Files (*.json)"
@@ -1916,6 +2088,7 @@ class NetworkTopologyView:
 
     def _toolbar_reset(self):
         self._override_positions.clear()
+        self._edge_path_overrides.clear()
         self._draw_topology()
 
     def export_png(self, path):
