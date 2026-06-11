@@ -150,6 +150,7 @@ class NetworkTopologyView:
     EDGE_ROUTE_LAYER_CHANNEL_SPACING = 10.0
     EDGE_NODE_AVOID_MARGIN = 6.0
     EDGE_NODE_INTERSECTION_PENALTY = 10000.0
+    SNAP_GRID_SIZE_PX = 20.0
 
     def __init__(
         self,
@@ -179,6 +180,9 @@ class NetworkTopologyView:
         self._edge_route_offsets = {}
         self._feedback_edge_pairs = set()
         self._layout_loopback_y = 0.0
+        self._snap_to_grid_enabled = False
+        self._snap_grid_size_px = float(self.SNAP_GRID_SIZE_PX)
+        self._snap_grid_spinbox = None
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
 
@@ -194,15 +198,34 @@ class NetworkTopologyView:
         btn_save = QtWidgets.QPushButton("Save Layout")
         btn_load = QtWidgets.QPushButton("Load Layout")
         btn_reset = QtWidgets.QPushButton("Reset Layout")
+        btn_snap = QtWidgets.QPushButton("Snap to Grid")
+        lbl_grid = QtWidgets.QLabel("Grid")
+        spin_grid = QtWidgets.QSpinBox()
         btn_save.setFixedHeight(22)
         btn_load.setFixedHeight(22)
         btn_reset.setFixedHeight(22)
+        btn_snap.setFixedHeight(22)
+        lbl_grid.setFixedHeight(22)
+        spin_grid.setFixedHeight(22)
+        spin_grid.setRange(1, 1000)
+        spin_grid.setSingleStep(5)
+        spin_grid.setSuffix(" px")
+        spin_grid.setValue(int(round(self._snap_grid_size_px)))
+        spin_grid.setEnabled(self._snap_to_grid_enabled)
+        spin_grid.valueChanged.connect(self._set_snap_grid_size)
+        btn_snap.setCheckable(True)
+        btn_snap.setChecked(self._snap_to_grid_enabled)
+        btn_snap.toggled.connect(self._toggle_snap_to_grid)
+        self._snap_grid_spinbox = spin_grid
         btn_save.clicked.connect(self._toolbar_save)
         btn_load.clicked.connect(self._toolbar_load)
         btn_reset.clicked.connect(self._toolbar_reset)
         hlayout.addWidget(btn_save)
         hlayout.addWidget(btn_load)
         hlayout.addWidget(btn_reset)
+        hlayout.addWidget(btn_snap)
+        hlayout.addWidget(lbl_grid)
+        hlayout.addWidget(spin_grid)
         hlayout.addStretch()
         toolbar.setLayout(hlayout)
         vlayout.addWidget(toolbar)
@@ -1824,11 +1847,29 @@ class NetworkTopologyView:
 
     def _on_node_drag_finished(self, comp, new_center):
         """Record the dragged position and schedule a full redraw."""
+        if self._snap_to_grid_enabled:
+            new_center = self._snap_point_to_grid(new_center)
         layout_key = self._component_layout_keys.get(comp)
         if layout_key is None:
             layout_key = str(getattr(comp, "name", "") or "").strip() or type(comp).__name__
         self._override_positions[layout_key] = (new_center.x(), new_center.y())
         QtCore.QTimer.singleShot(0, self._draw_topology)
+
+    def _toggle_snap_to_grid(self, checked):
+        self._snap_to_grid_enabled = bool(checked)
+        if self._snap_grid_spinbox is not None:
+            self._snap_grid_spinbox.setEnabled(self._snap_to_grid_enabled)
+
+    def _set_snap_grid_size(self, value):
+        self._snap_grid_size_px = max(1.0, float(value))
+
+    def _snap_point_to_grid(self, point):
+        step = float(self._snap_grid_size_px)
+        if step <= 0.0:
+            return QtCore.QPointF(point.x(), point.y())
+        snapped_x = round(point.x() / step) * step
+        snapped_y = round(point.y() / step) * step
+        return QtCore.QPointF(snapped_x, snapped_y)
 
     def save_layout(self, path):
         """Save current node positions to a JSON layout file."""
