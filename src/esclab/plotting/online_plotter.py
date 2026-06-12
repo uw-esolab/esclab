@@ -663,18 +663,22 @@ class OnlinePlotter:
         self._tooltip_last_idx = idx
 
         if in_conv or in_iter:
-            text = f"t = {t:.1f} s\nConv failures: {self.conv_data[idx]:.1%}\nIter fraction: {self.iter_data[idx]:.1%}"
+            text = f"time | {t:.1f} s\nConv failures: {self.conv_data[idx]:.1%}\nIter fraction: {self.iter_data[idx]:.1%}"
         else:
-            lines = [f"t = {t:.1f} s"]
-            for j, item in enumerate(self.y1_items):
+            lines = [f"time | {t:.1f} s"]
+            display_items = self.y1_items + (self.y2_items if self.y2_items is not None else [])
+            ncmax = -1
+            for item in display_items:
+                ncmax = max(ncmax, len(item.name))
+            for j, item in enumerate(display_items):
                 unit_str = f" {item.units}" if item.units else ""
-                lines.append(f"{item.name} = {self.y1_data[j, idx]:.4g}{unit_str}")
-            if self.y2_items is not None:
-                for j, item in enumerate(self.y2_items):
-                    unit_str = f" {item.units}" if item.units else ""
-                    lines.append(f"{item.name} = {self.y2_data[j, idx]:.4g}{unit_str}")
+                # which axis data are we pointing at?
+                axis_data = self.y1_data if j < len(self.y1_items) else self.y2_data
+                jj = j if j < len(self.y1_items) else j - len(self.y1_items)
+                lines.append(f"{item.name:<{ncmax}s} | {axis_data[jj, idx]:.4g}{unit_str}")
             text = "\n".join(lines)
 
+        self._tip_label.setFont(QtGui.QFont("Consolas", OnlinePlotter.font_size_pt-2))
         self._tip_label.setText(text)
         self._tip_label.adjustSize()
         self._tip_label.show()
