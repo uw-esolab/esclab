@@ -222,6 +222,8 @@ class NetworkTopologyView:
     EDGE_ROUTE_LAYER_CHANNEL_SPACING = 10.0
     EDGE_NODE_AVOID_MARGIN = 6.0
     EDGE_NODE_INTERSECTION_PENALTY = 10000.0
+    OVERRIDE_PATH_MAX_SEGMENTS = 8
+    OVERRIDE_PATH_MAX_LENGTH_FACTOR = 2.75
     SNAP_GRID_SIZE_PX = 20.0
 
     def __init__(
@@ -324,6 +326,11 @@ class NetworkTopologyView:
         self._draw_topology(refit_view=True)
         QtCore.QTimer.singleShot(0, self._on_post_init_refit)
         self._capture_initial_layout_state()
+        # Use the rendered baseline as the active editable state so the first
+        # drag moves only the selected item instead of recomputing all others.
+        self._override_positions = self._clone_position_overrides(self._initial_override_positions)
+        self._edge_path_overrides = self._clone_edge_path_overrides(self._initial_edge_path_overrides)
+        self._edge_label_overrides = self._clone_edge_label_overrides(self._initial_edge_label_overrides)
 
     def _draw_topology(self, refit_view=False):
         self.scene.clear()
@@ -674,8 +681,57 @@ class NetworkTopologyView:
         path_points = self._orthogonalize_path(path_points)
         path_points = self._simplify_path(path_points)
         if len(path_points) < 2:
+            self._edge_path_overrides.pop(edge_key, None)
+            return auto_path_points
+
+        if not self._is_override_path_reasonable(path_points, auto_path_points):
+            # If an edited path becomes too indirect after large node moves,
+            # drop the stale override and use a fresh simple auto route.
+            self._edge_path_overrides.pop(edge_key, None)
             return auto_path_points
         return path_points
+
+    @staticmethod
+    def _path_total_length(path_points):
+        return sum(QtCore.QLineF(a, b).length() for a, b in NetworkTopologyView._path_segments(path_points))
+
+    @staticmethod
+    def _has_path_self_intersection(path_points):
+        segments = NetworkTopologyView._path_segments(path_points)
+        n_segments = len(segments)
+        if n_segments < 4:
+            return False
+
+        for i in range(n_segments):
+            a1, a2 = segments[i]
+            for j in range(i + 1, n_segments):
+                # Adjacent segments share endpoints by construction.
+                if abs(i - j) <= 1:
+                    continue
+                # First and last may share one endpoint on open paths.
+                if i == 0 and j == n_segments - 1:
+                    continue
+
+                b1, b2 = segments[j]
+                if NetworkTopologyView._segments_intersect(a1, a2, b1, b2):
+                    return True
+        return False
+
+    def _is_override_path_reasonable(self, candidate_path, auto_path):
+        n_candidate_segments = len(self._path_segments(candidate_path))
+        if n_candidate_segments > self.OVERRIDE_PATH_MAX_SEGMENTS:
+            return False
+
+        if self._has_path_self_intersection(candidate_path):
+            return False
+
+        auto_len = self._path_total_length(auto_path)
+        if auto_len <= 1e-9:
+            return True
+        candidate_len = self._path_total_length(candidate_path)
+        if candidate_len > self.OVERRIDE_PATH_MAX_LENGTH_FACTOR * auto_len:
+            return False
+        return True
 
     @staticmethod
     def _reanchor_override_path(path_points, auto_path_points):
@@ -1335,6 +1391,7 @@ class NetworkTopologyView:
         if line.length() < 1.0:
             return None
 
+        # Compute start and end points of the edge segment
         src_rect = self._node_rects.get(src_component)
         dst_rect = self._node_rects.get(dst_component)
         if src_rect is None or dst_rect is None:
