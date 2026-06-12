@@ -124,6 +124,8 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.transform_changed_callback = None
+        self.resize_changed_callback = None
+        self.show_changed_callback = None
         self._panning = False
         self._pan_start = QtCore.QPoint()
         self._pan_hbar_start = 0
@@ -185,6 +187,16 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
             return
         super().mouseReleaseEvent(event)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.resize_changed_callback is not None:
+            self.resize_changed_callback()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.show_changed_callback is not None:
+            self.show_changed_callback()
+
 
 class NetworkTopologyView:
     NODE_WIDTH = 140
@@ -244,9 +256,15 @@ class NetworkTopologyView:
         self._edge_route_offsets = {}
         self._feedback_edge_pairs = set()
         self._layout_loopback_y = 0.0
+        self._layout_target_aspect = None
+        self._last_graph_fit_rect = None
+        self._pending_refit = False
         self._snap_to_grid_enabled = False
         self._snap_grid_size_px = float(self.SNAP_GRID_SIZE_PX)
         self._snap_grid_spinbox = None
+        self._initial_override_positions = {}
+        self._initial_edge_path_overrides = {}
+        self._initial_edge_label_overrides = {}
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
 
@@ -298,12 +316,16 @@ class NetworkTopologyView:
         OnlinePlotter.tab_widget.addTab(container, tab_title)
         OnlinePlotter.register_font_target(self)
         self.view.transform_changed_callback = self._on_view_transform_changed
+        self.view.resize_changed_callback = self._on_view_resized
+        self.view.show_changed_callback = self._on_view_shown
 
         if layout_file is not None:
             self._load_layout_file(layout_file)
-        self._draw_topology()
+        self._draw_topology(refit_view=True)
+        QtCore.QTimer.singleShot(0, self._on_post_init_refit)
+        self._capture_initial_layout_state()
 
-    def _draw_topology(self):
+    def _draw_topology(self, refit_view=False):
         self.scene.clear()
         self._label_items = []
         self._node_label_items = []
@@ -406,16 +428,11 @@ class NetworkTopologyView:
         # Initial framing: fit to core graph geometry (nodes + routed edges),
         # not to label/leader extents, so the process network fills the view.
         graph_fit_rect = self._graph_fit_rect(edge_draw_data)
+        self._last_graph_fit_rect = QtCore.QRectF(graph_fit_rect)
         scene_padding = self.SCENE_RECT_PADDING
         self.view.setSceneRect(self.scene.itemsBoundingRect().adjusted(-scene_padding, -scene_padding, scene_padding, scene_padding))
-        if self.INITIAL_VIEW_SCALE_BOOST > 1.0:
-            boost = self.INITIAL_VIEW_SCALE_BOOST
-            current_scale = self.view.transform().m11()
-            max_scale = self.view.MAX_SCALE if self.view.MAX_SCALE > 0.0 else current_scale * boost
-            if current_scale > 0.0:
-                capped_boost = min(boost, max_scale / current_scale)
-                if capped_boost > 1.0:
-                    self.view.scale(capped_boost, capped_boost)
+        if refit_view:
+            self._fit_view_to_graph(graph_fit_rect)
         self._refresh_node_label_fonts()
 
         # Place edge labels after fitInView so label scene extents are computed
@@ -471,6 +488,51 @@ class NetworkTopologyView:
         margin = self.INITIAL_VIEW_FIT_MARGIN
         return fit_rect.adjusted(-margin, -margin, margin, margin)
 
+    def _fit_view_to_graph(self, graph_fit_rect):
+        """Reset the camera and fit the core graph geometry in the viewport."""
+        if graph_fit_rect.isNull() or graph_fit_rect.width() <= 1e-9 or graph_fit_rect.height() <= 1e-9:
+            self._pending_refit = False
+            return False
+
+        if not self.view.isVisible():
+            self._pending_refit = True
+            return False
+
+        viewport = self.view.viewport().size()
+        if viewport.width() <= 2 or viewport.height() <= 2:
+            self._pending_refit = True
+            return False
+
+        self.view.resetTransform()
+        self.view.fitInView(graph_fit_rect, QtCore.Qt.KeepAspectRatio)
+
+        if self.INITIAL_VIEW_SCALE_BOOST > 1.0:
+            boost = self.INITIAL_VIEW_SCALE_BOOST
+            current_scale = self.view.transform().m11()
+            max_scale = self.view.MAX_SCALE if self.view.MAX_SCALE > 0.0 else current_scale * boost
+            if current_scale > 0.0:
+                capped_boost = min(boost, max_scale / current_scale)
+                if capped_boost > 1.0:
+                    self.view.scale(capped_boost, capped_boost)
+        self._pending_refit = False
+        return True
+
+    def _on_post_init_refit(self):
+        # First draw can happen before the tab gets its final viewport size.
+        if self._last_graph_fit_rect is None:
+            return
+        self._fit_view_to_graph(self._last_graph_fit_rect)
+
+    def _on_view_shown(self):
+        if self._last_graph_fit_rect is None:
+            return
+        if self._pending_refit:
+            self._fit_view_to_graph(self._last_graph_fit_rect)
+
+    def _on_view_resized(self):
+        if self._pending_refit and self._last_graph_fit_rect is not None:
+            self._fit_view_to_graph(self._last_graph_fit_rect)
+
     def _stretch_layout_for_viewport(self, positions):
         """Vertically stretch wide layouts so they better fill the viewport.
 
@@ -490,12 +552,15 @@ class NetworkTopologyView:
             return positions
 
         graph_aspect = width / height
-        viewport = self.view.viewport().size()
-        viewport_width = max(1, viewport.width())
-        viewport_height = max(1, viewport.height())
-        target_aspect = viewport_width / viewport_height
-        if target_aspect <= 1e-9:
-            target_aspect = 16.0 / 9.0
+        if self._layout_target_aspect is None:
+            viewport = self.view.viewport().size()
+            viewport_width = max(1, viewport.width())
+            viewport_height = max(1, viewport.height())
+            target_aspect = viewport_width / viewport_height
+            if target_aspect <= 1e-9:
+                target_aspect = 16.0 / 9.0
+            self._layout_target_aspect = float(target_aspect)
+        target_aspect = self._layout_target_aspect
 
         if graph_aspect <= target_aspect * self.LAYOUT_ASPECT_STRETCH_TRIGGER:
             return positions
@@ -669,6 +734,57 @@ class NetworkTopologyView:
     @staticmethod
     def _path_points_to_json(path_points):
         return [{"x": point.x(), "y": point.y()} for point in path_points]
+
+    @staticmethod
+    def _clone_position_overrides(overrides):
+        return {
+            key: (float(value[0]), float(value[1]))
+            for key, value in overrides.items()
+            if value is not None and len(value) >= 2
+        }
+
+    def _clone_edge_path_overrides(self, overrides):
+        return {
+            edge_key: self._copy_path_points(path_points)
+            for edge_key, path_points in overrides.items()
+            if path_points and len(path_points) >= 2
+        }
+
+    @staticmethod
+    def _clone_edge_label_overrides(overrides):
+        return {
+            edge_key: {
+                "signed_offset_px": float(values.get("signed_offset_px", 12.0)),
+                "signed_tangent_px": float(values.get("signed_tangent_px", 0.0)),
+            }
+            for edge_key, values in overrides.items()
+            if isinstance(values, dict)
+        }
+
+    def _capture_initial_layout_state(self):
+        # Capture the exact rendered baseline geometry so Reset reproduces the
+        # initial on-screen layout rather than recomputing auto layout.
+        baseline_positions = {}
+        for comp, rect in self._node_rects.items():
+            layout_key = self._component_layout_keys.get(comp)
+            if layout_key is None:
+                continue
+            center = rect.center()
+            baseline_positions[layout_key] = (center.x(), center.y())
+
+        baseline_edge_labels = {}
+        for link in self._edge_label_links:
+            edge_key = link.get("edge_key")
+            if not edge_key:
+                continue
+            baseline_edge_labels[edge_key] = {
+                "signed_offset_px": float(link.get("signed_offset_px", 12.0)),
+                "signed_tangent_px": float(link.get("signed_tangent_px", 0.0)),
+            }
+
+        self._initial_override_positions = self._clone_position_overrides(baseline_positions)
+        self._initial_edge_path_overrides = self._clone_edge_path_overrides(self._rendered_edge_paths)
+        self._initial_edge_label_overrides = self._clone_edge_label_overrides(baseline_edge_labels)
 
     @staticmethod
     def _path_points_from_json(points_json):
@@ -2008,19 +2124,6 @@ class NetworkTopologyView:
         return inter.width() * inter.height()
 
     @staticmethod
-    def _project_point_to_segment(point, seg_start, seg_end):
-        """Project a point onto a line segment and clamp to segment bounds."""
-        vx = seg_end.x() - seg_start.x()
-        vy = seg_end.y() - seg_start.y()
-        denom = vx * vx + vy * vy
-        if denom <= 1e-12:
-            return QtCore.QPointF(seg_start.x(), seg_start.y())
-
-        t = ((point.x() - seg_start.x()) * vx + (point.y() - seg_start.y()) * vy) / denom
-        t = max(0.0, min(1.0, t))
-        return QtCore.QPointF(seg_start.x() + t * vx, seg_start.y() + t * vy)
-
-    @staticmethod
     def _ray_exit_rect(rect, center, toward):
         """Return the point where a ray from center toward toward exits rect.
 
@@ -2221,7 +2324,7 @@ class NetworkTopologyView:
     def load_layout(self, path):
         """Load node positions from a JSON layout file and redraw."""
         self._load_layout_file(path)
-        self._draw_topology()
+        self._draw_topology(refit_view=True)
 
     def _load_layout_file(self, path):
         with open(path, "r", encoding="utf-8") as f:
@@ -2267,10 +2370,10 @@ class NetworkTopologyView:
             self.load_layout(path)
 
     def _toolbar_reset(self):
-        self._override_positions.clear()
-        self._edge_path_overrides.clear()
-        self._edge_label_overrides.clear()
-        self._draw_topology()
+        self._override_positions = self._clone_position_overrides(self._initial_override_positions)
+        self._edge_path_overrides = self._clone_edge_path_overrides(self._initial_edge_path_overrides)
+        self._edge_label_overrides = self._clone_edge_label_overrides(self._initial_edge_label_overrides)
+        self._draw_topology(refit_view=True)
 
     def export_png(self, path):
         image = QtGui.QImage(self.view.viewport().size(), QtGui.QImage.Format_ARGB32)
