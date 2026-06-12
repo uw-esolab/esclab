@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "positions": {
+    "Capacitor": {
+      "x": 660.0,
+      "y": -60.0
+    },
+    "TeeReturn": {
+      "x": 320.0,
+      "y": -20.0
+    },
+    "VoltageSource": {
+      "x": 80.0,
+      "y": -360.0
+    },
+    "TeeOut": {
+      "x": 320.0,
+      "y": -360.0
+    },
+    "Inductor": {
+      "x": 660.0,
+      "y": -220.0
+    },
+    "Resistor_1": {
+      "x": 660.0,
+      "y": -360.0
+    },
+    "Resistor_2": {
+      "x": 320.0,
+      "y": -160.0
+    }
+  },
+  "edge_paths": {
+    "Inductor__TO__Capacitor": [
+      {
+        "x": 660.0,
+        "y": -202.5
+      },
+      {
+        "x": 660.0,
+        "y": -117.5
+      }
+    ],
+    "VoltageSource__TO__TeeOut": [
+      {
+        "x": 150.0,
+        "y": -360.0
+      },
+      {
+        "x": 250.0,
+        "y": -360.0
+      }
+    ],
+    "Capacitor__TO__TeeReturn": [
+      {
+        "x": 590.0,
+        "y": -100.0
+      },
+      {
+        "x": 660.0,
+        "y": -100.0
+      },
+      {
+        "x": 660.0,
+        "y": -20.0
+      },
+      {
+        "x": 390.0,
+        "y": -20.0
+      }
+    ],
+    "TeeReturn__TO__VoltageSource": [
+      {
+        "x": 390.0,
+        "y": -20.0
+      },
+      {
+        "x": -20.0,
+        "y": -20.0
+      },
+      {
+        "x": -20.0,
+        "y": -360.0
+      },
+      {
+        "x": 10.0,
+        "y": -360.0
+      }
+    ],
+    "TeeOut__TO__Resistor_1": [
+      {
+        "x": 390.0,
+        "y": -360.0
+      },
+      {
+        "x": 590.0,
+        "y": -360.0
+      }
+    ],
+    "TeeOut__TO__Resistor_2": [
+      {
+        "x": 320.0,
+        "y": -342.5
+      },
+      {
+        "x": 320.0,
+        "y": -237.5
+      }
+    ],
+    "Resistor_1__TO__Inductor": [
+      {
+        "x": 660.0,
+        "y": -342.5
+      },
+      {
+        "x": 660.0,
+        "y": -237.5
+      }
+    ],
+    "Resistor_2__TO__TeeReturn": [
+      {
+        "x": 320.0,
+        "y": -202.5
+      },
+      {
+        "x": 320.0,
+        "y": -37.5
+      }
+    ]
+  },
+  "edge_labels": {
+    "Inductor__TO__Capacitor": {
+      "signed_offset_px": 60.0,
+      "signed_tangent_px": 0.0
+    },
+    "VoltageSource__TO__TeeOut": {
+      "signed_offset_px": 58.00000000000015,
+      "signed_tangent_px": -27.000000000000004
+    },
+    "Capacitor__TO__TeeReturn": {
+      "signed_offset_px": 24.0,
+      "signed_tangent_px": 0.0
+    },
+    "TeeReturn__TO__VoltageSource": {
+      "signed_offset_px": 24.0,
+      "signed_tangent_px": -0.0
+    },
+    "TeeOut__TO__Resistor_1": {
+      "signed_offset_px": 24.0,
+      "signed_tangent_px": 0.0
+    },
+    "TeeOut__TO__Resistor_2": {
+      "signed_offset_px": -81.00000000000001,
+      "signed_tangent_px": 14.99999999999994
+    },
+    "Resistor_1__TO__Inductor": {
+      "signed_offset_px": 52.00000000000009,
+      "signed_tangent_px": -19.000000000000025
+    },
+    "Resistor_2__TO__TeeReturn": {
+      "signed_offset_px": -91.0000000000001,
+      "signed_tangent_px": -39.99999999999999
+    }
+  }
+}

@@ -3,7 +3,9 @@ from collections import deque
 import numpy as np
 import sys
 import time 
-
+import sys
+import os
+                    
 from esclab.plotting import OnlinePlotter as _OnlinePlotter, NetworkTopologyView
 
 # ------------------------------------------------------------------------
@@ -643,6 +645,15 @@ class Model:
 
         view = None
         if show_tab or save_png or save_svg:
+            # Try loading a stored layout file of the same name as the model script
+            try:
+                if layout_file is None:
+                    lf_name = f"{os.path.splitext(sys.argv[0])[0]}.json"
+                    if os.path.isfile(lf_name):
+                        layout_file = lf_name
+            except Exception:
+                pass
+
             view = NetworkTopologyView(
                 self,
                 tab_title=tab_title,

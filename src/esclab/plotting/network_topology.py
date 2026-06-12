@@ -1,6 +1,7 @@
 import json
 import math
 from html import escape
+import os, sys
 
 import numpy as np
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
@@ -2413,11 +2414,14 @@ class NetworkTopologyView:
         self._edge_label_overrides = edge_label_overrides
 
     def _toolbar_save(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self.view, "Save Layout", "", "JSON Files (*.json)"
-        )
-        if path:
-            self.save_layout(path)
+        # Automatically save the json next to the script file with the same base name
+        lf_name = f"{os.path.splitext(sys.argv[0])[0]}.json"
+        
+        # path, _ = QtWidgets.QFileDialog.getSaveFileName(
+        #     self.view, "Save Layout", "", "JSON Files (*.json)"
+        # )
+        # if path:
+        self.save_layout(lf_name)
 
     def _toolbar_load(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
