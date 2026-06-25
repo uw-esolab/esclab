@@ -37,6 +37,7 @@ class Connection:
         self.log_n_iter = log_n_iter
 
         self.reset_for_step()
+        self.clear_iteration_log()
         return
     
     def reset_for_step(self):
@@ -48,6 +49,8 @@ class Connection:
             self.last_step_err_rel = self.err_rel
 
         self.is_converged = False 
+
+    def clear_iteration_log(self):
         self.n_iter = 0
         # [[value, abs err, rel err],]
         self.iter_log = np.zeros((max(self.log_n_iter,1),3))
@@ -1069,6 +1072,10 @@ class Model:
         ordered.extend(c for c in self._components if c not in ordered_set)
 
         self._components = ordered
+        # Print out the execution order
+        compstr = " → ".join([type(component).__name__ for component in self._components])
+        print("⏣ Component call order | " + compstr)
+            
 
     def _apply_network_iteration(self):
         """Apply one network-level iteration update inside the existing step() loop.
@@ -1141,7 +1148,7 @@ class Model:
 
         # Construct the historian database
         # Use round()+1 to guard against floating-point accumulation causing one extra step
-        nstep = int(round((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)) + 1
+        nstep = int(round((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)) 
         self.historian = dict([[n,np.ones(nstep)*float('nan')] for n in output_names])
 
         # Mark the model as initialized
@@ -1185,6 +1192,10 @@ class Model:
         self.iteration = -1  # reset the current iteration
         self.is_first_iteration = True
         self.is_converged = False
+
+        for component in self._components:
+            for input in component.get_inputs(connected_only=True):
+                input.connection.clear_iteration_log()
 
         err_rel_history = []
         err_abs_history = []
