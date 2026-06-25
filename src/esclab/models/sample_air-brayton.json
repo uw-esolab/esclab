@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "positions": {
+    "Combustor": {
+      "x": 340.0,
+      "y": -280.0
+    },
+    "Weather": {
+      "x": 600.0,
+      "y": -60.0
+    },
+    "Turbine": {
+      "x": 600.0,
+      "y": -280.0
+    },
+    "Cooler": {
+      "x": 600.0,
+      "y": -140.0
+    },
+    "Compressor": {
+      "x": 100.0,
+      "y": -280.0
+    },
+    "Summary": {
+      "x": 340.0,
+      "y": -420.0
+    }
+  },
+  "edge_paths": {
+    "Compressor__TO__Combustor": [
+      {
+        "x": 170.0,
+        "y": -280.0
+      },
+      {
+        "x": 270.0,
+        "y": -280.0
+      }
+    ],
+    "Cooler__TO__Compressor": [
+      {
+        "x": 530.0,
+        "y": -140.0
+      },
+      {
+        "x": -20.0,
+        "y": -140.0
+      },
+      {
+        "x": -20.0,
+        "y": -280.0
+      },
+      {
+        "x": 170.0,
+        "y": -280.0
+      }
+    ],
+    "Weather__TO__Cooler": [
+      {
+        "x": 600.0,
+        "y": -77.5
+      },
+      {
+        "x": 600.0,
+        "y": -122.5
+      }
+    ],
+    "Combustor__TO__Summary": [
+      {
+        "x": 340.0,
+        "y": -297.5
+      },
+      {
+        "x": 340.0,
+        "y": -402.5
+      }
+    ],
+    "Compressor__TO__Summary": [
+      {
+        "x": 170.0,
+        "y": -280.0
+      },
+      {
+        "x": 120.0,
+        "y": -280.0
+      },
+      {
+        "x": 120.0,
+        "y": -420.0
+      },
+      {
+        "x": 270.0,
+        "y": -420.0
+      }
+    ],
+    "Turbine__TO__Summary": [
+      {
+        "x": 530.0,
+        "y": -280.0
+      },
+      {
+        "x": 600.0,
+        "y": -280.0
+      },
+      {
+        "x": 600.0,
+        "y": -420.0
+      },
+      {
+        "x": 410.0,
+        "y": -420.0
+      }
+    ],
+    "Combustor__TO__Turbine": [
+      {
+        "x": 410.0,
+        "y": -280.0
+      },
+      {
+        "x": 530.0,
+        "y": -280.0
+      }
+    ]
+  },
+  "edge_labels": {
+    "Compressor__TO__Combustor": {
+      "signed_offset_px": 24.0,
+      "signed_tangent_px": 16.0
+    },
+    "Cooler__TO__Compressor": {
+      "signed_offset_px": 53.000000000000014,
+      "signed_tangent_px": 178.00000000000006
+    },
+    "Turbine__TO__Cooler": {
+      "signed_offset_px": 91.99999999999984,
+      "signed_tangent_px": 20.0
+    },
+    "Weather__TO__Cooler": {
+      "signed_offset_px": -108.99999999999987,
+      "signed_tangent_px": 9.999999999999975
+    },
+    "Combustor__TO__Summary": {
+      "signed_offset_px": 85.99999999999974,
+      "signed_tangent_px": 10.99999999999988
+    },
+    "Compressor__TO__Summary": {
+      "signed_offset_px": 31.999999999999947,
+      "signed_tangent_px": 11.99999999999997
+    },
+    "Turbine__TO__Summary": {
+      "signed_offset_px": -20.999999999999957,
+      "signed_tangent_px": -11.999999999999886
+    },
+    "Combustor__TO__Turbine": {
+      "signed_offset_px": 36.0,
+      "signed_tangent_px": 16.0
+    }
+  },
+  "node_colors": {
+    "Summary": [
+      80,
+      80,
+      80
+    ],
+    "Weather": [
+      255,
+      85,
+      0
+    ]
+  },
+  "edge_colors": {
+    "Compressor__TO__Summary": [
+      179,
+      179,
+      179
+    ],
+    "Turbine__TO__Summary": [
+      179,
+      179,
+      179
+    ],
+    "Combustor__TO__Summary": [
+      179,
+      179,
+      179
+    ],
+    "Weather__TO__Cooler": [
+      255,
+      85,
+      0
+    ]
+  }
+}

@@ -62,6 +62,13 @@ class _DraggableNodeItem(QtWidgets.QGraphicsPathItem):
             self._topology_view._center_text_item(self._text_item, center)
         return super().itemChange(change, value)
 
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if self._topology_view is not None:
+            layout_key = self._topology_view._component_layout_keys.get(self._comp)
+            if layout_key is not None:
+                self._topology_view._on_item_selected('node', layout_key)
+
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         center = self.sceneBoundingRect().center()
@@ -103,6 +110,11 @@ class _DraggableEdgeSegmentItem(QtWidgets.QGraphicsLineItem):
             return pos
         return super().itemChange(change, value)
 
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if self._topology_view is not None:
+            self._topology_view._on_item_selected('edge', self._edge_key)
+
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         pos = self.pos()
@@ -127,6 +139,7 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
         self.transform_changed_callback = None
         self.resize_changed_callback = None
         self.show_changed_callback = None
+        self.deselect_callback = None
         self._panning = False
         self._pan_start = QtCore.QPoint()
         self._pan_hbar_start = 0
@@ -167,6 +180,8 @@ class _TopologyGraphicsView(QtWidgets.QGraphicsView):
             self._pan_hbar_start = self.horizontalScrollBar().value()
             self._pan_vbar_start = self.verticalScrollBar().value()
             self.setCursor(QtCore.Qt.ClosedHandCursor)
+            if self.deselect_callback is not None:
+                self.deselect_callback()
             event.accept()
             return
         super().mousePressEvent(event)
@@ -268,6 +283,12 @@ class NetworkTopologyView:
         self._initial_override_positions = {}
         self._initial_edge_path_overrides = {}
         self._initial_edge_label_overrides = {}
+        self._node_color_overrides = {}
+        self._edge_color_overrides = {}
+        self._selected_items = set()  # (type, key)
+        self._initial_node_color_overrides = {}
+        self._initial_edge_color_overrides = {}
+        self._color_combo = None
         self.view.setScene(self.scene)
         self.view.setRenderHint(QtGui.QPainter.Antialiasing)
 
@@ -311,6 +332,28 @@ class NetworkTopologyView:
         hlayout.addWidget(btn_snap)
         hlayout.addWidget(lbl_grid)
         hlayout.addWidget(spin_grid)
+        separator = QtWidgets.QFrame()
+        separator.setFrameShape(QtWidgets.QFrame.VLine)
+        separator.setFrameShadow(QtWidgets.QFrame.Sunken)
+
+        lbl_color = QtWidgets.QLabel("Color:")
+        lbl_color.setFixedHeight(22)
+
+        btn_color = QtWidgets.QPushButton()
+        btn_color.setFixedSize(24, 24)
+        btn_color.setEnabled(False)  # Enabled when something is selected
+        btn_color.setToolTip("Choose a custom color")
+
+        # Default appearance
+        btn_color.setStyleSheet("background-color: rgb(200,200,200); border: 1px solid #666;")
+
+        btn_color.clicked.connect(self._on_color_picker_clicked)
+
+        self._color_combo = btn_color  # keep name to avoid refactoring elsewhere
+
+        hlayout.addWidget(separator)
+        hlayout.addWidget(lbl_color)
+        hlayout.addWidget(btn_color)
         hlayout.addStretch()
         toolbar.setLayout(hlayout)
         vlayout.addWidget(toolbar)
@@ -321,6 +364,7 @@ class NetworkTopologyView:
         self.view.transform_changed_callback = self._on_view_transform_changed
         self.view.resize_changed_callback = self._on_view_resized
         self.view.show_changed_callback = self._on_view_shown
+        self.view.deselect_callback = self._on_item_deselected
 
         if layout_file is not None:
             self._load_layout_file(layout_file)
@@ -332,6 +376,27 @@ class NetworkTopologyView:
         self._override_positions = self._clone_position_overrides(self._initial_override_positions)
         self._edge_path_overrides = self._clone_edge_path_overrides(self._initial_edge_path_overrides)
         self._edge_label_overrides = self._clone_edge_label_overrides(self._initial_edge_label_overrides)
+
+    def _on_color_picker_clicked(self):
+        color = QtWidgets.QColorDialog.getColor()
+
+        if not color.isValid():
+            return
+
+        rgb = (color.red(), color.green(), color.blue())
+
+        for item_type, item_key in self._selected_items:
+            if item_type == 'node':
+                self._node_color_overrides[item_key] = rgb
+            elif item_type == 'edge':
+                self._edge_color_overrides[item_key] = rgb
+
+        # Update button appearance immediately
+        self._color_combo.setStyleSheet(
+            f"background-color: rgb({rgb[0]},{rgb[1]},{rgb[2]}); border: 1px solid #666;"
+        )
+
+        self._draw_topology()
 
     def _draw_topology(self, refit_view=False):
         self.scene.clear()
@@ -1344,19 +1409,33 @@ class NetworkTopologyView:
                     crossings += 1
         return crossings
 
+    @staticmethod
+    def _ideal_text_color(rgb):
+        r, g, b = rgb
+        # Standard luminance formula
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return QtGui.QColor(0, 0, 0) if luminance > 160 else QtGui.QColor(255, 255, 255)
+
     def _draw_node(self, component, center, label, color):
         width = self.NODE_WIDTH
         height = self.NODE_HEIGHT
         rect = QtCore.QRectF(center.x() - width / 2, center.y() - height / 2, width, height)
-        pen = QtGui.QPen(QtGui.QColor(30, 30, 30))
-        pen.setWidth(2)
+        layout_key = self._component_layout_keys.get(component)
+        override_rgb = self._node_color_overrides.get(layout_key)
+        if override_rgb is not None:
+            color = QtGui.QColor(*override_rgb)
+        is_selected = ('node', layout_key) in self._selected_items
+        pen = QtGui.QPen(QtGui.QColor(255, 200, 0) if is_selected else QtGui.QColor(30, 30, 30))
+        pen.setWidth(3 if is_selected else 2)
         brush = QtGui.QBrush(color)
         path = QtGui.QPainterPath()
         path.addRoundedRect(rect, 10, 10)
         self._node_rects[component] = rect
 
         text = QtWidgets.QGraphicsTextItem(label)
-        text.setDefaultTextColor(QtGui.QColor(255, 255, 255))
+        rgb = (color.red(), color.green(), color.blue())
+        text_color = self._ideal_text_color(rgb)
+        text.setDefaultTextColor(text_color)
         text.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
         text.setZValue(2.0)
         font = QtGui.QFont()
@@ -1667,12 +1746,16 @@ class NetworkTopologyView:
         return max(segments, key=lambda seg: QtCore.QLineF(seg[0], seg[1]).length())
 
     def _draw_edge(self, edge_key, src_component, dst_component, path_points, label_segment, own_segments, edge_connections, src_object_label, dst_object_label, is_feedback=False):
+        is_selected = ('edge', edge_key) in self._selected_items
+        override_rgb = self._edge_color_overrides.get(edge_key)
         if is_feedback:
-            line_pen = QtGui.QPen(QtGui.QColor(140, 140, 140))
+            base_color = QtGui.QColor(*override_rgb) if override_rgb is not None else QtGui.QColor(140, 140, 140)
+            line_pen = QtGui.QPen(base_color)
             line_pen.setWidth(2)
             line_pen.setStyle(QtCore.Qt.DashLine)
         else:
-            line_pen = QtGui.QPen(QtGui.QColor(70, 70, 70))
+            base_color = QtGui.QColor(*override_rgb) if override_rgb is not None else QtGui.QColor(70, 70, 70)
+            line_pen = QtGui.QPen(base_color)
             line_pen.setWidth(2)
 
         if len(path_points) < 2:
@@ -1680,17 +1763,26 @@ class NetworkTopologyView:
 
         segments = self._path_segments(path_points)
         n_segments = len(segments)
+        if is_selected:
+            glow_pen = QtGui.QPen(QtGui.QColor(255, 200, 0, 200))
+            glow_pen.setWidth(6)
+            for seg_start, seg_end in segments:
+                glow_item = self.scene.addLine(QtCore.QLineF(seg_start, seg_end), glow_pen)
+                glow_item.setZValue(0.8)
         for segment_index, (seg_start, seg_end) in enumerate(segments):
             self.scene.addLine(QtCore.QLineF(seg_start, seg_end), line_pen)
 
-            # Allow route editing by dragging internal orthogonal segments.
-            if segment_index == 0 or segment_index == n_segments - 1:
-                continue
+            # Always allow selection, but only allow dragging on internal segments
+            is_endpoint = (segment_index == 0 or segment_index == n_segments - 1)
+
             dx = abs(seg_end.x() - seg_start.x())
             dy = abs(seg_end.y() - seg_start.y())
+
             if dx < 1e-9 and dy < 1e-9:
                 continue
+
             orientation = "vertical" if dx < dy else "horizontal"
+
             drag_item = _DraggableEdgeSegmentItem(
                 QtCore.QLineF(seg_start, seg_end),
                 edge_key,
@@ -1698,11 +1790,50 @@ class NetworkTopologyView:
                 orientation,
                 self,
             )
+
+            # Disable movement for endpoint segments (selection only)
+            if is_endpoint:
+                drag_item.setFlags(QtWidgets.QGraphicsItem.ItemIsSelectable)
+
             self.scene.addItem(drag_item)
 
         arrow_start = path_points[-2]
         arrow_end = path_points[-1]
         self._draw_arrowhead(arrow_start, arrow_end)
+
+        path = QtGui.QPainterPath()
+        path.moveTo(path_points[0])
+        for pt in path_points[1:]:
+            path.lineTo(pt)
+
+        hit_item = QtWidgets.QGraphicsPathItem(path)
+
+        # invisible but thick for easy clicking
+        pen = QtGui.QPen(QtGui.QColor(0, 0, 0, 0))
+        pen.setWidth(12)
+        pen.setCosmetic(True)
+        hit_item.setPen(pen)
+
+        hit_item.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
+        hit_item.setZValue(0.9)  # below nodes (1.0), above background
+
+        # attach selection behavior
+        def mousePressEvent(event, ek=edge_key, view=self, item=hit_item):
+            scene_pos = event.scenePos()
+
+            # If clicking on a label, let it handle the event
+            for obj in view.scene.items(scene_pos):
+                if isinstance(obj, _EdgeLabelItem):
+                    event.ignore()
+                    return
+
+            view._on_item_selected('edge', ek)
+            event.accept()
+
+        hit_item.mousePressEvent = mousePressEvent
+
+        self.scene.addItem(hit_item)
+
 
         # Edge labels are drawn in a separate pass after fitInView.
 
@@ -2346,6 +2477,46 @@ class NetworkTopologyView:
         snapped_y = round(point.y() / step) * step
         return QtCore.QPointF(snapped_x, snapped_y)
 
+    @staticmethod
+    def _make_color_icon(rgb, size=14):
+        pixmap = QtGui.QPixmap(size, size)
+        pixmap.fill(QtGui.QColor(*rgb) if rgb is not None else QtGui.QColor(210, 210, 210))
+        return QtGui.QIcon(pixmap)
+
+    def _on_item_selected(self, item_type, item_key):
+        modifiers = QtWidgets.QApplication.keyboardModifiers()
+
+        if modifiers & QtCore.Qt.ControlModifier:
+            # toggle selection
+            item = (item_type, item_key)
+            if item in self._selected_items:
+                self._selected_items.remove(item)
+            else:
+                self._selected_items.add(item)
+        else:
+            # single select
+            self._selected_items = {(item_type, item_key)}
+
+        if self._color_combo is not None:
+            self._color_combo.setEnabled(len(self._selected_items) > 0)
+
+        # avoid redraw during drag
+        if not QtWidgets.QApplication.mouseButtons() & QtCore.Qt.LeftButton:
+            QtCore.QTimer.singleShot(0, self._draw_topology)
+
+
+    def _on_item_deselected(self):
+        if not self._selected_items:
+            return
+
+        self._selected_items.clear()
+
+        if self._color_combo is not None:
+            self._color_combo.setEnabled(False)
+
+        # Always redraw, but delay slightly so we don't interfere with the click event
+        QtCore.QTimer.singleShot(10, self._draw_topology)
+
     def save_layout(self, path):
         """Save current node positions to a JSON layout file."""
         positions_data = {}
@@ -2375,6 +2546,8 @@ class NetworkTopologyView:
             "positions": positions_data,
             "edge_paths": edge_paths_data,
             "edge_labels": edge_labels_data,
+            "node_colors": {k: list(v) for k, v in self._node_color_overrides.items()},
+            "edge_colors": {k: list(v) for k, v in self._edge_color_overrides.items()},
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
@@ -2413,6 +2586,18 @@ class NetworkTopologyView:
             }
         self._edge_label_overrides = edge_label_overrides
 
+        node_colors = {}
+        for key, rgb in data.get("node_colors", {}).items():
+            if isinstance(rgb, (list, tuple)) and len(rgb) == 3:
+                node_colors[key] = tuple(int(v) for v in rgb)
+        self._node_color_overrides = node_colors
+
+        edge_colors = {}
+        for key, rgb in data.get("edge_colors", {}).items():
+            if isinstance(rgb, (list, tuple)) and len(rgb) == 3:
+                edge_colors[key] = tuple(int(v) for v in rgb)
+        self._edge_color_overrides = edge_colors
+
     def _toolbar_save(self):
         # Automatically save the json next to the script file with the same base name
         lf_name = f"{os.path.splitext(sys.argv[0])[0]}.json"
@@ -2434,6 +2619,11 @@ class NetworkTopologyView:
         self._override_positions = self._clone_position_overrides(self._initial_override_positions)
         self._edge_path_overrides = self._clone_edge_path_overrides(self._initial_edge_path_overrides)
         self._edge_label_overrides = self._clone_edge_label_overrides(self._initial_edge_label_overrides)
+        self._node_color_overrides = dict(self._initial_node_color_overrides)
+        self._edge_color_overrides = dict(self._initial_edge_color_overrides)
+        self._selected_items = set()  # (type, key)
+        if self._color_combo is not None:
+            self._color_combo.setEnabled(False)
         self._draw_topology(refit_view=True)
 
     def export_png(self, path):
