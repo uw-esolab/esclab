@@ -277,7 +277,7 @@ class NetworkTopologyView:
         self._layout_target_aspect = None
         self._last_graph_fit_rect = None
         self._pending_refit = False
-        self._snap_to_grid_enabled = False
+        self._snap_to_grid_enabled = True
         self._snap_grid_size_px = float(self.SNAP_GRID_SIZE_PX)
         self._snap_grid_spinbox = None
         self._initial_override_positions = {}
