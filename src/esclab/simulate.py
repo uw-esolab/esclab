@@ -781,27 +781,24 @@ class Model:
         source.is_connected = True
         return
 
-    def _collect_subnetwork_edges(self, plan):
+    def _solve_coupled_subnetwork(self, plan):
+        """Solve one coupled subnetwork if equation builders and semantic roles provide enough equations."""
+        
+        # Collect the subnetwork edges
         plan_components = set(plan["components"])
-        edges = []
+        subnetwork_edges = []
         for source_component, destination_component, source_output, destination_input in self._network_analysis["edges"]:
             if source_component in plan_components and destination_component in plan_components:
-                edges.append((source_component, destination_component, source_output, destination_input))
-        return tuple(edges)
-
-    def _collect_unknown_outputs(self, subnetwork_edges):
+                subnetwork_edges.append((source_output, destination_input))
+        
+        # Collect the unknown outputs
         unknown_outputs = []
-        for _, _, source_output, destination_input in subnetwork_edges:
+        for source_output, destination_input in subnetwork_edges:
             if destination_input.connection.solve_group is None:
                 continue
             if source_output not in unknown_outputs:
                 unknown_outputs.append(source_output)
-        return tuple(unknown_outputs)
-
-    def _solve_coupled_subnetwork(self, plan):
-        """Solve one coupled subnetwork if equation builders and semantic roles provide enough equations."""
-        subnetwork_edges = self._collect_subnetwork_edges(plan)
-        unknown_outputs = self._collect_unknown_outputs(subnetwork_edges)
+        unknown_outputs = tuple(unknown_outputs)  #make immutable
         n_unknown = len(unknown_outputs)
         if n_unknown == 0:
             return False, False
@@ -857,65 +854,10 @@ class Model:
 
         return updated_any, True
 
-    def _index_component_ios(self):
-        """Build fast lookup tables that map I/O objects back to their owning component."""
-        self._output_owner_by_id = {}
-        self._input_owner_by_id = {}
-
-        for component in self._components:
-            for output in component.get_outputs():
-                self._output_owner_by_id[id(output)] = component
-            for input_item in component.get_inputs():
-                self._input_owner_by_id[id(input_item)] = component
-
-    def _build_component_graph(self):
-        """Return adjacency maps for the component-level connection graph."""
-        adjacency = {component: set() for component in self._components}
-        reverse_adjacency = {component: set() for component in self._components}
-        edges = []
-
-        for destination_component in self._components:
-            for input_item in destination_component.get_inputs(connected_only=True):
-                connection = input_item.connection
-                source_component = self._output_owner_by_id.get(id(connection.source))
-                if source_component is None:
-                    continue
-
-                adjacency[source_component].add(destination_component)
-                reverse_adjacency[destination_component].add(source_component)
-                edges.append((source_component, destination_component, connection.source, input_item))
-
-        return adjacency, reverse_adjacency, edges
-
-    def _find_connected_subnetworks(self, adjacency, reverse_adjacency):
-        """Group components into weakly connected subnetworks."""
-        unvisited = set(self._components)
-        subnetworks = []
-
-        while unvisited:
-            start_component = unvisited.pop()
-            queue = deque([start_component])
-            subnetwork = {start_component}
-
-            while queue:
-                component = queue.popleft()
-                neighbors = adjacency[component] | reverse_adjacency[component]
-                for neighbor in neighbors:
-                    if neighbor in unvisited:
-                        unvisited.remove(neighbor)
-                        subnetwork.add(neighbor)
-                        queue.append(neighbor)
-
-            subnetworks.append(subnetwork)
-
-        return subnetworks
-
     def _has_directed_cycle(self, subnetwork, adjacency):
         """
         Detect a directed cycle using a depth-first color walk.
         
-        White: nodes not visited yet.
-        Gray: nodes currently on the active recursion stack
         
         The logic is as follows:
         * Start from a white node.
@@ -930,33 +872,45 @@ class Model:
         making the network "coupled" in the classification logic, which is where matrix-
         based solving becomes relevant.
         """
-        white = set(subnetwork)
-        gray = set()
+        # nodes not visited yet.
+        unvisited = set(subnetwork)
+        # nodes currently on the active recursion stack
+        active_stack = set()
 
         def visit(component):
-            white.discard(component)
-            gray.add(component)
+            unvisited.discard(component)
+            active_stack.add(component)
 
             for neighbor in adjacency[component]:
                 if neighbor not in subnetwork:
                     continue
-                if neighbor in gray:
+                if neighbor in active_stack:
                     return True
-                if neighbor in white and visit(neighbor):
+                if neighbor in unvisited and visit(neighbor):
                     return True
 
-            gray.discard(component)
+            active_stack.discard(component)
             return False
 
-        while white:
-            component = next(iter(white))
+        while unvisited:
+            component = next(iter(unvisited))
             if visit(component):
                 return True
 
         return False
 
     def _classify_subnetwork(self, subnetwork, adjacency, reverse_adjacency):
-        """Classify a connected subnetwork as sequential or coupled."""
+        """
+        >> Internal method - shouldn't be called by the user directly. <<
+
+        Classify a connected subnetwork as sequential or coupled.
+
+        Coupled : A subnetwork is classified as coupled if it contains any of the following:
+            * A directed cycle (feedback loop)
+            * A branching node (one output feeding multiple inputs)
+            * A merging node (multiple outputs feeding one input)
+        Sequential : A subnetwork is classified as sequential if it contains none of the above.
+        """
         in_degree = {}
         out_degree = {}
 
@@ -984,13 +938,62 @@ class Model:
         }
 
     def _build_network_analysis(self):
-        """Analyze the current model topology and cache a solve plan for each subnetwork."""
+        """
+        >> Internal method - shouldn't be called by the user directly. <<
+
+        Analyze the current model topology and cache a solve plan for each subnetwork.
+        """
         if not self.is_initialized:
             return []
 
-        self._index_component_ios()
-        adjacency, reverse_adjacency, edges = self._build_component_graph()
-        subnetworks = self._find_connected_subnetworks(adjacency, reverse_adjacency)
+        # Build lookup tables that map Input/Output objects back to their owning component.
+        self._output_owner_by_id = {}
+        self._input_owner_by_id = {}
+
+        for component in self._components:
+            for output in component.get_outputs():
+                self._output_owner_by_id[id(output)] = component
+            for input_item in component.get_inputs():
+                self._input_owner_by_id[id(input_item)] = component
+
+        # Build the component connection graph and identify connected subnetworks.
+        edges = []
+        adjacency = {component: set() for component in self._components}
+        reverse_adjacency = {component: set() for component in self._components}
+
+        for dst_component in self._components:
+            for input_item in dst_component.get_inputs(connected_only=True):
+                connection = input_item.connection
+                src_component = self._output_owner_by_id.get(id(connection.source))
+                if src_component is None:
+                    continue
+
+                adjacency[src_component].add(dst_component)
+                reverse_adjacency[dst_component].add(src_component)
+                edges.append((src_component, dst_component, connection.source, input_item))
+
+        # Group components into weakly connected subnetworks.
+        unvisited = set(self._components)
+        subnetworks = []
+
+        # loop until all components are visited
+        while unvisited:  
+            start_component = unvisited.pop()
+            queue = deque([start_component])
+            subnetwork = {start_component}
+
+            while queue:
+                component = queue.popleft()
+                neighbors = adjacency[component] | reverse_adjacency[component]
+                for neighbor in neighbors:
+                    if neighbor in unvisited:
+                        unvisited.remove(neighbor)
+                        subnetwork.add(neighbor)
+                        queue.append(neighbor)
+
+            subnetworks.append(subnetwork)
+
+        # Classify each subnetwork as sequential or coupled, and build a plan for solving it.
         plans = []
 
         for subnetwork in subnetworks:
@@ -1007,10 +1010,12 @@ class Model:
         return plans
 
     def _compute_execution_order(self):
-        """Reorder self._components in topological order of the connection graph.
+        """
+        >> Internal method - shouldn't be called by the user directly. <<
+        
+        Reorder self._components in topological order of the connection graph.
 
-        For sequential (acyclic) subnetworks this produces an exact ordering so
-        that each component's inputs are already computed before it is called,
+        For subnetworks without cyclic connections this produces an exact ordering,
         enabling single-pass convergence.  For coupled subnetworks, back-edges
         that close cycles are identified and removed from the graph first; the
         remaining directed acyclic graph (DAG) is then sorted topologically, 
@@ -1024,27 +1029,28 @@ class Model:
         # Identify back-edges with an iterative depth-first search, 
         # avoiding recursion-depth limits
         back_edges = set()
-        white = set(self._components)
-        gray = set()
+        unvisited = set(self._components)   # nodes that haven't yet been visited
+        active_stack = set()                # nodes currently on the active recursion stack
 
         for start in list(self._components):
-            if start not in white:
+            if start not in unvisited:
                 continue
-            white.discard(start)
-            gray.add(start)
+            unvisited.discard(start)
+            active_stack.add(start)
             stack = [(start, iter(adjacency[start]))]
+            # keep looping until the stack is empty, which means all reachable nodes have been visited
             while stack:
                 node, children = stack[-1]
                 try:
                     child = next(children)
-                    if child in gray:
+                    if child in active_stack:
                         back_edges.add((node, child))
-                    elif child in white:
-                        white.discard(child)
-                        gray.add(child)
+                    elif child in unvisited:
+                        unvisited.discard(child)
+                        active_stack.add(child)
                         stack.append((child, iter(adjacency[child])))
-                except StopIteration:
-                    gray.discard(node)
+                except StopIteration:    # StopIteration is thrown when the iterator is exhausted
+                    active_stack.discard(node)
                     stack.pop()
 
         # Build reduced adjacency and in-degree map, omitting back-edges.
@@ -1076,35 +1082,6 @@ class Model:
         compstr = " → ".join([type(component).__name__ for component in self._components])
         print("⏣ Component call order | " + compstr)
             
-
-    def _apply_network_iteration(self):
-        """Apply one network-level iteration update inside the existing step() loop.
-
-        Coupled subnetworks are solved for components that are part of a solve_group and
-        contribute equations via ``if self.coupled_eqs is not None:`` inside calculate().
-        """
-        if self._network_analysis is None:
-            return False
-
-        solved_any = False
-        equations_added_any = False
-        coupled_count = 0
-        for plan in self._network_analysis["plans"]:
-            if plan["mode"] != "coupled":
-                continue
-            coupled_count += 1
-            plan_updated, plan_has_equations = self._solve_coupled_subnetwork(plan)
-            solved_any = plan_updated or solved_any
-            equations_added_any = plan_has_equations or equations_added_any
-
-        if coupled_count > 0 and not equations_added_any and not self._network_solver_warned:
-            print("Network solver: coupled networks detected but no equations were added. "
-                "Mark connections with solve_group and contribute equations inside calculate() "
-                "using 'if self.coupled_eqs is not None:' to enable solving.")
-            self._network_solver_warned = True
-
-        return solved_any
-
     def initialize(self):
         """
         Initialize the model before running the simulation. This will automatically call the
@@ -1204,20 +1181,55 @@ class Model:
             all_converged = True 
             self.iteration += 1
 
-            # Call the network solver here to update all coupled components before each
+            # -----------------------------------------------------------------
+            # -----------------------------------------------------------------
+            # Run the network solver here to update all coupled components at the start of each
             # iteration. This allows guess propagation to occur across the entire coupled
             # network, which can improve convergence in cases where simple sequential
-            # updates are not sufficient. Components contribute equations by checking
+            # updates are not sufficient. 
+            # 
+            # Components contribute equations by checking
             # ``if self.coupled_eqs is not None:`` inside calculate(); the Model sets
             # self.coupled_eqs to the NetworkEquationContext before the call and clears it
-            # afterward. Coefficients are based on values at the start of the iteration
-            # (Jacobi-style), though components can compute fresher coefficients from
+            # afterward. 
+            # 
+            # Coefficients in the invertible matrix are based on values at the start of 
+            # the iteration, although components can compute fresher coefficients from
             # their inputs before the context check for a Gauss-Seidel effect.
-            network_updated = self._apply_network_iteration()
+            # 
+            # Coupled subnetworks are solved for components that are part of a solve_group.
+            # -----------------------------------------------------------------
+            network_updated = False
+            # Only run if there are coupled networks and the user has provided equations to solve them.
+            if self._network_analysis is not None:
+                equations_added_any = False
+                coupled_count = 0
+                # Loop through the network 'plans' and solve each coupled subnetwork independently.
+                for plan in self._network_analysis["plans"]:
+                    if plan["mode"] != "coupled":
+                        continue
+                    coupled_count += 1
+                    plan_updated, plan_has_equations = self._solve_coupled_subnetwork(plan)
+                    network_updated = plan_updated or network_updated
+                    equations_added_any = plan_has_equations or equations_added_any
+
+                if coupled_count > 0 and not equations_added_any and not self._network_solver_warned:
+                    print("Network solver: coupled networks detected but no equations were added. "
+                        "Mark connections with solve_group and contribute equations inside calculate() "
+                        "using 'if self.coupled_eqs is not None:' to enable solving.")
+                    self._network_solver_warned = True
+
             if network_updated:
                 all_converged = False
+            # -----------------------------------------------------------------
+            # -----------------------------------------------------------------
 
-            # Run through list of components, gathering and updating inputs 
+
+            # -----------------------------------------------------------------
+            # Component calculation and connection updates. This is the main loop that 
+            # iterates through all components, updating their inputs from connections 
+            # and calling their calculate() methods.
+            # -----------------------------------------------------------------
             max_abs_err = 0.
             max_rel_err = 0.
             for component in self._components:
@@ -1231,8 +1243,8 @@ class Model:
                 component.calculate()
             
             if all_converged and not self.is_first_iteration:
-                # print(f'Iterations: {i}')
                 break
+            # Handle the case where the maximum number of iterations is reached without convergence.
             if i == self.settings.max_iterations-1:
                 for component in self._components:
                     for input in component.get_inputs(connected_only=True):
