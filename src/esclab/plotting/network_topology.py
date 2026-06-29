@@ -253,7 +253,7 @@ class NetworkTopologyView:
         self.model = model
         self.include_subnetworks = include_subnetworks
         self.show_connection_labels = show_connection_labels
-        OnlinePlotter.ensure_window()
+        OnlinePlotter.build_window()
 
         self.view = _TopologyGraphicsView()
         self.scene = QtWidgets.QGraphicsScene(self.view)

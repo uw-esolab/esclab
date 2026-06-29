@@ -51,7 +51,7 @@ class OnlinePlotter:
     _last_ui_event_process = 0.0
 
     @classmethod
-    def ensure_window(cls, plotter_size=(0.9, 0.9)):
+    def build_window(cls, plotter_size=(0.9, 0.9)):
         if cls.app is None:
             cls.app = qtg.mkQApp()
 
@@ -367,7 +367,7 @@ class OnlinePlotter:
             "#00ffe5",
             "#5d0ab6",
         ]
-        OnlinePlotter.ensure_window(plotter_size=self._plotter_size)
+        OnlinePlotter.build_window(plotter_size=self._plotter_size)
         self.app = OnlinePlotter.app
 
         self.win = qtg.GraphicsLayoutWidget()
