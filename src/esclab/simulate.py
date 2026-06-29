@@ -6,7 +6,7 @@ import time
 import sys
 import os
                     
-from esclab.plotting import OnlinePlotter as _OnlinePlotter, NetworkTopologyView
+from esclab.plotting import OnlinePlotter, NetworkTopologyView
 
 # ------------------------------------------------------------------------
 class Connection:
@@ -500,13 +500,6 @@ class Model:
             pass
     # End class Settings -----------------------------------------------------
     
-    # ------------------------------------------------------------------------
-    class OnlinePlotter(_OnlinePlotter):
-        """Backward-compatible alias for the extracted plotter implementation."""
-        pass
-
-    # ------- end OnlinePlotter --------------------------------------------------
-
     # ----------------------------------------------------------------------------
     # Model class methods --------------------------------------------------------
     # ----------------------------------------------------------------------------
@@ -519,7 +512,7 @@ class Model:
         self.is_converged = False             # Flag - True when the current step() call has reached convergence
         self.time = 0                         # Current simulation time (sec)
         # placeholder for plotters
-        self.plotters = []
+        self._plotters = []
         # Internal bookkeeping for components 
         self._components = []
         # Internal flag to track whether stepping has begun
@@ -572,7 +565,7 @@ class Model:
             if not isinstance(y2, type([])):
                 y2t = [y2]
 
-        self.plotters.append(Model.OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title, show_live=show_live))
+        self._plotters.append(OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title, show_live=show_live))
 
     def add_network_graph(
         self,
@@ -690,7 +683,7 @@ class Model:
         """
         # Finalize deferred (show_live=False) plotters first — this creates the Qt app
         # and window if they don't exist yet.
-        for plotter in self.plotters:
+        for plotter in self._plotters:
             if not plotter.show_live:
                 plotter._finalize()
 
@@ -712,8 +705,8 @@ class Model:
                         view.export_svg(f"{kwargs['path_base']}.svg")
         self._deferred_network_graphs.clear()
 
-        app = Model.OnlinePlotter.app
-        main_window = Model.OnlinePlotter.main_window
+        app = OnlinePlotter.app
+        main_window = OnlinePlotter.main_window
         # Check whether plotting was ever initialized
         if app is None or main_window is None:
             return
@@ -1156,7 +1149,7 @@ class Model:
         # Pre-allocate plotter arrays on the first step, after all plotters have been added
         if not self.plotters_initialized:
             nstep = int(round((self.settings.stop_time - self.settings.start_time) / self.settings.timestep)) + 1
-            for plotter in self.plotters:
+            for plotter in self._plotters:
                 plotter.preallocate(nstep, self.settings.timestep)
             self.plotters_initialized = True
 
@@ -1282,11 +1275,11 @@ class Model:
         
         # Plotters
         iter_fraction = (self.iteration + 1) / self.settings.max_iterations
-        for plotter in self.plotters:
+        for plotter in self._plotters:
             plotter.log_step(self.time, conv_fraction, iter_fraction)
 
         # Keep Qt tabs responsive without letting GUI activity dominate step time.
-        Model.OnlinePlotter.process_ui_events()
+        OnlinePlotter.process_ui_events()
 
         self.time += self.settings.timestep
         self.is_first_step = False
