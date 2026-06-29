@@ -854,51 +854,6 @@ class Model:
 
         return updated_any, True
 
-    def _has_directed_cycle(self, subnetwork, adjacency):
-        """
-        Detect a directed cycle using a depth-first color walk.
-        
-        
-        The logic is as follows:
-        * Start from a white node.
-        * Move it to gray when entering visit().
-        * Traverse each outgoing neighbor.
-        * If a neighbor is already gray, you found a back-edge to an ancestor 
-          in the current path, which means a directed cycle exists.
-        * When done exploring a node, remove it from gray and return.
-        
-        A directed cycle is a strong indicator that simple one-pass guess propagation 
-        is not enough and an inversion solve is needed. Cycle presence contributes to
-        making the network "coupled" in the classification logic, which is where matrix-
-        based solving becomes relevant.
-        """
-        # nodes not visited yet.
-        unvisited = set(subnetwork)
-        # nodes currently on the active recursion stack
-        active_stack = set()
-
-        def visit(component):
-            unvisited.discard(component)
-            active_stack.add(component)
-
-            for neighbor in adjacency[component]:
-                if neighbor not in subnetwork:
-                    continue
-                if neighbor in active_stack:
-                    return True
-                if neighbor in unvisited and visit(neighbor):
-                    return True
-
-            active_stack.discard(component)
-            return False
-
-        while unvisited:
-            component = next(iter(unvisited))
-            if visit(component):
-                return True
-
-        return False
-
     def _classify_subnetwork(self, subnetwork, adjacency, reverse_adjacency):
         """
         >> Internal method - shouldn't be called by the user directly. <<
@@ -920,7 +875,46 @@ class Model:
 
         has_branching = any(degree > 1 for degree in out_degree.values())
         has_merging = any(degree > 1 for degree in in_degree.values())
-        has_cycle = self._has_directed_cycle(subnetwork, adjacency)
+
+        # Detect a directed cycle using a depth-first search.
+        # The logic is as follows:
+        #    * Start from an unvisited node.
+        #    * Move it to the active_stack when entering visit().
+        #    * Traverse each outgoing neighbor.
+        #    * If a neighbor is already active_stack, it's a back-edge to an visited node
+        #      in the current path, which means a directed cycle exists.
+        #    * When done exploring a node, remove it from active_stack and update the boolean flag.
+        # A directed cycle is a strong indicator that simple one-pass guess propagation 
+        # is not enough and an inversion solve is needed. Cycle presence contributes to
+        # making the network "coupled" in the classification logic, which is where matrix-
+        # based solving becomes relevant.
+
+        # nodes not visited yet.
+        unvisited = set(subnetwork)
+        # nodes currently on the active recursion stack
+        active_stack = set()
+
+        def visit(component):
+            unvisited.discard(component)
+            active_stack.add(component)
+
+            for neighbor in adjacency[component]:
+                if neighbor not in subnetwork:
+                    continue
+                if neighbor in active_stack:
+                    return True
+                if neighbor in unvisited and visit(neighbor):
+                    return True
+
+            active_stack.discard(component)
+            return False
+
+        has_cycle = False
+        while unvisited:
+            component = next(iter(unvisited))
+            if visit(component):
+                has_cycle = True
+                break
 
         if has_cycle or has_branching or has_merging:
             mode = "coupled"
