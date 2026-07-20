@@ -133,7 +133,7 @@ model.add_plotter([model.vs.i_out, model.r.i_out, model.l.i_out, model.c.i_out, 
                   nmax_points=1000,
                   show_live=True,
                   )
-
+model.add_plotter_simstats()
 model.add_network_graph()
 
 # ----------------------------------------------------------

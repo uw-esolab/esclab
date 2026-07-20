@@ -29,6 +29,19 @@ class _PlotterKeyEventFilter(QtCore.QObject):
         return super().eventFilter(obj, event)
 
 
+class _SequenceSeriesItem:
+    def __init__(self, series, name="", units=""):
+        self._series = series
+        self.name = name
+        self.units = units
+
+    @property
+    def v(self):
+        if len(self._series) == 0:
+            return float("nan")
+        return self._series[-1]
+
+
 class OnlinePlotter:
     app = None
     main_window = None
@@ -336,11 +349,14 @@ class OnlinePlotter:
         self.y2label = y2label
         self.nmax_points = nmax_points
         self.update_every = update_every
-        self.y1_items = y1
-        self.y2_items = y2
-        self.x_data = None
-        self.y1_data = None
-        self.y2_data = None
+        self.y1_items = [self._normalize_item(item, self.y1label, idx) for idx, item in enumerate(y1)]
+        self.y2_items = None if y2 is None else [self._normalize_item(item, self.y2label, idx) for idx, item in enumerate(y2)]
+        self.x_data = []
+        self.y1_data = [[] for _ in self.y1_items]
+        self.y2_data = [[] for _ in self.y2_items] if self.y2_items is not None else []
+        self.conv_data = []
+        self.iter_data = []
+        self._step_timesteps = []
         self._y1lim = y1lim
         self._y2lim = y2lim
         self._plotter_size = plotter_size
@@ -351,6 +367,25 @@ class OnlinePlotter:
         else:
             self.y1_lines = []
             self.y2_lines = []
+
+    @staticmethod
+    def _normalize_item(item, axis_label, index):
+        """
+        If a component input/output is passed, return it directly. 
+        If a list/tuple/array is passed, wrap it in a _SequenceSeriesItem 
+        with a default name. If a single value is passed, wrap it in a 
+        _SequenceSeriesItem with a default name.
+        """
+        if hasattr(item, "v"):  #item is a component input/output with a .v property
+            return item
+        if isinstance(item, (list, tuple, np.ndarray)):  #item is array-like
+            fallback_name = axis_label if axis_label else f"Series {index + 1}"
+            if index > 0 and axis_label:
+                fallback_name = f"{axis_label} {index + 1}"
+            return _SequenceSeriesItem(item, name=fallback_name)
+        #item is a single value
+        fallback_name = axis_label if axis_label else f"Series {index + 1}"
+        return _SequenceSeriesItem([item], name=fallback_name)
 
     def _build_widgets(self):
         """Create all Qt plot widgets and register this plotter in the shared window."""
@@ -537,20 +572,22 @@ class OnlinePlotter:
         b = 220
         return QtGui.QBrush(QtGui.QColor(r, g, b, alpha))
 
-    def log_step(self, time, conv_fraction=0.0, iter_fraction=0.0):
+    def log_step(self, time, conv_fraction=0.0, iter_fraction=0.0, timestep=None):
         self.current_step += 1
-        idx = self._fill_idx
+        if timestep is None:
+            timestep = self._timestep
 
-        self.x_data[idx] = time
-        self.conv_data[idx] = conv_fraction
-        self.iter_data[idx] = iter_fraction
+        self.x_data.append(time)
+        self.conv_data.append(conv_fraction)
+        self.iter_data.append(iter_fraction)
+        self._step_timesteps.append(timestep)
 
         for j, yval in enumerate(self.y1_items):
-            self.y1_data[j, idx] = yval.v
+            self.y1_data[j].append(yval.v)
 
         if self.y2_items is not None:
             for j, yval in enumerate(self.y2_items):
-                self.y2_data[j, idx] = yval.v
+                self.y2_data[j].append(yval.v)
 
         self._fill_idx += 1
 
@@ -561,49 +598,61 @@ class OnlinePlotter:
         n = self._fill_idx
         if n == 0:
             return
-        x_view = self.x_data[:n]
+        x_view = np.asarray(self.x_data[:n], dtype=float)
 
         for i in range(len(self.y1_lines)):
-            self.y1_lines[i].setData(x_view, self.y1_data[i, :n])
+            self.y1_lines[i].setData(x_view, np.asarray(self.y1_data[i][:n], dtype=float))
 
         for i in range(len(self.y2_lines)):
-            self.y2_lines[i].setData(x_view, self.y2_data[i, :n])
+            self.y2_lines[i].setData(x_view, np.asarray(self.y2_data[i][:n], dtype=float))
 
         if self._auto_follow:
-            x_start = self.x_data[max(0, n - self.nmax_points)]
-            x_end = self.x_data[n - 1]
+            x_start = x_view[max(0, n - self.nmax_points)]
+            x_end = x_view[n - 1]
             self.ax1.setXRange(x_start, x_end, padding=0.02)
 
         if self._conv_bar_item is not None:
             self.ax_conv.removeItem(self._conv_bar_item)
             self._conv_bar_item = None
-        nc_mask = self.conv_data[:n] > 0
+        conv_data = np.asarray(self.conv_data[:n], dtype=float)
+        nc_mask = conv_data > 0
         if np.any(nc_mask):
             nc_x = x_view[nc_mask]
-            brushes = [self._fraction_to_brush(f) for f in self.conv_data[:n][nc_mask]]
+            nc_widths = np.asarray(self._step_timesteps[:n], dtype=float)[nc_mask]
+            brushes = [self._fraction_to_brush(f) for f in conv_data[nc_mask]]
             self._conv_bar_item = qtg.BarGraphItem(
-                x=nc_x, height=1, width=self._timestep, brushes=brushes, pen=qtg.mkPen(None)
+                x0=nc_x - (nc_widths * 0.5),
+                x1=nc_x + (nc_widths * 0.5),
+                height=1,
+                brushes=brushes,
+                pen=qtg.mkPen(None),
             )
             self.ax_conv.addItem(self._conv_bar_item)
 
         if self._iter_bar_item is not None:
             self.ax_iter.removeItem(self._iter_bar_item)
             self._iter_bar_item = None
-        iter_brushes = [self._iter_fraction_to_brush(f) for f in self.iter_data[:n]]
+        iter_data = np.asarray(self.iter_data[:n], dtype=float)
+        iter_widths = np.asarray(self._step_timesteps[:n], dtype=float)
+        iter_brushes = [self._iter_fraction_to_brush(f) for f in iter_data]
         self._iter_bar_item = qtg.BarGraphItem(
-            x=x_view, height=1, width=self._timestep, brushes=iter_brushes, pen=qtg.mkPen(None)
+            x0=x_view - (iter_widths * 0.5),
+            x1=x_view + (iter_widths * 0.5),
+            height=1,
+            brushes=iter_brushes,
+            pen=qtg.mkPen(None),
         )
         self.ax_iter.addItem(self._iter_bar_item)
 
-    def preallocate(self, n_steps, timestep):
+    def preallocate(self, n_steps=None, timestep=1.0):
         self._fill_idx = 0
         self._timestep = timestep
-        self.x_data = np.empty(n_steps)
-        self.y1_data = np.empty((len(self.y1_items), n_steps))
-        n_y2 = len(self.y2_items) if self.y2_items is not None else 1
-        self.y2_data = np.empty((n_y2, n_steps))
-        self.conv_data = np.zeros(n_steps)
-        self.iter_data = np.zeros(n_steps)
+        self.x_data = []
+        self.y1_data = [[] for _ in self.y1_items]
+        self.y2_data = [[] for _ in self.y2_items] if self.y2_items is not None else []
+        self.conv_data = []
+        self.iter_data = []
+        self._step_timesteps = []
 
     def _setup_strip_tooltip(self):
         self._strip_proxy = qtg.SignalProxy(self.ax1.scene().sigMouseMoved, rateLimit=20, slot=self._on_strip_mouse_move)
@@ -680,7 +729,8 @@ class OnlinePlotter:
                 # which axis data are we pointing at?
                 axis_data = self.y1_data if j < len(self.y1_items) else self.y2_data
                 jj = j if j < len(self.y1_items) else j - len(self.y1_items)
-                lines.append(f"{item.name:<{ncmax}s} | {axis_data[jj, idx]:.4g}{unit_str}")
+                axis_values = np.asarray(axis_data[jj], dtype=float)
+                lines.append(f"{item.name:<{ncmax}s} | {axis_values[idx]:.4g}{unit_str}")
             text = "\n".join(lines)
 
         self._tip_label.setFont(QtGui.QFont("Consolas", OnlinePlotter.font_size_pt-2))

@@ -527,8 +527,33 @@ class Model:
         self._last_progress_step = -1
         self._last_progress_wall_clock = 0.0
         self._deferred_network_graphs = []
+        self._step_count = 0
         return
     
+    def add_plotter_simstats(self, tab_title="Simulation Stats", nmax_points = 1000, update_every=1, show_live=True):
+        """
+        Add a plotter to the model to visualize simulation statistics over time.
+        
+        Parameters
+        ----------
+        update_every : int, optional
+            Update the plot every N time steps.
+        tab_title : str, optional
+            Title of the tab for the current plotter.
+        show_live : bool, optional
+            Flag indicating whether to show the plotter live during the simulation. If false, the plots will render after the simulation has completed.
+        """
+        self.add_plotter(
+            y1=[self.historian['timestep']],
+            y2=[self.historian['iterations']],
+            y1label='Timestep',
+            y2label='Iterations',
+            nmax_points=nmax_points,
+            update_every=update_every,
+            tab_title=tab_title,
+            show_live=show_live
+        )
+
     def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None, show_live=True):
         """
         Add a plotter to the model to visualize component inputs and outputs over time.
@@ -1088,7 +1113,7 @@ class Model:
         
 
         # Initialize the list of outputs. This is extended based on the component settings
-        output_names = ['time','iterations']
+        output_names = ['time','timestep','iterations']
 
         # ------------------------------------------------------------
         # Loop through all attributes of the model to find components, assign names, and call presim_setup
@@ -1110,10 +1135,9 @@ class Model:
                 # Record all output data names for the historian
                 output_names += cnames
 
-        # Construct the historian database
-        # Use round()+1 to guard against floating-point accumulation causing one extra step
-        nstep = int(round((self.settings.stop_time - self.settings.start_time)/self.settings.timestep)) 
-        self.historian = dict([[n,np.ones(nstep)*float('nan')] for n in output_names])
+        # Append-only historian storage keeps timestep changes cheap.
+        self.historian = dict([[n, []] for n in output_names])
+        self._step_count = 0
 
         # Mark the model as initialized
         self.is_initialized = True
@@ -1131,15 +1155,17 @@ class Model:
         if not self.is_initialized:
             self.initialize()
 
+        timestep = self.settings.timestep
+        if timestep <= 0:
+            raise ValueError("Invalid time settings. Ensure that timestep is positive.")
+
         if not self._has_started_stepping:
             # Track the clock time at the start of the first step for performance measurement
             self._start_time_wall_clock = time.time()
 
-            assert self.settings.timestep > 0, \
-                "Invalid time settings. Ensure that timestep is positive."
             assert self.settings.stop_time > self.settings.start_time, \
                 "Invalid time settings. Ensure that stop_time is greater than start_time."
-            assert self.settings.stop_time >= self.settings.timestep, \
+            assert self.settings.stop_time >= timestep, \
                 "Invalid time settings. Ensure that stop_time is greater than the timestep."
 
             self._build_network_analysis()
@@ -1148,9 +1174,8 @@ class Model:
 
         # Pre-allocate plotter arrays on the first step, after all plotters have been added
         if not self.plotters_initialized:
-            nstep = int(round((self.settings.stop_time - self.settings.start_time) / self.settings.timestep)) + 1
             for plotter in self._plotters:
-                plotter.preallocate(nstep, self.settings.timestep)
+                plotter.preallocate(timestep=timestep)
             self.plotters_initialized = True
 
         self.iteration = -1  # reset the current iteration
@@ -1258,37 +1283,40 @@ class Model:
 
         # Convergence complete for this step, now do post-convergence calculations and logging
         self.is_converged = True
-        current_step = int(round((self.time - self.settings.start_time)/self.settings.timestep))
+        current_step = self._step_count
+        self.historian['time'].append(self.time)
+        self.historian['timestep'].append(timestep)
+        self.historian['iterations'].append(self.iteration)
         for component in self._components:
             component.calculate()
             for input in component.get_inputs(connected_only=True):
                 input.connection.reset_for_step()
 
-            self.historian['time'][current_step] = self.time
-            self.historian['iterations'][current_step] = self.iteration
             for output in component.get_outputs():
                 try:
                     if not isinstance(output.v, np.ndarray):
-                        self.historian[output.name][current_step] = output.v
+                        self.historian[output.name].append(output.v)
                 except ValueError:
                     pass
+
+        self._step_count += 1
         
         # Plotters
         iter_fraction = (self.iteration + 1) / self.settings.max_iterations
         for plotter in self._plotters:
-            plotter.log_step(self.time, conv_fraction, iter_fraction)
+            plotter.log_step(self.time, conv_fraction, iter_fraction, timestep=timestep)
 
         # Keep Qt tabs responsive without letting GUI activity dominate step time.
         OnlinePlotter.process_ui_events()
 
-        self.time += self.settings.timestep
+        self.time += timestep
         self.is_first_step = False
 
         # Terminal update
         elapsed = self.time - self.settings.start_time
         duration = self.settings.stop_time - self.settings.start_time
         percent = np.clip((elapsed / duration) * 100 if duration > 0 else 100.0, 0.0, 100.0)
-        progress_step = int(round(elapsed / self.settings.timestep)) if self.settings.timestep > 0 else 0
+        progress_step = self._step_count
         now_clock = time.time()
         should_print = (
             progress_step != self._last_progress_step and

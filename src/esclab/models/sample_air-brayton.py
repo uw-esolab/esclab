@@ -80,7 +80,7 @@ model.connect(model.combustor.qdot,       model.summary.Q_combustor  , )
 model.add_plotter([model.compressor.T_out, model.weather.T_amb, model.turbine.T_in, model.cooler.T_in],[model.compressor.W], y1label='Temperature', y2label='Work', update_every=10, nmax_points=300)
 model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=10, nmax_points=100)
 # model.add_plotter([model.summary.eta_cycle], [model.summary.Q_combustor], y1label='Efficiency', y2label='Heat', update_every=100, nmax_points=100)
-
+model.add_plotter_simstats(update_every=10, nmax_points=100)
 # Optional: add a topology tab and export images.
 # model.add_network_graph(show_tab=True, save_png=True, path_base='air_brayton_topology')
 model.add_network_graph()
@@ -94,6 +94,9 @@ model.time = model.settings.start_time
 model.settings.timestep = 3600
 
 while model.time < model.settings.stop_time:
+    # if model.time > 3600*24*10:
+    #     model.settings.timestep = 3600*.25
+    # model.settings.timestep = 3600 + 1800*np.sin(2*np.pi*model.time/(3600*24))
     model.step()
 
 model.wait_for_plots()
