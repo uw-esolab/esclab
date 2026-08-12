@@ -39,6 +39,8 @@ pip install -e .
 # Clone and install the editable version to this conda environment. 
 # Make sure C:\repositories is replace with the path to your repository directory.
 pip install -e C:\repositories\eeslib
+# Ensure the editable version is correctly installed in esclab_dev.
+python -c "import eeslib; print(eeslib.__file__)"
 ```
 
 ## Getting started
