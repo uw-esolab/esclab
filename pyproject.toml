@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "esclab"
-version = "0.0.0"
+version = "0.0.1"
 authors = [
   { name="Mike Wagner", email="mjwagner2@wisc.edu" },
 ]
@@ -21,7 +21,7 @@ license = "LicenseRef-UW-Madison-proprietary-instructional"
 license-files = ["LICENSE"]
 
 dependencies = [
-    "eeslib>=0.0.4",
+    "eeslib>=0.0.5",
     "numpy>=1.21.0",
     "scipy>=1.7.0",
     "CoolProp>=6.4.0",

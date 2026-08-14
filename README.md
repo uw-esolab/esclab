@@ -7,32 +7,40 @@ The simulation is configured and managed in Python scripts.
 
 A graphical plotting interface provides real-time simulation results and a network topology rendering tool.
 
-The software is primarily intended for research and teaching activities at the University of Wisconsin-Madison.
+The software is structured to support both research and teaching activities and is used in the upper-graduate course "ME 964: Simulation and Optimal Control of Energy Systems" at the University of Wisconsin-Madison.
 
 ## Installation
 
 1. Download and install a Python package manager. This program was developed using [miniconda](https://www.anaconda.com/download/success?reg=skipped), and it's recommended for environment creation and maintenance. 
 
-2. Download and install [VS Code](https://code.visualstudio.com/download) (or your favorite Python IDE)
+2. Download and install [VS Code](https://code.visualstudio.com/download) (or your favorite Python IDE, though VS Code is currently recommended)
 
-3. Collect the ESCLab package source code. If you're using git, clone the repository. Otherwise, you can download and unzip the repository. 
+3. Open a command console and create a new conda environment. You can call this what you'd like, but I assume the name 'esclab_dev' in the documentation:
+
 ```bash
-# Change to a convenient location for the repository. A path with no spaces is recommended.
+# Create and activate a new conda environment
+conda create -n esclab_dev python=3.13
+conda activate esclab_dev
+```
+
+### Installing from source code
+
+Use this option when you plan on extending the component or model libraries with code that will closely integrate. This allows direct modification of the ESCLab source code and incorporation of the latest updates that are pushed to the GitHub repository. 
+
+4. Change to a convenient location for the repository. A path with no spaces is recommended.
+```bash
 cd C:\repositories
+```
+
+5. Collect the ESCLab package source code. If you're using git, clone the repository. Otherwise, you can download and unzip the repository. 
+```bash
 # Clone
 git clone https://github.com/uw-esolab/esclab.git
 ```
 
-4. Open a command console and execute the following:
+6. Install the ESCLab project to the python package you just created. 
 
 ```bash
-# Change to the library directory
-cd C:\repositories\esclab
-# Create and activate a new conda environment
-conda create -n esclab_dev python=3.13
-conda activate esclab_dev
-
-# Install the esclab project to the python package you just created. 
 # The -e flag makes the installation editable.
 pip install -e .
 # ESCLab currently requires the most recent version of EESLib (published by uw-esolab). 
@@ -41,6 +49,17 @@ pip install -e .
 pip install -e C:\repositories\eeslib
 # Ensure the editable version is correctly installed in esclab_dev.
 python -c "import eeslib; print(eeslib.__file__)"
+```
+
+### Installing from the package manager (PyPi)
+
+Do this **instead** of the source code option if you're happy with a relatively stable release of the ESCLab core source code and will only be developing models and components for your own use without intending to share them as part of the ESCLab distribution. 
+
+Following step #3 above: 
+
+4. Install the package using `pip`:
+```bash
+pip install esclab
 ```
 
 ## Getting started
@@ -64,8 +83,6 @@ The main calculation and plotting scripts are:
 * `network_topology.py` | tools for detecting, organizing, and rendering coupled network systems
 * `online_plotter.py` | Qt-based window for real-time plotting
 
-The `flownetwork` folder is currently under-development code for a CSP thermal-hydraulic simulation. None of it is functioning in this environment!!
-
 Definitions:
 | Term               | Definition                                                                                                                       |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -77,6 +94,55 @@ Definitions:
 | Absolute tolerance | Absolute difference between connection values on succesive iterations                                                            |
 | Relative tolerance | Difference relative to the magnitude of the last connection value                                                                                                                                 |
 | Learning rate      | Fraction of the difference between the new and old computed values to apply when iterating                                                                                                                                 |
+
+## Uploading a new version to PyPi (developers only!)
+
+To upload a new version of ESCLab to Pypi, follow the steps outlined in the [Python packaging tutorial](https://packaging.python.org/en/latest/tutorials/packaging-projects/). 
+
+The preferred packaging tool is `setuptools`. 
+
+The most relevant steps are as follows:
+1. Don't forget to update the code version number in `pyproject.toml` and in the `src/__init__.py` file.
+1. Open a command window and navigate to the `esclab` directory, such as
+    ```bash
+    cd C:\repositories\esclab
+    ```
+2. Ensure the build and packaging tools are installed in the Conda environment that you're using. 
+    The preferred method will install a developer tools, including build, pytest, and twine, specified in the pyproject.toml file in the esclab directory:
+    ```bash
+    pip install .[dev]
+    ```
+    Alternatively, you can manually install packages:
+    ```bash
+    python -m pip install --upgrade build 
+    python -m pip install --upgrade twine
+    ```
+3. Build the Python distributable
+    ```bash
+    python -m build
+    ```
+    This should create a folder `dist/` that contains a wheel (.whl) and tar.gz file. 
+4. Upload the file to Pypi. You will need to have first created a username and API token, following the packing tutorial instructions. If uploading to the production server, use the command:
+    ```bash
+    twine upload dist/*
+    ```
+
+    If using the test server, use the command:
+    ```bash
+    python -m twine upload --repository testpypi dist/*
+    ```
+
+5. To install the package, activate the Conda environment (e.g., `conda activate esclab_dev`), and install. 
+    If running from the production environment use:
+    ```bash
+    pip install esclab
+    ```
+
+    If you have previous versions of `esclab` already installed, force use of the most recent version using: 
+    ```bash
+    pip install --force-reinstall --upgrade esclab
+    ```
+
 
 ## Authors
 
