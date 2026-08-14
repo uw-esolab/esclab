@@ -25,13 +25,11 @@ name collisions across libraries:
 from . import brayton_simple
 from . import circuit_elements
 from . import esol_properties
-from . import flownetwork
 from . import template_component
 
 __all__ = [
     "brayton_simple",
     "circuit_elements",
     "esol_properties",
-    "flownetwork",
     "template_component"
 ]

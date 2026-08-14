@@ -4,6 +4,7 @@ import numpy as np
 class FF(Component):
     def __init__(self):
         self.signal = Component.Output()
+        return super().__init__()
 
     def presim_setup(self):
         pass
@@ -13,13 +14,14 @@ class FF(Component):
         return 
     
 class Object(Component):
-    def __init__(self):
-        self.signal = Component.Input(0.)
-        self.gain = Component.Parameter(100)
-        self.tau = Component.Parameter(12)
-        self.Tamb = Component.Parameter(200)
-        self.T = Component.Output()
-        self.T0 = 0  #iniital temp
+    signal = Component.Input(0.)
+    gain = Component.Parameter(100)
+    tau = Component.Parameter(12)
+    Tamb = Component.Parameter(200)
+    T = Component.Output()
+
+    def presim_setup(self):
+        self.T0 = 0  # initial temp
 
     def calculate(self):
         # post-convergence calculations
