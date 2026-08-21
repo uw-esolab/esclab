@@ -953,7 +953,7 @@ class Model:
         """
         >> Internal method - shouldn't be called by the user directly. <<
 
-        Analyze the current model topology and cache a solve plan for each subnetwork.
+        Analyze the current model topology and develop a plan for solving each subnetwork.
         """
         if not self.is_initialized:
             return []
@@ -1027,23 +1027,24 @@ class Model:
         
         Reorder self._components in topological order of the connection graph.
 
-        For subnetworks without cyclic connections this produces an exact ordering,
-        enabling single-pass convergence.  For coupled subnetworks, back-edges
+        For subnetworks without cyclic connections this produces ordering that
+        enables single-pass convergence.  For coupled subnetworks, back-edges
         that close cycles are identified and removed from the graph first; the
-        remaining directed acyclic graph (DAG) is then sorted topologically, 
-        minimising the number of stale inputs at the start of each iteration.
+        remaining directed acyclic graph (DAG) is then sorted topologically using
+        Kahn's topological sorting algorithm, minimizing the number of unknown 
+        inputs at the start of each iteration.
         """
         if self._network_analysis is None:
             return
 
         adjacency = self._network_analysis["adjacency"]
 
-        # Identify back-edges with an iterative depth-first search, 
-        # avoiding recursion-depth limits
+        # Identify back-edges with an iterative depth-first search
         back_edges = set()
         unvisited = set(self._components)   # nodes that haven't yet been visited
         active_stack = set()                # nodes currently on the active recursion stack
 
+        # Construct the set of back edges that will be removed for later DAG topological sorting
         for start in list(self._components):
             if start not in unvisited:
                 continue
@@ -1085,11 +1086,12 @@ class Model:
                 if reduced_in_degree[neighbor] == 0:
                     queue.append(neighbor)
 
-        # Safety net: append any node not yet emitted (should not occur).
+        # Append any node not yet emitted as a safety guard (remaining nodes should not occur).
         ordered_set = set(ordered)
         ordered.extend(c for c in self._components if c not in ordered_set)
 
-        self._components = ordered
+        # store the order
+        self._components = ordered  
         # Print out the execution order
         compstr = " → ".join([type(component).__name__ for component in self._components])
         print("⏣ Component call order | " + compstr)

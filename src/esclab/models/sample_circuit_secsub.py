@@ -51,12 +51,16 @@ class VoltageSourceRLC(CircuitElement):
         super().__init__()
 
     def calculate(self):
+        """
+        This voltage source component updates the guess current for this iteration
+        based on specific knowledge of the RLC circuit topology. This is stable
+        and relatively efficient, but depends on being able to explicitly compute
+        guess current based on circuit parameters.
+        
+        i = (V + (L/dt)*I_prev - Uc_prev) / (R + L/dt + dt/C)
+        """
+
         self.u_out = self.V
-        # Closed-form BE update for series RLC current (within one timestep):
-        # This relies on the specific configuration and is not robust to changes in the 
-        # circuit topology, but it is very stable and efficient for this simple example.
-        # i = (V + (L/dt)*I_prev - Uc_prev) / (R + L/dt + dt/C)
-        # This removes oscillatory fixed-point behavior from the source law.
         dt = self.model.settings.timestep
         R = self.model.r.R
         L = self.model.l.L
@@ -64,17 +68,25 @@ class VoltageSourceRLC(CircuitElement):
         I_prev = self.model.l.I_L_prev
         Uc_prev = self.model.c.U_C_prev
 
+        # Compute the denominator
         denom = R + (L / dt) + (dt / C)
+        # avoid divide-by-zero error while preserving the sign of the denominator
         denom = np.sign(denom) * max(abs(denom), 1e-12)
         i_target = (self.V + (L / dt) * I_prev - Uc_prev) / denom
 
-        # Mild relaxation avoids tiny iteration jitter with aggressive connection learn rates.
+        # Use a learning rate to improve convergence. Alpha=1 --> full learning
         alpha = 0.8
         self.i_out = float(self.i_in) + alpha * (i_target - float(self.i_in))
         return 
 
 class VoltageSource(CircuitElement):
-    """Voltage source element."""
+    """
+    Voltage source element.
+    
+    This model estimates the circuit current without knowing specific circuit topology by
+    using a bracketed solver approach.
+    
+    """
     V = Component.Parameter()  # voltage
 
     def __init__(self):
