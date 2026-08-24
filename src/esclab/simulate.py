@@ -872,7 +872,53 @@ class Model:
 
         return updated_any, True
 
-    def _classify_subnetwork(self, subnetwork, adjacency, reverse_adjacency):
+    def _find_back_edges(self, nodes, adjacency):
+        """
+        >> Internal method - shouldn't be called by the user directly. <<
+
+        Find DFS back-edges in a directed graph induced by ``nodes``.
+
+        A back-edge is an edge from a node to another node currently on the
+        active DFS stack. Presence of at least one back-edge indicates a
+        directed cycle.
+        """
+        node_set = set(nodes)
+        if not node_set:
+            return set()
+
+        # 0 = unvisited, 1 = active DFS stack, 2 = finished
+        state = {node: 0 for node in node_set}
+        back_edges = set()
+
+        for start in nodes:
+            if start not in node_set or state[start] != 0:
+                continue
+
+            state[start] = 1
+            stack = [(start, iter(adjacency[start]))]
+
+            while stack:
+                node, children = stack[-1]
+                try:
+                    child = next(children)
+                except StopIteration:
+                    state[node] = 2
+                    stack.pop()
+                    continue
+
+                if child not in node_set:
+                    continue
+
+                child_state = state[child]
+                if child_state == 1:
+                    back_edges.add((node, child))
+                elif child_state == 0:
+                    state[child] = 1
+                    stack.append((child, iter(adjacency[child])))
+
+        return back_edges
+
+    def _classify_subnetwork(self, subnetwork, adjacency, reverse_adjacency, subnetwork_back_edges=None):
         """
         >> Internal method - shouldn't be called by the user directly. <<
 
@@ -894,45 +940,11 @@ class Model:
         has_branching = any(degree > 1 for degree in out_degree.values())
         has_merging = any(degree > 1 for degree in in_degree.values())
 
-        # Detect a directed cycle using a depth-first search.
-        # The logic is as follows:
-        #    * Start from an unvisited node.
-        #    * Move it to the active_stack when entering visit().
-        #    * Traverse each outgoing neighbor.
-        #    * If a neighbor is already active_stack, it's a back-edge to an visited node
-        #      in the current path, which means a directed cycle exists.
-        #    * When done exploring a node, remove it from active_stack and update the boolean flag.
-        # A directed cycle is a strong indicator that simple one-pass guess propagation 
-        # is not enough and an inversion solve is needed. Cycle presence contributes to
-        # making the network "coupled" in the classification logic, which is where matrix-
-        # based solving becomes relevant.
-
-        # nodes not visited yet.
-        unvisited = set(subnetwork)
-        # nodes currently on the active recursion stack
-        active_stack = set()
-
-        def visit(component):
-            unvisited.discard(component)
-            active_stack.add(component)
-
-            for neighbor in adjacency[component]:
-                if neighbor not in subnetwork:
-                    continue
-                if neighbor in active_stack:
-                    return True
-                if neighbor in unvisited and visit(neighbor):
-                    return True
-
-            active_stack.discard(component)
-            return False
-
-        has_cycle = False
-        while unvisited:
-            component = next(iter(unvisited))
-            if visit(component):
-                has_cycle = True
-                break
+        # Build or consume cached cycle information from DFS back-edge detection.
+        if subnetwork_back_edges is None:
+            ordered_nodes = tuple(component for component in self._components if component in subnetwork)
+            subnetwork_back_edges = self._find_back_edges(ordered_nodes, adjacency)
+        has_cycle = len(subnetwork_back_edges) > 0
 
         if has_cycle or has_branching or has_merging:
             mode = "coupled"
@@ -947,6 +959,7 @@ class Model:
             "has_cycle": has_cycle,
             "has_branching": has_branching,
             "has_merging": has_merging,
+            "back_edges": tuple(subnetwork_back_edges),
         }
 
     def _build_network_analysis(self):
@@ -1007,9 +1020,19 @@ class Model:
 
         # Classify each subnetwork as sequential or coupled, and build a plan for solving it.
         plans = []
+        back_edges = set()
+        component_index = {component: idx for idx, component in enumerate(self._components)}
 
         for subnetwork in subnetworks:
-            plans.append(self._classify_subnetwork(subnetwork, adjacency, reverse_adjacency))
+            ordered_subnetwork = tuple(sorted(subnetwork, key=component_index.get))
+            subnetwork_back_edges = self._find_back_edges(ordered_subnetwork, adjacency)
+            back_edges.update(subnetwork_back_edges)
+            plans.append(self._classify_subnetwork(
+                subnetwork,
+                adjacency,
+                reverse_adjacency,
+                subnetwork_back_edges=subnetwork_back_edges,
+            ))
 
         self._network_analysis = {
             "adjacency": adjacency,
@@ -1017,6 +1040,7 @@ class Model:
             "edges": edges,
             "subnetworks": subnetworks,
             "plans": plans,
+            "back_edges": back_edges,
         }
 
         return plans
@@ -1039,32 +1063,10 @@ class Model:
 
         adjacency = self._network_analysis["adjacency"]
 
-        # Identify back-edges with an iterative depth-first search
-        back_edges = set()
-        unvisited = set(self._components)   # nodes that haven't yet been visited
-        active_stack = set()                # nodes currently on the active recursion stack
-
-        # Construct the set of back edges that will be removed for later DAG topological sorting
-        for start in list(self._components):
-            if start not in unvisited:
-                continue
-            unvisited.discard(start)
-            active_stack.add(start)
-            stack = [(start, iter(adjacency[start]))]
-            # keep looping until the stack is empty, which means all reachable nodes have been visited
-            while stack:
-                node, children = stack[-1]
-                try:
-                    child = next(children)
-                    if child in active_stack:
-                        back_edges.add((node, child))
-                    elif child in unvisited:
-                        unvisited.discard(child)
-                        active_stack.add(child)
-                        stack.append((child, iter(adjacency[child])))
-                except StopIteration:    # StopIteration is thrown when the iterator is exhausted
-                    active_stack.discard(node)
-                    stack.pop()
+        # Reuse back-edges from network analysis when available; this avoids
+        # running a second DFS traversal over the same graph.
+        cached_back_edges = self._network_analysis.get("back_edges", None)
+        back_edges = set(cached_back_edges) if cached_back_edges is not None else self._find_back_edges(self._components, adjacency)
 
         # Build reduced adjacency and in-degree map, omitting back-edges.
         reduced_in_degree = {c: 0 for c in self._components}
