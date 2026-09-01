@@ -100,6 +100,11 @@ class OnlinePlotter:
         tooltip_button.setFixedSize(70, 30)
         tooltip_button.setToolTip("Show tooltip with values at the cursor position (data plotter only)")
         controls_layout.addWidget(tooltip_button)
+
+        fit_all_button = QtWidgets.QPushButton("Fit All")
+        fit_all_button.setFixedSize(70, 30)
+        fit_all_button.setToolTip("Zoom to fit the entire data history (data plotter only)")
+        controls_layout.addWidget(fit_all_button)
         
         save_png_button = QtWidgets.QPushButton("Save Image")
         save_png_button.setFixedSize(80, 30)
@@ -120,6 +125,7 @@ class OnlinePlotter:
         font_up_button.clicked.connect(lambda: cls.adjust_font_size(1))
         follow_button.clicked.connect(lambda checked: cls.set_auto_follow(checked))
         tooltip_button.clicked.connect(lambda checked: cls.set_plot_tooltip(checked))
+        fit_all_button.clicked.connect(lambda: cls.fit_current_tab_to_data())
         save_png_button.clicked.connect(lambda: cls.save_current_tab_png())
         next_tab_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Tab"), main_window)
         prev_tab_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Shift+Tab"), main_window)
@@ -291,6 +297,16 @@ class OnlinePlotter:
         return None
 
     @classmethod
+    def fit_current_tab_to_data(cls):
+        widget = cls._current_tab_widget()
+        if widget is None:
+            return
+        for plotter in cls.instances:
+            if plotter.win is widget:
+                plotter._fit_to_full_data()
+                break
+
+    @classmethod
     def zoom_current_network_tab(cls, zoom_in=True):
         view = cls._current_network_view()
         if view is None:
@@ -351,16 +367,15 @@ class OnlinePlotter:
         self.update_every = update_every
         self.y1_items = [self._normalize_item(item, self.y1label, idx) for idx, item in enumerate(y1)]
         self.y2_items = None if y2 is None else [self._normalize_item(item, self.y2label, idx) for idx, item in enumerate(y2)]
-        self.x_data = []
-        self.y1_data = [[] for _ in self.y1_items]
-        self.y2_data = [[] for _ in self.y2_items] if self.y2_items is not None else []
-        self.conv_data = []
-        self.iter_data = []
-        self._step_timesteps = []
         self._y1lim = y1lim
         self._y2lim = y2lim
         self._plotter_size = plotter_size
         self._tab_title = tab_title
+        self._timestep = 1.0
+
+        # Pre-allocated numpy buffers, doubled on overflow; the initial size is
+        # only a hint since timesteps (and so step count) can vary.
+        self.preallocate(n_steps=1024, timestep=self._timestep)
 
         if show_live:
             self._build_widgets()
@@ -417,6 +432,9 @@ class OnlinePlotter:
         self.legend_y1.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
         self.legend_y2 = None
         self.ax1.showGrid(x=True, y=True, alpha=0.3)
+        # pyqtgraph's built-in autoscale button only fits the currently-loaded
+        # window of data, not the full history; use the "Fit All" button instead.
+        self.ax1.hideButtons()
         self._tooltip_vline = qtg.InfiniteLine(
             angle=90,
             movable=False,
@@ -572,22 +590,57 @@ class OnlinePlotter:
         b = 220
         return QtGui.QBrush(QtGui.QColor(r, g, b, alpha))
 
+    def preallocate(self, n_steps=None, timestep=1.0):
+        self._fill_idx = 0
+        self._timestep = timestep
+        cap = max(1, int(n_steps) if n_steps is not None else 1024)
+        self._capacity = cap
+        self.x_data = np.empty(cap, dtype=float)
+        self.y1_data = [np.empty(cap, dtype=float) for _ in self.y1_items]
+        self.y2_data = [np.empty(cap, dtype=float) for _ in self.y2_items] if self.y2_items is not None else []
+        self.conv_data = np.empty(cap, dtype=float)
+        self.iter_data = np.empty(cap, dtype=float)
+        self._step_timesteps = np.empty(cap, dtype=float)
+
+    def _grow_if_needed(self):
+        """Double buffer capacity on overflow; correct regardless of timestep variability."""
+        if self._fill_idx < self._capacity:
+            return
+        new_cap = self._capacity * 2
+
+        def _grow(arr):
+            new_arr = np.empty(new_cap, dtype=arr.dtype)
+            new_arr[: arr.shape[0]] = arr
+            return new_arr
+
+        self.x_data = _grow(self.x_data)
+        self.y1_data = [_grow(a) for a in self.y1_data]
+        if self.y2_items is not None:
+            self.y2_data = [_grow(a) for a in self.y2_data]
+        self.conv_data = _grow(self.conv_data)
+        self.iter_data = _grow(self.iter_data)
+        self._step_timesteps = _grow(self._step_timesteps)
+        self._capacity = new_cap
+
     def log_step(self, time, conv_fraction=0.0, iter_fraction=0.0, timestep=None):
         self.current_step += 1
         if timestep is None:
             timestep = self._timestep
 
-        self.x_data.append(time)
-        self.conv_data.append(conv_fraction)
-        self.iter_data.append(iter_fraction)
-        self._step_timesteps.append(timestep)
+        self._grow_if_needed()
+        idx = self._fill_idx
+
+        self.x_data[idx] = time
+        self.conv_data[idx] = conv_fraction
+        self.iter_data[idx] = iter_fraction
+        self._step_timesteps[idx] = timestep
 
         for j, yval in enumerate(self.y1_items):
-            self.y1_data[j].append(yval.v)
+            self.y1_data[j][idx] = yval.v
 
         if self.y2_items is not None:
             for j, yval in enumerate(self.y2_items):
-                self.y2_data[j].append(yval.v)
+                self.y2_data[j][idx] = yval.v
 
         self._fill_idx += 1
 
@@ -598,27 +651,48 @@ class OnlinePlotter:
         n = self._fill_idx
         if n == 0:
             return
-        x_view = np.asarray(self.x_data[:n], dtype=float)
-
-        for i in range(len(self.y1_lines)):
-            self.y1_lines[i].setData(x_view, np.asarray(self.y1_data[i][:n], dtype=float))
-
-        for i in range(len(self.y2_lines)):
-            self.y2_lines[i].setData(x_view, np.asarray(self.y2_data[i][:n], dtype=float))
 
         if self._auto_follow:
+            x_view = self.x_data[:n]
             x_start = x_view[max(0, n - self.nmax_points)]
             x_end = x_view[n - 1]
             self.ax1.setXRange(x_start, x_end, padding=0.02)
 
+        self._render_visible_window()
+
+    def _render_visible_window(self):
+        """Re-slice buffered data to whatever the current view range covers and push it to the plot items.
+
+        Needed both after new steps are logged and after a manual pan/zoom, since the
+        latter doesn't add new data but does change which slice of the buffers is visible.
+        """
+        n = self._fill_idx
+        if n == 0:
+            return
+        x_view = self.x_data[:n]
+
+        # Only render points that fall in (or near) the current view: rendering
+        # cost must depend on what's on screen, not on total steps taken so far.
+        view_x_start, view_x_end = self.ax1.viewRange()[0]
+        start_idx = max(0, int(np.searchsorted(x_view, view_x_start, side="left")) - 1)
+        end_idx = min(n, int(np.searchsorted(x_view, view_x_end, side="right")) + 1)
+
+        x_render = x_view[start_idx:end_idx]
+
+        for i in range(len(self.y1_lines)):
+            self.y1_lines[i].setData(x_render, self.y1_data[i][start_idx:end_idx])
+
+        for i in range(len(self.y2_lines)):
+            self.y2_lines[i].setData(x_render, self.y2_data[i][start_idx:end_idx])
+
         if self._conv_bar_item is not None:
             self.ax_conv.removeItem(self._conv_bar_item)
             self._conv_bar_item = None
-        conv_data = np.asarray(self.conv_data[:n], dtype=float)
+        conv_data = self.conv_data[start_idx:end_idx]
         nc_mask = conv_data > 0
         if np.any(nc_mask):
-            nc_x = x_view[nc_mask]
-            nc_widths = np.asarray(self._step_timesteps[:n], dtype=float)[nc_mask]
+            nc_x = x_render[nc_mask]
+            nc_widths = self._step_timesteps[start_idx:end_idx][nc_mask]
             brushes = [self._fraction_to_brush(f) for f in conv_data[nc_mask]]
             self._conv_bar_item = qtg.BarGraphItem(
                 x0=nc_x - (nc_widths * 0.5),
@@ -632,27 +706,44 @@ class OnlinePlotter:
         if self._iter_bar_item is not None:
             self.ax_iter.removeItem(self._iter_bar_item)
             self._iter_bar_item = None
-        iter_data = np.asarray(self.iter_data[:n], dtype=float)
-        iter_widths = np.asarray(self._step_timesteps[:n], dtype=float)
+        iter_data = self.iter_data[start_idx:end_idx]
+        iter_widths = self._step_timesteps[start_idx:end_idx]
         iter_brushes = [self._iter_fraction_to_brush(f) for f in iter_data]
         self._iter_bar_item = qtg.BarGraphItem(
-            x0=x_view - (iter_widths * 0.5),
-            x1=x_view + (iter_widths * 0.5),
+            x0=x_render - (iter_widths * 0.5),
+            x1=x_render + (iter_widths * 0.5),
             height=1,
             brushes=iter_brushes,
             pen=qtg.mkPen(None),
         )
         self.ax_iter.addItem(self._iter_bar_item)
 
-    def preallocate(self, n_steps=None, timestep=1.0):
-        self._fill_idx = 0
-        self._timestep = timestep
-        self.x_data = []
-        self.y1_data = [[] for _ in self.y1_items]
-        self.y2_data = [[] for _ in self.y2_items] if self.y2_items is not None else []
-        self.conv_data = []
-        self.iter_data = []
-        self._step_timesteps = []
+    def _fit_to_full_data(self):
+        """Zoom out to the entire logged history, bypassing pyqtgraph's own autoscale
+        button which only fits to whatever slice is currently set on the plot items."""
+        n = self._fill_idx
+        if n == 0:
+            return
+
+        self._auto_follow = False
+        if OnlinePlotter.follow_button is not None:
+            OnlinePlotter.follow_button.setChecked(False)
+
+        x_view = self.x_data[:n]
+        self.ax1.setXRange(x_view[0], x_view[n - 1], padding=0.02)
+
+        y1_min = min(np.nanmin(a[:n]) for a in self.y1_data)
+        y1_max = max(np.nanmax(a[:n]) for a in self.y1_data)
+        if self._y1lim is None and y1_min <= y1_max:
+            self.ax1.setYRange(y1_min, y1_max, padding=0.05)
+
+        if self.y2_items is not None and self._y2lim is None:
+            y2_min = min(np.nanmin(a[:n]) for a in self.y2_data)
+            y2_max = max(np.nanmax(a[:n]) for a in self.y2_data)
+            if y2_min <= y2_max:
+                self.ax2.setYRange(y2_min, y2_max, padding=0.05)
+
+        self._render_visible_window()
 
     def _setup_strip_tooltip(self):
         self._strip_proxy = qtg.SignalProxy(self.ax1.scene().sigMouseMoved, rateLimit=20, slot=self._on_strip_mouse_move)
@@ -698,6 +789,7 @@ class OnlinePlotter:
         n = self._fill_idx
         x_slice = self.x_data[:n]
         idx = int(np.searchsorted(x_slice, x_val, side="left"))
+
         idx = max(0, min(idx, n - 1))
         if idx > 0 and abs(x_slice[idx - 1] - x_val) < abs(x_slice[idx] - x_val):
             idx -= 1
@@ -742,11 +834,23 @@ class OnlinePlotter:
         self._auto_follow = False
         if OnlinePlotter.follow_button is not None:
             OnlinePlotter.follow_button.setChecked(False)
+        self._render_visible_window()
+
+    def _enable_y_autorange(self):
+        """Manual pan/zoom disables autorange per-axis; re-enable Y so Follow tracks
+        both axes again, not just X (which __refresh_plot re-enables explicitly)."""
+        if self._y1lim is None:
+            self.ax1.vb.enableAutoRange(y=True)
+        if self.y2_items is not None and self._y2lim is None:
+            self.ax2.enableAutoRange(y=True)
 
     @classmethod
     def set_auto_follow(cls, value):
         for plotter in cls.instances:
             plotter._auto_follow = value
+            if value:
+                plotter._enable_y_autorange()
+                plotter.__refresh_plot()
         if cls.follow_button is not None:
             cls.follow_button.setChecked(value)
 
