@@ -126,10 +126,24 @@ The most relevant steps are as follows:
     ```bash
     twine upload dist/*
     ```
+    If you receive the warning `WARNING  This environment is not supported for trusted publishing`, you can ignore it. 
 
     If using the test server, use the command:
     ```bash
     python -m twine upload --repository testpypi dist/*
+    ```
+
+    To test installation from the test server in a new, temporary environment:
+    ```bash
+    conda create -n test_esclab python=3.13
+    conda activate test_esclab
+    pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ esclab==0.0.1
+
+    python -c "import esclab; print(esclab.__file__);"
+    >> C:\Users\username\AppData\Local\miniconda3\envs\test_esclab\Lib\site-packages\esclab\__init__.py
+
+    conda activate base
+    conda env remove -n test_esclab
     ```
 
 5. To install the package, activate the Conda environment (e.g., `conda activate esclab_dev`), and install. 
