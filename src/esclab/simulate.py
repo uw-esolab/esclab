@@ -215,30 +215,44 @@ class Component:
         self.trnsys_type = ''     # TRNSYS type number, if applicable <string>
         self.name = ''
         self.coupled_eqs = None  # Set by Model during the matrix-build phase; None otherwise.
+        # Caches for get_inputs()/get_outputs(), avoiding repeated dir() reflection scans.
+        self._io_all_inputs = None
+        self._io_all_outputs = None
+        self._io_locked = False
+        self._io_locked_connected_inputs = None
+        self._io_locked_connected_outputs = None
         return 
     
-    def __get_io_items(self, item_type, connected_only=False):
+    def __scan_io_items(self, item_type):
         """
-        Collect all inputs or outputs from this component, depending on the item_type argument.
+        Scan dir(self) once for all inputs or outputs of this component, depending on the
+        item_type argument. Only called the first time each item_type is requested; results
+        are memoized by get_inputs()/get_outputs().
 
         Parameters
         ----------
         item_type : type
             Component.Input or Component.Output
-        connected_only : bool
-            If True, only return inputs/outputs that are connected to another component. 
-            If False, return all inputs/outputs regardless of connection status.
         """
         io_list = []
         for item_name in dir(self):
-            item = getattr(self,item_name)
+            item = getattr(self, item_name)
             if isinstance(item, item_type):
-                if connected_only:
-                    if item.is_connected:
-                        io_list.append(item)
-                else:
-                    io_list.append(item)
-        return io_list
+                io_list.append(item)
+        return tuple(io_list)
+
+    def _lock_io_cache(self):
+        """
+        Called by Model once stepping begins, after which connect() disallows new connections.
+        Precomputes the connected-only tuples so the per-iteration hot path avoids any filtering.
+        """
+        if self._io_all_inputs is None:
+            self._io_all_inputs = self.__scan_io_items(Component.Input)
+        if self._io_all_outputs is None:
+            self._io_all_outputs = self.__scan_io_items(Component.Output)
+        self._io_locked_connected_inputs = tuple(i for i in self._io_all_inputs if i.is_connected)
+        self._io_locked_connected_outputs = tuple(o for o in self._io_all_outputs if o.is_connected)
+        self._io_locked = True
 
     def get_inputs(self, connected_only=False):
         """
@@ -250,7 +264,13 @@ class Component:
             If True, only return inputs that are connected to another component. 
             If False, return all inputs regardless of connection status.
         """
-        return self.__get_io_items(Component.Input, connected_only)
+        if self._io_all_inputs is None:
+            self._io_all_inputs = self.__scan_io_items(Component.Input)
+        if not connected_only:
+            return self._io_all_inputs
+        if self._io_locked:
+            return self._io_locked_connected_inputs
+        return tuple(i for i in self._io_all_inputs if i.is_connected)
 
     def get_outputs(self, connected_only=False):
         """
@@ -262,7 +282,13 @@ class Component:
             If True, only return outputs that are connected to another component. 
             If False, return all outputs regardless of connection status.
         """
-        return self.__get_io_items(Component.Output, connected_only)
+        if self._io_all_outputs is None:
+            self._io_all_outputs = self.__scan_io_items(Component.Output)
+        if not connected_only:
+            return self._io_all_outputs
+        if self._io_locked:
+            return self._io_locked_connected_outputs
+        return tuple(o for o in self._io_all_outputs if o.is_connected)
     
     def set_values_from_dict(self, values_dict):
         """
@@ -1174,6 +1200,9 @@ class Model:
 
             self._build_network_analysis()
             self._compute_execution_order()
+            # connect() forbids new connections from this point on, so freeze I/O caches for the hot loop.
+            for component in self._components:
+                component._lock_io_cache()
             self._has_started_stepping = True
 
         # Pre-allocate plotter arrays on the first step, after all plotters have been added
