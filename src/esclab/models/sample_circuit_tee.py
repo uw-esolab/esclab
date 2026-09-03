@@ -34,11 +34,9 @@ model = Model()
 # Create components
 model.vs = VoltageSource()
 model.r1 = Resistor()
-model.r1.name = "Resistor_1"
 model.c = Capacitor()
 model.l = Inductor()
 model.r2 = Resistor()
-model.r2.name = "Resistor_2"
 model.tee_out = TeeOut()
 model.tee_return = TeeReturn()
 
