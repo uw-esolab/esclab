@@ -318,6 +318,8 @@ class Component:
         component's name and the attribute name of the input/output.
         Make sure all inputs/outputs have a name assigned
         """
+        # make sure the current component has a name assigned
+
         allnames = []
         for member in dir(self):
             try:
@@ -326,10 +328,8 @@ class Component:
                 continue
             if isinstance(mo, Component.Input) or isinstance(mo, Component.Output):
                 if self.name == '':
-                    cname = type(self).__name__ 
-                else: 
-                    cname = self.name
-                mo.name = cname + '.' + member
+                    raise RuntimeError(f"Internal error: component {type(self).__name__} has no name assigned. Please assign a name to the component before calling auto_assign_names().")
+                mo.name = self.name + '.' + member
                 if isinstance(mo, Component.Output):
                     allnames.append(mo.name)
         return allnames
@@ -408,7 +408,9 @@ class NetworkEquationContext:
         if owner is not None:
             instance_name = str(getattr(owner, "name", "") or "").strip()
             if not instance_name:
-                instance_name = type(owner).__name__
+                raise RuntimeError(
+                    f"Internal error: component {type(owner).__name__} has no name assigned. Please assign a name to the component before calling auto_assign_names()."
+                )
 
         if not input_name and owner is not None:
             for attr_name in dir(owner):
@@ -1121,7 +1123,7 @@ class Model:
         # store the order
         self._components = ordered  
         # Print out the execution order
-        compstr = " → ".join([type(component).__name__ for component in self._components])
+        compstr = " → ".join([component.name for component in self._components])
         print("⏣ Component call order | " + compstr)
             
     def initialize(self):
@@ -1145,6 +1147,21 @@ class Model:
         # Initialize the list of outputs. This is extended based on the component settings
         output_names = ['time','timestep','iterations']
 
+        # Do an initial pass to assign names to all unnamed components based on class name
+        current_component_names = []
+        for item in dir(self):
+            itemobj = getattr(self, item)
+            if isinstance(itemobj, Component):
+                if itemobj.name == "":
+                    cname = type(itemobj).__name__
+                    itemobj.name = cname
+                else:
+                    cname = itemobj.name
+                current_component_names.append(cname)
+
+        # Check for duplicate component names and create a list of names that need to be modified
+        duplicate_names = set([name for name in current_component_names if current_component_names.count(name) > 1])
+
         # ------------------------------------------------------------
         # Loop through all attributes of the model to find components, assign names, and call presim_setup
         for item in dir(self):
@@ -1155,6 +1172,18 @@ class Model:
             if isinstance(itemobj, Component):
                 # Give all of the component instances access to the model
                 itemobj.model = self
+
+                # Ensure name uniqueness for the component instance. If a name is already taken, append a number to make it unique.
+                instance_name = itemobj.name
+                if instance_name in duplicate_names:
+                    # auto assign name
+                    i = 1
+                    while instance_name in current_component_names:
+                        instance_name = f"{itemobj.name}_{i}"
+                        i += 1
+                    setattr(itemobj, "name", instance_name)
+                    current_component_names.append(instance_name)
+
 
                 # Handle component presim_setup here
                 itemobj.presim_setup()
