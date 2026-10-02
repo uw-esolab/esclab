@@ -496,6 +496,8 @@ class Model:
         # each iteration, for values updated from connections. Lower learn rates can help with convergence of 
         # difficult problems, at the cost of more iterations.
         progress_update = 200  # [msec] Minimum clock time between terminal progress updates, in milliseconds
+        network_solver_debug = False  # Print every coupled solve, including labeled A, b, and x.
+        network_solver_condition_warning = 1.e12  # Warning threshold when diagnostics are computed.
         def __init__(self):
             pass
     # End class Settings -----------------------------------------------------
@@ -522,6 +524,8 @@ class Model:
         self._input_owner_by_id = {}
         self._network_analysis = None
         self._network_solver_warned = False
+        self._network_solver_reported_issues = set()
+        self.last_network_solver_diagnostics = None  # Latest debug/failure snapshot; arrays are copies.
         self._network_views = []
         self._last_progress_line_len = 0
         self._last_progress_step = -1
@@ -799,6 +803,70 @@ class Model:
         source.is_connected = True
         return
 
+    def _report_network_solver(self, A, b, unknown_outputs, row_labels, status, x=None, rank=None):
+        """Print and retain diagnostics without letting an SVD failure hide the original issue.
+
+        Enable settings.network_solver_debug for every solve. Otherwise reports are
+        emitted once per subnetwork/status for skipped, failed, or rank-deficient solves.
+        The snapshot's residual is A @ x - b before learning-rate relaxation.
+        """
+        columns = tuple(output.name or f"output[{i}]" for i, output in enumerate(unknown_outputs))
+        key = (columns, status)
+        if not self.settings.network_solver_debug and key in self._network_solver_reported_issues:
+            return
+        singular_values = None
+        condition = None
+        diagnostic_error = None
+        if np.all(np.isfinite(A)):
+            try:
+                singular_values = np.linalg.svd(A, compute_uv=False)
+                if rank is None:
+                    tolerance = singular_values[0] * max(A.shape) * np.finfo(A.dtype).eps
+                    rank = int(np.count_nonzero(singular_values > tolerance))
+                condition = (float(singular_values[0] / singular_values[-1])
+                             if singular_values[-1] > 0 else float('inf'))
+            except np.linalg.LinAlgError as exc:
+                diagnostic_error = str(exc)
+        residual = None if x is None else A @ x - b
+        report = {
+            "time": self.time, "iteration": getattr(self, "iteration", -1),
+            "status": status, "A": A.copy(), "b": b.copy(),
+            "row_labels": tuple(row_labels), "column_labels": columns,
+            "rank": rank, "condition_number": condition,
+            "singular_values": singular_values,
+            "x": None if x is None else x.copy(), "residual": residual,
+            "diagnostic_error": diagnostic_error,
+        }
+        self.last_network_solver_diagnostics = report
+        self._network_solver_reported_issues.add(key)
+        print(f"\nNetwork solver | time={self.time:g}, iteration={report['iteration']} | {status}")
+        if np.any(np.isnan(A)) or np.any(np.isnan(b)) or (x is not None and np.any(np.isnan(x))):
+            print("  ERROR: 'nan' values detected in the matrix solve. "
+                  "Make sure output and input values used in the matrix coefficients "
+                  "are given finite initial guess values before solving.")
+        print(f"  A: {A.shape[0]} rows x {A.shape[1]} columns; rank={rank}; condition number (2-norm)={condition}")
+        if condition is not None and condition >= self.settings.network_solver_condition_warning:
+            print("  WARNING: ill-conditioned matrix; small coefficient changes may strongly affect the solution.")
+        if rank is not None and rank < A.shape[1]:
+            print("  WARNING: equations do not uniquely determine all output columns.")
+        if diagnostic_error:
+            print(f"  SVD diagnostics failed: {diagnostic_error}")
+        for j, name in enumerate(columns):
+            print(f"  column {j}: {name}")
+        with np.printoptions(precision=6, threshold=np.inf, linewidth=160):
+            for i, label in enumerate(row_labels):
+                print(f"  row {i} ({label}): {A[i]} | b={b[i]:.6g}")
+            print(f"  zero rows: {np.flatnonzero(np.all(A == 0, axis=1))}")
+            print(f"  zero columns: {np.flatnonzero(np.all(A == 0, axis=0))}")
+            if singular_values is not None:
+                print(f"  singular values: {singular_values}")
+            if x is not None:
+                print(f"  x (before relaxation): {x}")
+                print(f"  residual A @ x - b: {residual}; norm={np.linalg.norm(residual):.6g}")
+        for label, values in (("A", A), ("b", b)):
+            if not np.all(np.isfinite(values)):
+                print(f"  non-finite {label} entries: {np.argwhere(~np.isfinite(values)).tolist()}")
+
     def _solve_coupled_subnetwork(self, plan):
         """Solve one coupled subnetwork if equation builders and semantic roles provide enough equations."""
         
@@ -824,10 +892,12 @@ class Model:
         unknown_index = {output: idx for idx, output in enumerate(unknown_outputs)}
         A_rows = []
         b_rows = []
+        row_labels = []
 
         def _add_row(row, rhs):
             A_rows.append(row)
             b_rows.append(float(rhs))
+            row_labels.append(component.name or type(component).__name__)
 
         eq_context = NetworkEquationContext(
             unknown_index,
@@ -837,24 +907,42 @@ class Model:
         )
         for component in plan["components"]:
             component.coupled_eqs = eq_context
-            component.calculate()
-            component.coupled_eqs = None
+            try:
+                component.calculate()
+            finally:
+                component.coupled_eqs = None
 
         if not A_rows:
             return False, False
 
         A = np.vstack(A_rows)
         b = np.asarray(b_rows)
+        if not np.all(np.isfinite(A)) or not np.all(np.isfinite(b)):
+            self._report_network_solver(A, b, unknown_outputs, row_labels, "skipped: non-finite coefficients or RHS")
+            return False, True
         if A.shape[0] < n_unknown:
+            self._report_network_solver(A, b, unknown_outputs, row_labels, "skipped: fewer equations than unknowns")
             return False, True
 
+        rank = None
         try:
-            if A.shape[0] == n_unknown and np.linalg.matrix_rank(A) == n_unknown:
+            if A.shape[0] == n_unknown:
+                rank = int(np.linalg.matrix_rank(A))
+            if A.shape[0] == n_unknown and rank == n_unknown:
                 x_new = np.linalg.solve(A, b)
+                method = "solve"
             else:
-                x_new = np.linalg.lstsq(A, b, rcond=None)[0]
-        except np.linalg.LinAlgError:
+                x_new, _, rank, _ = np.linalg.lstsq(A, b, rcond=None)
+                method = "least squares"
+        except np.linalg.LinAlgError as exc:
+            self._report_network_solver(A, b, unknown_outputs, row_labels, f"failed: {exc}", rank=rank)
             return False, True
+        if not np.all(np.isfinite(x_new)):
+            self._report_network_solver(A, b, unknown_outputs, row_labels, "failed: non-finite solution", x=x_new, rank=rank)
+            return False, True
+        if self.settings.network_solver_debug or rank < n_unknown:
+            status = method if rank == n_unknown else f"{method}: rank deficient"
+            self._report_network_solver(A, b, unknown_outputs, row_labels, status, x=x_new, rank=rank)
 
         updated_any = False
         # For the matrix solve, we need to use the global learning rate since individual connection
