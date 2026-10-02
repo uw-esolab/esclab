@@ -215,30 +215,44 @@ class Component:
         self.trnsys_type = ''     # TRNSYS type number, if applicable <string>
         self.name = ''
         self.coupled_eqs = None  # Set by Model during the matrix-build phase; None otherwise.
+        # Caches for get_inputs()/get_outputs(), avoiding repeated dir() reflection scans.
+        self._io_all_inputs = None
+        self._io_all_outputs = None
+        self._io_locked = False
+        self._io_locked_connected_inputs = None
+        self._io_locked_connected_outputs = None
         return 
     
-    def __get_io_items(self, item_type, connected_only=False):
+    def __scan_io_items(self, item_type):
         """
-        Collect all inputs or outputs from this component, depending on the item_type argument.
+        Scan dir(self) once for all inputs or outputs of this component, depending on the
+        item_type argument. Only called the first time each item_type is requested; results
+        are memoized by get_inputs()/get_outputs().
 
         Parameters
         ----------
         item_type : type
             Component.Input or Component.Output
-        connected_only : bool
-            If True, only return inputs/outputs that are connected to another component. 
-            If False, return all inputs/outputs regardless of connection status.
         """
         io_list = []
         for item_name in dir(self):
-            item = getattr(self,item_name)
+            item = getattr(self, item_name)
             if isinstance(item, item_type):
-                if connected_only:
-                    if item.is_connected:
-                        io_list.append(item)
-                else:
-                    io_list.append(item)
-        return io_list
+                io_list.append(item)
+        return tuple(io_list)
+
+    def _lock_io_cache(self):
+        """
+        Called by Model once stepping begins, after which connect() disallows new connections.
+        Precomputes the connected-only tuples so the per-iteration hot path avoids any filtering.
+        """
+        if self._io_all_inputs is None:
+            self._io_all_inputs = self.__scan_io_items(Component.Input)
+        if self._io_all_outputs is None:
+            self._io_all_outputs = self.__scan_io_items(Component.Output)
+        self._io_locked_connected_inputs = tuple(i for i in self._io_all_inputs if i.is_connected)
+        self._io_locked_connected_outputs = tuple(o for o in self._io_all_outputs if o.is_connected)
+        self._io_locked = True
 
     def get_inputs(self, connected_only=False):
         """
@@ -250,7 +264,13 @@ class Component:
             If True, only return inputs that are connected to another component. 
             If False, return all inputs regardless of connection status.
         """
-        return self.__get_io_items(Component.Input, connected_only)
+        if self._io_all_inputs is None:
+            self._io_all_inputs = self.__scan_io_items(Component.Input)
+        if not connected_only:
+            return self._io_all_inputs
+        if self._io_locked:
+            return self._io_locked_connected_inputs
+        return tuple(i for i in self._io_all_inputs if i.is_connected)
 
     def get_outputs(self, connected_only=False):
         """
@@ -262,7 +282,13 @@ class Component:
             If True, only return outputs that are connected to another component. 
             If False, return all outputs regardless of connection status.
         """
-        return self.__get_io_items(Component.Output, connected_only)
+        if self._io_all_outputs is None:
+            self._io_all_outputs = self.__scan_io_items(Component.Output)
+        if not connected_only:
+            return self._io_all_outputs
+        if self._io_locked:
+            return self._io_locked_connected_outputs
+        return tuple(o for o in self._io_all_outputs if o.is_connected)
     
     def set_values_from_dict(self, values_dict):
         """
@@ -292,6 +318,8 @@ class Component:
         component's name and the attribute name of the input/output.
         Make sure all inputs/outputs have a name assigned
         """
+        # make sure the current component has a name assigned
+
         allnames = []
         for member in dir(self):
             try:
@@ -300,10 +328,8 @@ class Component:
                 continue
             if isinstance(mo, Component.Input) or isinstance(mo, Component.Output):
                 if self.name == '':
-                    cname = type(self).__name__ 
-                else: 
-                    cname = self.name
-                mo.name = cname + '.' + member
+                    raise RuntimeError(f"Internal error: component {type(self).__name__} has no name assigned. Please assign a name to the component before calling auto_assign_names().")
+                mo.name = self.name + '.' + member
                 if isinstance(mo, Component.Output):
                     allnames.append(mo.name)
         return allnames
@@ -382,7 +408,9 @@ class NetworkEquationContext:
         if owner is not None:
             instance_name = str(getattr(owner, "name", "") or "").strip()
             if not instance_name:
-                instance_name = type(owner).__name__
+                raise RuntimeError(
+                    f"Internal error: component {type(owner).__name__} has no name assigned. Please assign a name to the component before calling auto_assign_names()."
+                )
 
         if not input_name and owner is not None:
             for attr_name in dir(owner):
@@ -1183,7 +1211,7 @@ class Model:
         # store the order
         self._components = ordered  
         # Print out the execution order
-        compstr = " → ".join([type(component).__name__ for component in self._components])
+        compstr = " → ".join([component.name for component in self._components])
         print("⏣ Component call order | " + compstr)
             
     def initialize(self):
@@ -1207,6 +1235,21 @@ class Model:
         # Initialize the list of outputs. This is extended based on the component settings
         output_names = ['time','timestep','iterations']
 
+        # Do an initial pass to assign names to all unnamed components based on class name
+        current_component_names = []
+        for item in dir(self):
+            itemobj = getattr(self, item)
+            if isinstance(itemobj, Component):
+                if itemobj.name == "":
+                    cname = type(itemobj).__name__
+                    itemobj.name = cname
+                else:
+                    cname = itemobj.name
+                current_component_names.append(cname)
+
+        # Check for duplicate component names and create a list of names that need to be modified
+        duplicate_names = set([name for name in current_component_names if current_component_names.count(name) > 1])
+
         # ------------------------------------------------------------
         # Loop through all attributes of the model to find components, assign names, and call presim_setup
         for item in dir(self):
@@ -1217,6 +1260,18 @@ class Model:
             if isinstance(itemobj, Component):
                 # Give all of the component instances access to the model
                 itemobj.model = self
+
+                # Ensure name uniqueness for the component instance. If a name is already taken, append a number to make it unique.
+                instance_name = itemobj.name
+                if instance_name in duplicate_names:
+                    # auto assign name
+                    i = 1
+                    while instance_name in current_component_names:
+                        instance_name = f"{itemobj.name}_{i}"
+                        i += 1
+                    setattr(itemobj, "name", instance_name)
+                    current_component_names.append(instance_name)
+
 
                 # Handle component presim_setup here
                 itemobj.presim_setup()
@@ -1262,6 +1317,9 @@ class Model:
 
             self._build_network_analysis()
             self._compute_execution_order()
+            # connect() forbids new connections from this point on, so freeze I/O caches for the hot loop.
+            for component in self._components:
+                component._lock_io_cache()
             self._has_started_stepping = True
 
         # Pre-allocate plotter arrays on the first step, after all plotters have been added

@@ -676,8 +676,6 @@ class NetworkTopologyView:
         base_names = []
         for comp in components:
             base = str(getattr(comp, "name", "") or "").strip()
-            if not base:
-                base = type(comp).__name__
             base_names.append(base)
 
         counts = {}
@@ -703,8 +701,6 @@ class NetworkTopologyView:
         base_names = []
         for comp in components:
             base = str(getattr(comp, "name", "") or "").strip()
-            if not base:
-                base = type(comp).__name__
             base_names.append(base)
 
         counts = {}
@@ -725,9 +721,9 @@ class NetworkTopologyView:
         src_key = self._component_layout_keys.get(src)
         dst_key = self._component_layout_keys.get(dst)
         if src_key is None:
-            src_key = str(getattr(src, "name", "") or "").strip() or type(src).__name__
+            src_key = str(getattr(src, "name", "") or "").strip()
         if dst_key is None:
-            dst_key = str(getattr(dst, "name", "") or "").strip() or type(dst).__name__
+            dst_key = str(getattr(dst, "name", "") or "").strip()
         return f"{src_key}__TO__{dst_key}"
 
     @staticmethod
@@ -2374,7 +2370,7 @@ class NetworkTopologyView:
             new_center = self._snap_point_to_grid(new_center)
         layout_key = self._component_layout_keys.get(comp)
         if layout_key is None:
-            layout_key = str(getattr(comp, "name", "") or "").strip() or type(comp).__name__
+            layout_key = str(getattr(comp, "name", "") or "").strip() 
         self._override_positions[layout_key] = (new_center.x(), new_center.y())
         QtCore.QTimer.singleShot(0, self._draw_topology)
 
