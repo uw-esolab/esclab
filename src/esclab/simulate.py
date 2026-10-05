@@ -8,6 +8,8 @@ import os
                     
 from esclab.plotting import OnlinePlotter, NetworkTopologyView
 
+_NOT_SET = object()
+
 # ------------------------------------------------------------------------
 class Connection:
     """
@@ -526,8 +528,11 @@ class Model:
         progress_update = 200  # [msec] Minimum clock time between terminal progress updates, in milliseconds
         network_solver_debug = False  # Print every coupled solve, including labeled A, b, and x.
         network_solver_condition_warning = 1.e12  # Warning threshold when diagnostics are computed.
+        global_plotter_args = {}  # Defaults for new data plotters; excludes y1 and y2.
+
         def __init__(self):
-            pass
+            # Copy class defaults so models do not share mutable plotter settings.
+            self.global_plotter_args = copy.deepcopy(type(self).global_plotter_args)
     # End class Settings -----------------------------------------------------
     
     # ----------------------------------------------------------------------------
@@ -562,9 +567,53 @@ class Model:
         self._step_count = 0
         return
     
-    def add_plotter_simstats(self, tab_title="Simulation Stats", nmax_points = 1000, update_every=1, show_live=True, time_units="sec"):
+    _PLOTTER_DEFAULT_ARGS = {
+        'y1lim': None,
+        'y2lim': None,
+        'y1label': '',
+        'y2label': '',
+        'nmax_points': 1000,
+        'update_every': 1,
+        'tab_title': None,
+        'show_live': True,
+        'time_units': 'sec',
+        'plotter_size': (0.9, 0.9),
+    }
+
+    def _resolve_plotter_args(self, explicit_args, *, simstats=False):
+        """Resolve built-in defaults, model defaults, and explicit arguments."""
+        global_args = self.settings.global_plotter_args
+        if not isinstance(global_args, dict):
+            raise TypeError("settings.global_plotter_args must be a dict")
+        for source, args in (("settings.global_plotter_args", global_args),
+                             ("plotter arguments", explicit_args)):
+            for key in args:
+                if key in ('y1', 'y2'):
+                    raise ValueError(f"{source} cannot contain {key!r}; supply plot inputs separately")
+                if key not in self._PLOTTER_DEFAULT_ARGS:
+                    raise TypeError(f"Unsupported plotter argument {key!r} in {source}")
+
+        resolved = self._PLOTTER_DEFAULT_ARGS.copy()
+        if simstats:
+            resolved.update(tab_title="Simulation Stats", y1label="Timestep", y2label="Iterations")
+        resolved.update(global_args)
+        resolved.update({key: value for key, value in explicit_args.items()
+                         if value is not _NOT_SET})
+        return resolved
+
+    def add_plotter_simstats(self, tab_title=_NOT_SET,
+                            nmax_points=_NOT_SET,
+                            update_every=_NOT_SET,
+                            show_live=_NOT_SET,
+                            time_units=_NOT_SET, **kwargs):
         """
         Add a plotter to the model to visualize simulation statistics over time.
+
+        Omitted options use settings.global_plotter_args, then built-in
+        defaults. Explicit values, including None, override global settings.
+        Additional keyword options accepted by add_plotter (except y1 and
+        y2) can also be supplied here. Without overrides, the tab title is
+        "Simulation Stats" and the y-axis labels are "Timestep" and "Iterations".
         
         Parameters
         ----------
@@ -579,27 +628,27 @@ class Model:
             or year. Default is 'sec'; a year is 365 days. Simulation time
             and the timestep values on the y-axis remain in seconds.
         """
-        self.add_plotter(
-            y1=[self.historian['timestep']],
-            y2=[self.historian['iterations']],
-            y1label='Timestep',
-            y2label='Iterations',
-            nmax_points=nmax_points,
-            update_every=update_every,
-            tab_title=tab_title,
-            show_live=show_live,
-            time_units=time_units
+        options = self._resolve_plotter_args(
+            dict(kwargs, tab_title=tab_title, nmax_points=nmax_points,
+                 update_every=update_every, show_live=show_live, time_units=time_units),
+            simstats=True,
         )
+        self._add_plotter([self.historian['timestep']], [self.historian['iterations']], options)
 
     def add_plotter(self,
                     y1, y2=None,
-                    y1lim=None, y2lim=None,
-                    y1label='', y2label='',
-                    nmax_points = 1000, update_every=1,
-                    tab_title=None, show_live=True,
-                    time_units='sec'):
+                    y1lim=_NOT_SET, y2lim=_NOT_SET,
+                    y1label=_NOT_SET, y2label=_NOT_SET,
+                    nmax_points=_NOT_SET, update_every=_NOT_SET,
+                    tab_title=_NOT_SET, show_live=_NOT_SET,
+                    time_units=_NOT_SET, plotter_size=_NOT_SET):
         """
         Add a plotter to the model to visualize component inputs and outputs over time.
+
+        Omitted options use settings.global_plotter_args, then built-in
+        defaults. Explicit values, including None, override global settings.
+        Global settings apply only to newly created plotters and cannot
+        supply the y1 or y2 inputs.
         
         Parameters
         ----------
@@ -608,36 +657,49 @@ class Model:
         y2 : Component.Input, Component.Output, or list, optional
             Component input or output (or list of them) to plot on the secondary y-axis.
         y1lim : tuple, optional
-            Limits for the primary y-axis (min, max).
+            Limits for the primary y-axis (min, max). Default is None (automatic).
         y2lim : tuple, optional
-            Limits for the secondary y-axis (min, max).
+            Limits for the secondary y-axis (min, max). Default is None (automatic).
         y1label : str, optional
-            Label for the primary y-axis.
+            Label for the primary y-axis. Default is ''.
         y2label : str, optional
-            Label for the secondary y-axis.
+            Label for the secondary y-axis. Default is ''.
         nmax_points : int, optional
-            Maximum number of points to show in the scrolling plotter time horizon.
+            Maximum number of points to show in the scrolling plotter time horizon. Default is 1000.
         update_every : int, optional
-            Update the plot every N time steps.
+            Update the plot every N time steps. Default is 1.
         tab_title : str, optional
-            Title of the tab for the current plotter.
+            Title of the tab for the current plotter. Default is None (automatic).
         show_live : bool, optional
-            Flag indicating whether to show the plotter live during the simulation. If false, the plots will render after the simulation has completed.
+            Whether to show the plotter live (default True). If false, the plots render after the simulation has completed.
         time_units : str, optional
             Units for the time axis: nsec, msec, sec, min, hr, day, week,
             or year. Default is 'sec'; a year is 365 days. Simulation time
             remains in seconds. Units are independent for each plotter.
+        plotter_size : tuple, optional
+            Window size as fractions of the screen or pixel dimensions.
+            Default is (0.9, 0.9).
         """
+        options = self._resolve_plotter_args(dict(
+            y1lim=y1lim, y2lim=y2lim, y1label=y1label, y2label=y2label,
+            nmax_points=nmax_points, update_every=update_every,
+            tab_title=tab_title, show_live=show_live, time_units=time_units,
+            plotter_size=plotter_size,
+        ))
+        self._add_plotter(y1, y2, options)
+
+    def _add_plotter(self, y1, y2, options):
+        """Normalize inputs and construct a plotter with resolved options."""
         if not isinstance(y1, type([])):
             y1t = [y1]
         else:
             y1t = y1
         y2t = y2
-        if y2 != None:
+        if y2 is not None:
             if not isinstance(y2, type([])):
                 y2t = [y2]
 
-        self._plotters.append(OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title, show_live=show_live, time_units=time_units))
+        self._plotters.append(OnlinePlotter(y1=y1t, y2=y2t, **options))
 
     def add_network_graph(
         self,

@@ -95,6 +95,28 @@ model.add_plotter([model.storage.charge], time_units="hr")
 model.add_plotter_simstats(time_units="min", show_live=False)
 ```
 
+Set `model.settings.global_plotter_args` to supply defaults for all new data
+plotters, including simulation-statistics plotters. Any plotter keyword option
+except `y1` and `y2` is allowed. Explicit per-plotter values override these
+settings, including `None` to restore automatic axis limits or tab titles.
+Omitted options without a global setting retain their built-in defaults.
+
+```python
+model.settings.global_plotter_args = {
+    "show_live": False,
+    "time_units": "hr",
+    "nmax_points": 500,
+    "y1lim": (0, 100),
+}
+model.add_plotter([model.storage.charge])
+model.add_plotter([model.storage.flow_in], time_units="min", y1lim=None)
+model.add_plotter_simstats(y1lim=None)
+```
+
+You can also assign `Model.Settings.global_plotter_args` before creating models
+to set class defaults. Each new model receives an independent copy of that
+dictionary. Changes to a model's settings affect subsequently added plotters.
+
 Definitions:
 | Term               | Definition                                                                                                                       |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
