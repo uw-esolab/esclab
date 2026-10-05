@@ -562,7 +562,7 @@ class Model:
         self._step_count = 0
         return
     
-    def add_plotter_simstats(self, tab_title="Simulation Stats", nmax_points = 1000, update_every=1, show_live=True):
+    def add_plotter_simstats(self, tab_title="Simulation Stats", nmax_points = 1000, update_every=1, show_live=True, time_units="sec"):
         """
         Add a plotter to the model to visualize simulation statistics over time.
         
@@ -574,6 +574,10 @@ class Model:
             Title of the tab for the current plotter.
         show_live : bool, optional
             Flag indicating whether to show the plotter live during the simulation. If false, the plots will render after the simulation has completed.
+        time_units : str, optional
+            Units for the time axis: nsec, msec, sec, min, hr, day, week,
+            or year. Default is 'sec'; a year is 365 days. Simulation time
+            and the timestep values on the y-axis remain in seconds.
         """
         self.add_plotter(
             y1=[self.historian['timestep']],
@@ -583,10 +587,17 @@ class Model:
             nmax_points=nmax_points,
             update_every=update_every,
             tab_title=tab_title,
-            show_live=show_live
+            show_live=show_live,
+            time_units=time_units
         )
 
-    def add_plotter(self, y1, y2=None, y1lim=None, y2lim=None, y1label='', y2label='', nmax_points = 1000, update_every=1, tab_title=None, show_live=True):
+    def add_plotter(self,
+                    y1, y2=None,
+                    y1lim=None, y2lim=None,
+                    y1label='', y2label='',
+                    nmax_points = 1000, update_every=1,
+                    tab_title=None, show_live=True,
+                    time_units='sec'):
         """
         Add a plotter to the model to visualize component inputs and outputs over time.
         
@@ -612,6 +623,10 @@ class Model:
             Title of the tab for the current plotter.
         show_live : bool, optional
             Flag indicating whether to show the plotter live during the simulation. If false, the plots will render after the simulation has completed.
+        time_units : str, optional
+            Units for the time axis: nsec, msec, sec, min, hr, day, week,
+            or year. Default is 'sec'; a year is 365 days. Simulation time
+            remains in seconds. Units are independent for each plotter.
         """
         if not isinstance(y1, type([])):
             y1t = [y1]
@@ -622,7 +637,7 @@ class Model:
             if not isinstance(y2, type([])):
                 y2t = [y2]
 
-        self._plotters.append(OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title, show_live=show_live))
+        self._plotters.append(OnlinePlotter(y1t, y2t, y1lim, y2lim, y1label, y2label, nmax_points, update_every, tab_title=tab_title, show_live=show_live, time_units=time_units))
 
     def add_network_graph(
         self,

@@ -62,6 +62,17 @@ class OnlinePlotter:
     UI_EVENT_PROCESS_INTERVAL_SEC = 0.02
     UI_EVENT_PROCESS_BUDGET_MS = 3
     _last_ui_event_process = 0.0
+    # Fixed durations in seconds; a plotting year is 365 days.
+    _SECONDS_PER_TIME_UNIT = {
+        'nsec': 1e-9,
+        'msec': 1e-3,
+        'sec': 1.0,
+        'min': 60.0,
+        'hr': 3600.0,
+        'days': 86400.0,
+        'weeks': 604800.0,
+        'years': 31536000.0,
+    }
 
     @classmethod
     def build_window(cls, plotter_size=(0.9, 0.9)):
@@ -353,10 +364,21 @@ class OnlinePlotter:
     y2 | [d, e, f, ...] component input or output values to be plotted on axis 2
     """
 
-    def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(0.9, 0.9), tab_title=None, show_live=True):
+    def __init__(self, y1, y2, y1lim, y2lim, y1label, y2label, nmax_points, update_every, plotter_size=(0.9, 0.9), tab_title=None, show_live=True, time_units='sec'):
+        """Plot time supplied in seconds using the selected display units.
+
+        time_units must be nsec, msec, sec (default), min, hr, day, week,
+        or year. A year is a fixed duration of 365 days. Each plotter has
+        its own units, used for live and deferred rendering alike.
+        """
         assert isinstance(y1, type([]))
         assert isinstance(y2, type([])) or y2 is None
 
+        if not isinstance(time_units, str) or time_units not in self._SECONDS_PER_TIME_UNIT:
+            valid_units = ', '.join(self._SECONDS_PER_TIME_UNIT)
+            raise ValueError(f"Unsupported time_units {time_units!r}; expected one of: {valid_units}")
+        self.time_units = time_units
+        self._seconds_per_time_unit = self._SECONDS_PER_TIME_UNIT[time_units]
         self.show_live = show_live
         self.current_step = -1
         self._fill_idx = 0
@@ -426,7 +448,7 @@ class OnlinePlotter:
         OnlinePlotter.tab_widget.addTab(self.win, tab_label)
 
         self.ax1 = self.win.addPlot(viewBox=_AxisLockedViewBox())
-        self.ax1.setLabel("bottom", "Time")
+        self.ax1.setLabel("bottom", f"Time ({self.time_units})")
         self.ax1.setLabel("left", self.y1label)
         self.legend_y1 = self.ax1.addLegend(offset=(10, 10))
         self.legend_y1.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 40)))
@@ -549,7 +571,7 @@ class OnlinePlotter:
         bottom_axis.setStyle(tickFont=tick_font)
 
         self.ax1.setLabel("left", self.y1label, color=label_color, **label_style)
-        self.ax1.setLabel("bottom", "Time", color=label_color, **label_style)
+        self.ax1.setLabel("bottom", f"Time ({self.time_units})", color=label_color, **label_style)
 
         if self.legend_y1 is not None:
             label_font = self.legend_y1.font()
@@ -623,6 +645,7 @@ class OnlinePlotter:
         self._capacity = new_cap
 
     def log_step(self, time, conv_fraction=0.0, iter_fraction=0.0, timestep=None):
+        """Buffer a step with time and timestep supplied in seconds."""
         self.current_step += 1
         if timestep is None:
             timestep = self._timestep
@@ -630,10 +653,10 @@ class OnlinePlotter:
         self._grow_if_needed()
         idx = self._fill_idx
 
-        self.x_data[idx] = time
+        self.x_data[idx] = time / self._seconds_per_time_unit
         self.conv_data[idx] = conv_fraction
         self.iter_data[idx] = iter_fraction
-        self._step_timesteps[idx] = timestep
+        self._step_timesteps[idx] = timestep / self._seconds_per_time_unit
 
         for j, yval in enumerate(self.y1_items):
             self.y1_data[j][idx] = yval.v
@@ -809,9 +832,9 @@ class OnlinePlotter:
         self._tooltip_last_idx = idx
 
         if in_conv or in_iter:
-            text = f"time | {t:.1f} s\nConv failures: {self.conv_data[idx]:.1%}\nIter fraction: {self.iter_data[idx]:.1%}"
+            text = f"time | {t:.6g} {self.time_units}\nConv failures: {self.conv_data[idx]:.1%}\nIter fraction: {self.iter_data[idx]:.1%}"
         else:
-            lines = [f"time | {t:.1f} s"]
+            lines = [f"time | {t:.6g} {self.time_units}"]
             display_items = self.y1_items + (self.y2_items if self.y2_items is not None else [])
             ncmax = -1
             for item in display_items:

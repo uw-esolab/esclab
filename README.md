@@ -83,6 +83,18 @@ The main calculation and plotting scripts are:
 * `network_topology.py` | tools for detecting, organizing, and rendering coupled network systems
 * `online_plotter.py` | Qt-based window for real-time plotting
 
+Plotters accept `time_units` to display the time axis in `nsec`, `msec`,
+`sec` (the default), `min`, `hr`, `day`, `week`, or `year`. Each plotter
+can use different units, including plots rendered after the simulation with
+`show_live=False`. Axis labels, tooltips, and status strips use the selected
+units; simulation time and plotted y-values remain unchanged. A year is
+defined as 365 days.
+
+```python
+model.add_plotter([model.storage.charge], time_units="hr")
+model.add_plotter_simstats(time_units="min", show_live=False)
+```
+
 Definitions:
 | Term               | Definition                                                                                                                       |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
